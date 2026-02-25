@@ -1,10 +1,10 @@
 ---
 sidebar_position: 1
-title: "Aula 01: Setup Expo e Fundamentos JS"
-description: "Criação do projeto com Expo, componentes básicos (View, Text, TextInput) e estado com useState."
+title: "Aula 01: Setup Expo e Fundamentos TS"
+description: "Criação do projeto com Expo, componentes básicos (View, Text, TextInput) e fundamentos de TypeScript."
 ---
 
-# Aula 01: Setup Expo e Fundamentos JS
+# Aula 01: Setup Expo e Fundamentos TS
 
 :::info 🔀 Branch da Aula
 Esta aula refere-se à branch: **`aula-01`**
@@ -26,7 +26,120 @@ O React Native permite criar apps móveis nativos com JavaScript/TypeScript. O *
 | `app/register.tsx` | Tela de registro |
 | `app/_layout.tsx` | Layout raiz com Stack navigator |
 | `constants/Colors.ts` | Tokens de cor (light/dark) |
-| `lib/api.ts` | Cliente API REST (equivalente ao KtorClient) |
+| `basics/FundamentosTS.ts` | 130 linhas — 8 tópicos fundamentais |
+
+## 💻 Fundamentos de TypeScript
+
+O TypeScript é a base do desenvolvimento seguro em React Native. Aqui estão os conceitos fundamentais que usaremos:
+
+### 1. Const e Let — Variáveis e Constantes
+
+```typescript
+// const: variável IMUTÁVEL (equivalente ao val)
+const pi = 3.14;
+const nomeDoCurso = "Merge Skills: React Native"; // Inferência de tipo
+
+// let: variável MUTÁVEL (equivalente ao var)
+let count = 0;
+count = 1; // Permitido
+```
+
+### 2. Tipagem e Null Safety
+
+```typescript
+// Tipagem explícita
+let nome: string = "João";
+let idade: number = 25;
+let autênticado: boolean = true;
+
+// Opcional Chaining `?.` (Safe Call)
+const usuario = { profile: { name: "Yuri" } };
+const bio = usuario.profile?.bio; // Não quebra se bio for undefined
+
+// Nullish Coalescing `??` (Elvis Operator)
+const github = user.github ?? "Não Cadastrado";
+```
+
+### 3. Arrow Functions e Parâmetros
+
+```typescript
+// Função tradicional
+function saudacao(nome: string) {
+    return `Olá, ${nome}`;
+}
+
+// Arrow Function (Single-expression)
+const somar = (a: number, b: number) => a + b;
+
+// Parâmetro com valor padrão
+const saudar = (nome: string, msg: string = "Olá") => `${msg}, ${nome}`;
+```
+
+### 4. Arrays e Map/Filter
+
+```typescript
+// Arrays robustos
+const tecnologias: string[] = ["React Native", "Expo", "TypeScript"];
+
+// Pipeline funcional
+tecnologias
+    .filter(tech => tech.length > 4)
+    .map(tech => tech.toUpperCase())
+    .forEach(tech => console.log(tech));
+```
+
+### 5. Interfaces e Types (OOP Moderno)
+
+```typescript
+// Define o contrato de um objeto
+interface User {
+    id: string;
+    name: string;
+    email: string;
+    bio?: string; // Opcional
+}
+
+// Implementação do contrato
+const meuPerfil: User = {
+    id: "1",
+    name: "Estudante",
+    email: "contato@merge.com"
+};
+```
+
+### 6. Destructuring e Spread
+
+```typescript
+// Destruturação de objetos
+const { name, email } = meuPerfil;
+
+// Spread operator (Cópia e merge)
+const novoPerfil = { ...meuPerfil, name: "Novo Nome" };
+const listaCompleta = [...tecnologias, "Next.js"];
+```
+
+### 7. Classes
+
+```typescript
+class Aluno {
+    constructor(public nome: string, public nota: number) {}
+
+    apresentar() {
+        console.log(`Olá, meu nome é ${this.nome}`);
+    }
+}
+```
+
+### 8. Import e Export
+
+```typescript
+// Exportando um componente ou utilitário
+export const API_URL = "https://api.merge.com";
+
+// Importando
+import { API_URL } from "./config";
+```
+
 
 ### Componentes Básicos
 
@@ -167,11 +280,14 @@ import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
 <Tabs>
-  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
+  <TabItem value="ex1" label="Exercício 1 — TypeScript">
 
-### Altere os textos do login
+### Praticando TS
 
-Mude o título de "Merge Skills" para seu nome e adicione a data atual com `new Date().toLocaleDateString('pt-BR')`.
+No arquivo `app/index.tsx`, antes do export, crie:
+1. Uma interface `Professor` com `nome` e `materia`.
+2. Um array de professores.
+3. Use `map` para renderizar apenas os nomes no console.
 
   </TabItem>
   <TabItem value="ex2" label="Exercício 2 — Aplicação">
