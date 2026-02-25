@@ -1,0 +1,65 @@
+---
+sidebar_position: 16
+title: "Aula 16: Navegação Avançada e Deep Links"
+description: "Rotas dinâmicas, deep linking, modais e navigation state management."
+---
+
+# Aula 16: Navegação Avançada e Deep Links
+
+:::info 🔀 Branch da Aula
+Esta aula refere-se à branch: **`aula-16`**
+```bash
+git checkout aula-16
+```
+:::
+
+:::caution 🚧 Conteúdo Prospectivo
+Esta branch ainda não possui código implementado.
+:::
+
+## 📖 Conceito
+
+Expo Router suporta **deep links** e **rotas dinâmicas** nativamente. Ao configurar o scheme no `app.json`, links externos abrem diretamente em telas específicas.
+
+## 💻 Código de Referência
+
+```json title="app.json (trecho)"
+{
+  "expo": {
+    "scheme": "mergeskills",
+    "deepLinking": true
+  }
+}
+```
+
+```tsx title="app/course/[id].tsx"
+import { useLocalSearchParams } from 'expo-router';
+
+export default function CourseDetail() {
+    const { id } = useLocalSearchParams<{ id: string }>();
+    // Busca dados do curso pelo id
+}
+```
+
+## 💻 Mão na Massa
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+<Tabs>
+  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
+
+Crie `app/lesson/[lessonId].tsx` e teste navegando com `router.push('/lesson/42')`.
+
+  </TabItem>
+  <TabItem value="ex2" label="Exercício 2 — Aplicação">
+
+Configure deep link `mergeskills://course/123` e teste com `npx uri-scheme open`.
+
+  </TabItem>
+  <TabItem value="ex3" label="Exercício 3 — Desafio">
+
+Implemente um modal de compartilhamento que gera link `mergeskills://quiz/{id}` para compartilhar quiz com colegas.
+
+  </TabItem>
+</Tabs>

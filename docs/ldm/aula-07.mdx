@@ -1,0 +1,68 @@
+---
+sidebar_position: 7
+title: "Aula 07: Quiz API"
+description: "Endpoints de quiz — buscar questões, submeter respostas, validar server-side."
+---
+
+# Aula 07: Quiz API
+
+:::info 🔀 Branch da Aula
+Esta aula refere-se à branch: **`aula-07`** — `git checkout aula-07`
+:::
+
+:::caution 🚧 Conteúdo Prospectivo
+Esta branch ainda não possui código implementado.
+:::
+
+## 📖 Conceito
+
+O quiz é validado no server — o client nunca recebe `correctIndex`. Ao submeter, o server compara e retorna o resultado.
+
+## 💻 Código de Referência
+
+```kotlin title="server/.../routes/QuizRoutes.kt"
+fun Route.quizRoutes(supabase: SupabaseClient) {
+    route("/api/quiz/{lessonId}") {
+        get("/questions") {
+            val lessonId = call.parameters["lessonId"]!!
+            val questions = supabase.postgrest.from("quiz_questions")
+                .select { filter { eq("lesson_id", lessonId) } }
+                .decodeList<QuizQuestionPublic>() // Sem correctIndex!
+            call.respond(questions)
+        }
+        post("/submit") {
+            val lessonId = call.parameters["lessonId"]!!
+            val submission = call.receive<QuizSubmission>()
+            // Busca as respostas corretas do banco
+            val correct = supabase.postgrest.from("quiz_questions")
+                .select { filter { eq("lesson_id", lessonId) } }
+                .decodeList<QuizQuestionFull>()
+            val score = calculateScore(submission.answers, correct)
+            call.respond(QuizResult(score = score, total = correct.size))
+        }
+    }
+}
+```
+
+## 💻 Mão na Massa
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+<Tabs>
+  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
+
+Implemente `calculateScore()` que compara respostas e retorna acertos.
+
+  </TabItem>
+  <TabItem value="ex2" label="Exercício 2 — Aplicação">
+
+Adicione XP ao usuário baseado no score: `score * 10` XP por acerto.
+
+  </TabItem>
+  <TabItem value="ex3" label="Exercício 3 — Desafio">
+
+Implemente rate limiting — máximo 3 tentativas por quiz por dia.
+
+  </TabItem>
+</Tabs>

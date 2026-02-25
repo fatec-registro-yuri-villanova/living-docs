@@ -1,0 +1,136 @@
+---
+sidebar_position: 6
+title: "Aula 06: Componentes Reutilizáveis"
+description: "Criação de componentes como StitchButton — props, variantes, loading state."
+---
+
+# Aula 06: Componentes Reutilizáveis
+
+:::info 🔀 Branch da Aula
+Esta aula refere-se à branch: **`aula-06`**
+```bash
+git checkout aula-06
+```
+:::
+
+## 📖 Conceito
+
+Componentes reutilizáveis são a base do React Native. O **StitchButton** é o primeiro componente do Design System — aceita variantes (primary/error), estado de loading e estilos customizáveis.
+
+## 💻 Código de Referência
+
+### StitchButton — Componente Reutilizável
+
+```tsx title="components/StitchButton.tsx"
+import React from 'react';
+import { TouchableOpacity, Text, StyleSheet, ActivityIndicator,
+         ViewStyle, TextStyle } from 'react-native';
+import Colors from '../constants/Colors';
+
+interface StitchButtonProps {
+    title: string;
+    onPress: () => void;
+    loading?: boolean;
+    disabled?: boolean;
+    style?: ViewStyle;
+    textStyle?: TextStyle;
+    variant?: 'primary' | 'error';
+}
+
+export const StitchButton: React.FC<StitchButtonProps> = ({
+    title,
+    onPress,
+    loading = false,
+    disabled = false,
+    style,
+    textStyle,
+    variant = 'primary'
+}) => {
+    const backgroundColor = variant === 'primary'
+        ? Colors.colors.stitchGreen
+        : Colors.colors.stitchError;
+
+    return (
+        <TouchableOpacity
+            onPress={onPress}
+            disabled={disabled || loading}
+            activeOpacity={0.8}
+            style={[
+                styles.button,
+                { backgroundColor },
+                disabled && styles.disabled,
+                style
+            ]}
+        >
+            {loading ? (
+                <ActivityIndicator color="#000" />
+            ) : (
+                <Text style={[styles.text, textStyle]}>{title}</Text>
+            )}
+        </TouchableOpacity>
+    );
+};
+
+const styles = StyleSheet.create({
+    button: {
+        height: 56,
+        borderRadius: 12, // Medium shape per Spec
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingHorizontal: 24,
+    },
+    text: {
+        color: '#000',
+        fontSize: 16,
+        fontWeight: '600',
+    },
+    disabled: {
+        opacity: 0.5,
+    }
+});
+
+export default StitchButton;
+```
+
+### Uso no Login
+
+```tsx title="app/login.tsx"
+import StitchButton from '../components/StitchButton';
+
+// Dentro do componente:
+<StitchButton
+    title="Entrar"
+    onPress={handleLogin}
+    loading={loading}
+    style={styles.loginButton}
+/>
+```
+
+## 💻 Mão na Massa
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+<Tabs>
+  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
+
+### Use StitchButton em todas as telas
+
+Substitua todos os `TouchableOpacity` de ação primária no `login.tsx` e `register.tsx` pelo `StitchButton`.
+
+  </TabItem>
+  <TabItem value="ex2" label="Exercício 2 — Aplicação">
+
+### Crie um StitchTextField
+
+Crie `components/StitchTextField.tsx` com Props (`value`, `onChangeText`, `placeholder`, `secureTextEntry`, `icon`), dark surface background (`Colors.dark.surface`), `borderRadius: 12` (Medium shape per Spec) e ícone Ionicons à esquerda.
+
+  </TabItem>
+  <TabItem value="ex3" label="Exercício 3 — Desafio">
+
+### Variante "outline" do StitchButton
+
+Adicione uma terceira variante `'outline'` ao StitchButton com fundo transparente, borda de 1.5px na cor `stitchGreen` e texto na cor `stitchGreen`. Use no botão "Cadastre-se" do login.
+
+  </TabItem>
+</Tabs>

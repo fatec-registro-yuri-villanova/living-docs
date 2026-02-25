@@ -1,0 +1,119 @@
+---
+sidebar_position: 3
+title: "Aula 03: Layouts e StyleSheet"
+description: "Flexbox, StyleSheet.create, design responsivo e componentes de layout."
+---
+
+# Aula 03: Layouts e StyleSheet
+
+:::info 🔀 Branch da Aula
+Esta aula refere-se à branch: **`aula-03`**
+```bash
+git checkout aula-03
+```
+:::
+
+## 📖 Conceito
+
+No React Native, todo layout é feito com **Flexbox**. O `StyleSheet.create` cria estilos otimizados (os objetos são freezed e referenciados por ID internamente para performance).
+
+### Flexbox no React Native
+
+```tsx
+// Vertical (padrão: flexDirection é 'column')
+<View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+  <Text>Centralizado</Text>
+</View>
+
+// Horizontal
+<View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+  <Text>Esquerda</Text>
+  <Text>Direita</Text>
+</View>
+```
+
+### StyleSheet Best Practices
+
+```tsx
+// ✅ BOM: styles fora do componente, otimizado
+const styles = StyleSheet.create({
+    container: {
+        flex: 1,
+        padding: 24,
+        backgroundColor: '#0F0F0F',
+    },
+    title: {
+        fontSize: 32,
+        fontWeight: 'bold',
+        color: '#FFF',
+    },
+});
+
+// ❌ RUIM: inline styles recreated every render
+<View style={{ flex: 1, padding: 24 }}>
+```
+
+## 💻 Código de Referência
+
+### Layout do Input (do login real)
+
+```tsx title="app/login.tsx (trecho de estilo)"
+const styles = StyleSheet.create({
+    inputContainer: {
+        flexDirection: 'row',       // Horizontal: ícone + input
+        alignItems: 'center',
+        width: '100%',
+        height: 56,
+        borderWidth: 1,
+        borderColor: '#ccc',
+        borderRadius: 8,
+        paddingHorizontal: 16,
+        marginBottom: 16
+    },
+    icon: {
+        marginRight: 12
+    },
+    input: {
+        flex: 1,                    // Ocupa o espaço restante
+        fontSize: 16
+    },
+    button: {
+        width: '100%',
+        height: 56,
+        backgroundColor: '#ff0000',
+        borderRadius: 8,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginTop: 24,
+    },
+});
+```
+
+## 💻 Mão na Massa
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+<Tabs>
+  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
+
+### Crie um card
+
+Crie um componente `CourseCard` com `View` estilizado: borderRadius, padding, backgroundColor, e shadow. Use `flexDirection: 'row'` para ícone à esquerda e título à direita.
+
+  </TabItem>
+  <TabItem value="ex2" label="Exercício 2 — Aplicação">
+
+### Lista de cards
+
+Crie 3 `CourseCard` empilhados verticalmente com `marginBottom: 16` entre eles. Use `ScrollView` para que a lista role se ultrapassar a tela.
+
+  </TabItem>
+  <TabItem value="ex3" label="Exercício 3 — Desafio">
+
+### Refatore os estilos do login
+
+Extraia os estilos repetidos do `login.tsx` e `register.tsx` para um arquivo `styles/shared.ts`. Reutilize `inputContainer`, `button` e `container` em ambas as telas.
+
+  </TabItem>
+</Tabs>

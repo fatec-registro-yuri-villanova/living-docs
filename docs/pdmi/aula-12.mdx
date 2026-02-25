@@ -1,0 +1,67 @@
+---
+sidebar_position: 12
+title: "Aula 12: Quiz — Submissão e API"
+description: "Envio de respostas ao backend, validação server-side e persistência de resultado."
+---
+
+# Aula 12: Quiz — Submissão e API
+
+:::info 🔀 Branch da Aula
+Esta aula refere-se à branch: **`aula-12`**
+```bash
+git checkout aula-12
+```
+:::
+
+:::caution 🚧 Conteúdo Prospectivo
+Esta branch ainda não possui código implementado.
+:::
+
+## 📖 Conceito
+
+As respostas do quiz são enviadas ao backend para **validação server-side** (evitando trapaça no client). O endpoint retorna o resultado final e atualiza o progresso do aluno.
+
+## 💻 Código de Referência
+
+```tsx title="lib/api.ts (trecho quiz)"
+quiz: {
+    async submit(lessonId: string, answers: number[]) {
+        return apiClient.fetch(`/quiz/${lessonId}/submit`, {
+            method: 'POST',
+            body: JSON.stringify({ answers }),
+        });
+    },
+    async getQuestions(lessonId: string) {
+        return apiClient.fetch(`/quiz/${lessonId}/questions`);
+    }
+}
+```
+
+## 💻 Mão na Massa
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+<Tabs>
+  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
+
+### Colete todas as respostas
+
+Acumule as respostas em um array `answers: number[]` e envie ao final com `apiClient.quiz.submit()`.
+
+  </TabItem>
+  <TabItem value="ex2" label="Exercício 2 — Aplicação">
+
+### Tela de resultado com dados do server
+
+Exiba a pontuação retornada pelo backend (não do client), mostrando nota, acertos/erros e XP ganho.
+
+  </TabItem>
+  <TabItem value="ex3" label="Exercício 3 — Desafio">
+
+### Retry com perguntas erradas
+
+Ofereça opção de "Refazer apenas as erradas" — filtre as perguntas onde `userAnswer !== correctIndex` e reinicie o quiz parcial.
+
+  </TabItem>
+</Tabs>

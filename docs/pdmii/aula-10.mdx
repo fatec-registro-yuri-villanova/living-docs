@@ -1,0 +1,145 @@
+---
+sidebar_position: 10
+title: "Aula 10: Listagem de Lições e Cursos"
+description: "LazyColumn, carregamento dinâmico, estados de UI para listas e pull-to-refresh."
+---
+
+# Aula 10: Listagem de Lições e Cursos
+
+:::info 🔀 Branch da Aula
+Esta aula refere-se à branch: **`aula-10`**
+```bash
+git checkout aula-10
+```
+:::
+
+## 📖 Conceito
+
+**LazyColumn** é o equivalente ao `RecyclerView` no Compose — renderiza apenas os itens visíveis na tela, garantindo performance mesmo com listas enormes.
+
+### LazyColumn vs Column
+
+```kotlin
+// ❌ Column: renderiza TODOS os itens (lento para listas grandes)
+Column {
+    items.forEach { item -> LessonItem(item) }
+}
+
+// ✅ LazyColumn: renderiza apenas o VISÍVEL (performático)
+LazyColumn {
+    items(lessons) { lesson ->
+        LessonItem(lesson)
+    }
+}
+```
+
+### Estados de Lista
+
+```kotlin
+@Composable
+fun CourseListScreen(viewModel: CourseViewModel = koinViewModel()) {
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+
+    when {
+        uiState.isLoading -> ShimmerList()          // Skeleton loading
+        uiState.error != null -> ErrorState(uiState.error!!)
+        uiState.courses.isEmpty() -> EmptyState()   // Sem dados
+        else -> CourseList(uiState.courses)
+    }
+}
+```
+
+### Keys para performance
+
+```kotlin
+LazyColumn {
+    items(
+        items = lessons,
+        key = { lesson -> lesson.id } // Estável para recomposição
+    ) { lesson ->
+        LessonItem(lesson = lesson)
+    }
+}
+```
+
+## 💻 Código de Referência
+
+```kotlin title="screens/HomeScreen.kt"
+@Composable
+fun HomeScreen(
+    viewModel: HomeViewModel = koinViewModel(),
+    onCourseClick: (String) -> Unit
+) {
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        // Header
+        item {
+            Text(
+                text = "Olá, ${uiState.userName} 👋",
+                style = MaterialTheme.typography.headlineMedium
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "Continue aprendendo",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        // Lista de cursos
+        items(items = uiState.courses, key = { it.id }) { course ->
+            StitchCard(
+                title = course.title,
+                subtitle = "${course.completedLessons}/${course.totalLessons} lições",
+                modifier = Modifier.clickable { onCourseClick(course.id) }
+            )
+        }
+    }
+}
+```
+
+## 💻 Mão na Massa
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+<Tabs>
+  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
+
+### Adicione Spacer entre seções
+
+No `LazyColumn`, adicione um `Spacer` de `24.dp` entre o header e a lista de cursos usando `item { Spacer(...) }`.
+
+  </TabItem>
+  <TabItem value="ex2" label="Exercício 2 — Aplicação">
+
+### Implemente uma `EmptyState`
+
+Crie um Composable `EmptyState` que exiba:
+- Um ícone grande (ex: `Icons.Default.School`)
+- Texto "Nenhum curso disponível"
+- Um `StitchButton` "Tentar Novamente" que dispare `HomeAction.Refresh`
+
+Integre no fluxo `when` de estados do `HomeScreen`.
+
+  </TabItem>
+  <TabItem value="ex3" label="Exercício 3 — Desafio">
+
+### Lista de Lições com estados visuais
+
+Na `CourseDetailScreen`, use `LazyColumn` para mostrar lições com 3 estados visuais distintos:
+1. **Concluída** — ícone de check verde (`StitchGreen`)
+2. **Disponível** — destaque visual, clicável
+3. **Bloqueada** — opacidade reduzida, não clicável
+
+Use os dados do `GET /progress/history/{userId}` (via `ProgressRepository` da Aula 09) para determinar o estado de cada lição.
+
+  </TabItem>
+</Tabs>

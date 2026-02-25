@@ -1,0 +1,261 @@
+/* MergeSkills — Living Documentation Theme
+   Inspired by reactnative.dev + MergeSkills Design System */
+
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap");
+
+/* ─── Design Tokens ─── */
+:root {
+  --ifm-color-primary: #4cdf20;
+  --ifm-color-primary-dark: #3ec318;
+  --ifm-color-primary-darker: #3ab816;
+  --ifm-color-primary-darkest: #309712;
+  --ifm-color-primary-light: #5fe336;
+  --ifm-color-primary-lighter: #6ae544;
+  --ifm-color-primary-lightest: #87eb6b;
+
+  --ifm-font-family-base: "Inter", system-ui, -apple-system, sans-serif;
+  --ifm-font-family-monospace: "JetBrains Mono", "Fira Code", "Cascadia Code",
+    monospace;
+  --ifm-heading-font-weight: 700;
+  --ifm-font-weight-semibold: 600;
+
+  --ifm-code-font-size: 90%;
+  --ifm-code-border-radius: 6px;
+
+  --docusaurus-highlighted-code-line-bg: rgba(76, 223, 32, 0.1);
+}
+
+/* ─── Dark Mode (Default) ─── */
+[data-theme="dark"] {
+  --ifm-background-color: #0f0f0f;
+  --ifm-background-surface-color: #1c1c1e;
+  --ifm-color-primary: #4cdf20;
+  --ifm-color-primary-dark: #3ec318;
+  --ifm-color-primary-darker: #3ab816;
+  --ifm-color-primary-darkest: #309712;
+  --ifm-color-primary-light: #5fe336;
+  --ifm-color-primary-lighter: #6ae544;
+  --ifm-color-primary-lightest: #87eb6b;
+
+  --ifm-navbar-background-color: #1a1a1a;
+  --ifm-footer-background-color: #0a0a0a;
+  --ifm-toc-border-color: #2a2a2a;
+  --ifm-color-emphasis-300: #333;
+  --ifm-hr-border-color: #222;
+}
+
+/* ─── Typography ─── */
+html {
+  font-size: 16px;
+}
+
+h1 {
+  font-size: 2.25rem !important;
+  font-weight: 800 !important;
+  letter-spacing: -0.02em;
+}
+
+h2 {
+  font-size: 1.5rem !important;
+  font-weight: 700 !important;
+  margin-top: 2.5rem !important;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--ifm-toc-border-color);
+}
+
+h3 {
+  font-size: 1.2rem !important;
+  font-weight: 600 !important;
+  margin-top: 2rem !important;
+}
+
+/* ─── Code Blocks ─── */
+.prism-code {
+  font-size: 14px !important;
+  line-height: 1.6 !important;
+  border-radius: 12px !important;
+}
+
+[data-theme="dark"] .prism-code {
+  background-color: #1a1a2e !important;
+  border: 1px solid #2a2a3e;
+}
+
+code {
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 0.875em;
+}
+
+[data-theme="dark"] code {
+  background-color: rgba(76, 223, 32, 0.08);
+  color: #4cdf20;
+  border: 1px solid rgba(76, 223, 32, 0.15);
+}
+
+/* ─── Admonitions (Branch Info) ─── */
+.alert--info {
+  --ifm-alert-background-color: rgba(76, 223, 32, 0.06);
+  --ifm-alert-border-color: #4cdf20;
+  border-left-width: 4px;
+  border-radius: 8px;
+}
+
+[data-theme="dark"] .alert--info {
+  --ifm-alert-background-color: rgba(76, 223, 32, 0.06);
+  --ifm-alert-foreground-color: #e0e0e0;
+}
+
+.alert--info .admonition-heading h5 {
+  color: #4cdf20 !important;
+}
+
+.alert--tip {
+  --ifm-alert-border-color: #4cdf20;
+  border-radius: 8px;
+}
+
+/* ─── Tabs (Exercises) ─── */
+.tabs-container {
+  margin-top: 1.5rem;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+[data-theme="dark"] .tabs-container {
+  background: #1c1c1e;
+  border: 1px solid #2a2a2a;
+}
+
+.tabs__item {
+  font-weight: 600;
+  font-size: 0.9rem;
+  padding: 10px 20px;
+  border-radius: 0;
+  transition: all 0.2s ease;
+}
+
+.tabs__item--active {
+  color: #4cdf20 !important;
+  border-bottom-color: #4cdf20 !important;
+}
+
+[data-theme="dark"] .tabs__item:hover:not(.tabs__item--active) {
+  background-color: rgba(76, 223, 32, 0.05);
+}
+
+/* ─── Navbar ─── */
+.navbar {
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+[data-theme="dark"] .navbar {
+  background-color: rgba(26, 26, 26, 0.85);
+}
+
+.navbar__brand {
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.navbar__link--active {
+  color: #4cdf20 !important;
+}
+
+/* ─── Sidebar ─── */
+.theme-doc-sidebar-container {
+  border-right: 1px solid var(--ifm-toc-border-color);
+}
+
+.menu__link--active:not(.menu__link--sublist) {
+  color: #4cdf20 !important;
+  background-color: rgba(76, 223, 32, 0.08);
+  border-radius: 6px;
+}
+
+.menu__link:hover {
+  color: #4cdf20;
+  background-color: rgba(76, 223, 32, 0.04);
+  border-radius: 6px;
+}
+
+/* ─── Content Area ─── */
+.markdown {
+  line-height: 1.7;
+}
+
+.markdown p {
+  margin-bottom: 1.2em;
+}
+
+.markdown ul,
+.markdown ol {
+  margin-bottom: 1.2em;
+}
+
+.markdown li {
+  margin-bottom: 0.4em;
+}
+
+/* ─── Table styling ─── */
+[data-theme="dark"] table {
+  border-color: #2a2a2a;
+}
+
+[data-theme="dark"] table thead tr {
+  background-color: #1c1c1e;
+}
+
+[data-theme="dark"] table tbody tr:nth-child(2n) {
+  background-color: rgba(255, 255, 255, 0.02);
+}
+
+/* ─── Scrollbar ─── */
+[data-theme="dark"] ::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+[data-theme="dark"] ::-webkit-scrollbar-track {
+  background: #0f0f0f;
+}
+
+[data-theme="dark"] ::-webkit-scrollbar-thumb {
+  background: #333;
+  border-radius: 3px;
+}
+
+[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
+  background: #4cdf20;
+}
+
+/* ─── Custom Classes ─── */
+.branch-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(76, 223, 32, 0.1);
+  border: 1px solid rgba(76, 223, 32, 0.3);
+  border-radius: 6px;
+  padding: 4px 12px;
+  font-family: var(--ifm-font-family-monospace);
+  font-size: 0.9em;
+  color: #4cdf20;
+  font-weight: 500;
+}
+
+/* ─── Animations ─── */
+.menu__link,
+.tabs__item,
+.navbar__link,
+code {
+  transition: all 0.2s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
+}

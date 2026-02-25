@@ -1,0 +1,41 @@
+---
+sidebar_position: 11
+title: "Aula 11: Leaderboard API"
+description: "Endpoint de ranking com ordenação, paginação e posição do usuário."
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+# Aula 11: Leaderboard API
+:::info 🔀 Branch da Aula
+**`aula-11`** — `git checkout aula-11`
+:::
+:::caution 🚧 Conteúdo Prospectivo
+Esta branch ainda não possui código implementado.
+:::
+## 📖 Conceito
+O leaderboard ordena usuários por XP total. O server calcula a posição do usuário logado e retorna a lista paginada.
+## 💻 Código de Referência
+```kotlin title="server/.../routes/LeaderboardRoutes.kt"
+get("/api/leaderboard") {
+    val limit = call.request.queryParameters["limit"]?.toIntOrNull() ?: 20
+    val rankings = supabase.postgrest.from("user_stats")
+        .select { order("total_xp", Order.DESCENDING); limit(limit.toLong()) }
+        .decodeList<RankedUser>()
+    call.respond(rankings.mapIndexed { i, u -> u.copy(position = i + 1) })
+}
+```
+## 💻 Mão na Massa
+
+<Tabs>
+  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
+Implemente o endpoint e teste com dados seed no Supabase.
+  </TabItem>
+  <TabItem value="ex2" label="Exercício 2 — Aplicação">
+Adicione filtro por período (`?period=weekly`) usando `gte` no timestamp.
+  </TabItem>
+  <TabItem value="ex3" label="Exercício 3 — Desafio">
+Adicione `GET /api/leaderboard/me` que retorna a posição do usuário logado sem buscar o ranking inteiro.
+  </TabItem>
+</Tabs>

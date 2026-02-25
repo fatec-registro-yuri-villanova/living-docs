@@ -1,0 +1,53 @@
+---
+sidebar_position: 14
+title: "Aula 14: CMS — CRUD de Cursos"
+description: "Tela de gerenciamento de cursos no Desktop — listar, criar, editar e deletar."
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+# Aula 14: CMS — CRUD de Cursos
+:::info 🔀 Branch da Aula
+**`aula-14`** — `git checkout aula-14`
+:::
+:::caution 🚧 Conteúdo Prospectivo
+Esta branch ainda não possui código implementado.
+:::
+## 📖 Conceito
+O CMS consome a mesma API Ktor para gerenciar cursos. Usa `LazyColumn` para listar e `Dialog` para criar/editar.
+## 💻 Código de Referência
+```kotlin title="composeApp/.../screens/CoursesScreen.kt"
+@Composable
+fun CoursesScreen(apiUrl: String) {
+    var courses by remember { mutableStateOf<List<Course>>(emptyList()) }
+    var showDialog by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        courses = httpClient.get("$apiUrl/api/courses").body()
+    }
+
+    Column(modifier = Modifier.fillMaxSize().padding(24.dp)) {
+        Row(modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("Cursos", style = MaterialTheme.typography.headlineLarge)
+            Button(onClick = { showDialog = true }) { Text("+ Novo") }
+        }
+        LazyColumn { items(courses) { course -> CourseRow(course) } }
+    }
+    if (showDialog) CreateCourseDialog(onDismiss = { showDialog = false })
+}
+```
+## 💻 Mão na Massa
+
+<Tabs>
+  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
+Implemente `CreateCourseDialog` com campos título e descrição.
+  </TabItem>
+  <TabItem value="ex2" label="Exercício 2 — Aplicação">
+Adicione botões de editar e deletar em cada `CourseRow` com confirmação.
+  </TabItem>
+  <TabItem value="ex3" label="Exercício 3 — Desafio">
+Implemente busca/filtro na lista com `OutlinedTextField` no topo.
+  </TabItem>
+</Tabs>

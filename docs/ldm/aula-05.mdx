@@ -1,0 +1,66 @@
+---
+sidebar_position: 5
+title: "Aula 05: Auth no Server"
+description: "Autenticação com Supabase Auth — registro, login, JWT validation no Ktor."
+---
+
+# Aula 05: Auth no Server
+
+:::info 🔀 Branch da Aula
+Esta aula refere-se à branch: **`aula-05`**
+```bash
+git checkout aula-05
+```
+:::
+
+:::caution 🚧 Conteúdo Prospectivo
+Esta branch ainda não possui código implementado.
+:::
+
+## 📖 Conceito
+
+O server valida tokens JWT recebidos do client. O Supabase Auth é usado para registro/login, e o Ktor valida o JWT em cada requisição protegida.
+
+## 💻 Código de Referência
+
+```kotlin title="server/.../plugins/AuthPlugin.kt"
+fun Application.configureAuth(supabase: SupabaseClient) {
+    install(Authentication) {
+        bearer("supabase-jwt") {
+            authenticate { credential ->
+                // Valida o JWT contra o Supabase
+                val token = credential.token
+                try {
+                    val user = supabase.auth.retrieveUser(token)
+                    UserIdPrincipal(user.id)
+                } catch (e: Exception) {
+                    null // Token inválido
+                }
+            }
+        }
+    }
+}
+```
+
+## 💻 Mão na Massa
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+<Tabs>
+  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
+
+Crie endpoints `POST /auth/login` e `POST /auth/register` usando `supabase.auth`.
+
+  </TabItem>
+  <TabItem value="ex2" label="Exercício 2 — Aplicação">
+
+Proteja os endpoints de `courses` com `authenticate("supabase-jwt")`.
+
+  </TabItem>
+  <TabItem value="ex3" label="Exercício 3 — Desafio">
+
+Implemente refresh token — quando o access token expira, o client envia o refresh token e recebe um novo par.
+
+  </TabItem>
+</Tabs>

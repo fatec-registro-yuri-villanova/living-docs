@@ -1,0 +1,236 @@
+---
+sidebar_position: 1
+title: "Aula 01: Fundamentos de Kotlin"
+description: "Variables (val/var), null safety, funções, controle de fluxo, coleções, lambdas, OOP e interfaces."
+---
+
+# Aula 01: Fundamentos de Kotlin
+
+:::info 🔀 Branch da Aula
+Esta aula refere-se à branch: **`aula-01`**
+```bash
+git checkout aula-01
+```
+:::
+
+## 📖 Conceito
+
+A `aula-01` é a base completa do Kotlin. O arquivo `FundamentosKotlin.kt` contém 8 seções didáticas que cobrem desde variáveis até interfaces, tudo contextualizado no domínio do MergeSkills.
+
+### Arquivos da Branch
+
+| Arquivo | Descrição |
+|---------|-----------|
+| `basics/FundamentosKotlin.kt` | 263 linhas — 8 tópicos fundamentais |
+| `MainActivity.kt` | Activity raiz com `setContent` |
+| `ui/theme/Color.kt` | Design tokens (StitchGreen, Background) |
+| `ui/theme/Theme.kt` | Tema Material 3 customizado |
+| `ui/theme/Type.kt` | Tipografia do projeto |
+
+## 💻 Código de Referência
+
+### 1. Val e Var — Variáveis Mutáveis e Imutáveis
+
+```kotlin title="basics/FundamentosKotlin.kt"
+fun entendendoVariaveis() {
+    // val (Value): variável IMUTÁVEL
+    val pi: Double = 3.14
+    val nomeDoCurso = "Merge Skills: Android Nativo"   // Inferência de tipo
+
+    // var (Variable): variável MUTÁVEL
+    var count: Int = 0
+    count = 1 // Permitido
+
+    // pi = 3.14159  // ERRO de compilação — val não pode ser reatribuída
+
+    // Tipagem explícita vs. inferência
+    val cargaHoraria: Int = 40
+    val valorDaMensalidade: Double = 99.90
+    val possuiCertificado: Boolean = true
+    val inicialDoNome: Char = 'M'
+}
+```
+
+### 2. Null Safety — Proteção contra NullPointerException
+
+```kotlin title="basics/FundamentosKotlin.kt"
+fun lidandoComNulos() {
+    var nome: String = "João"           // Non-nullable: nunca pode ser null
+    var sobrenome: String? = null       // Nullable: pode ser null
+
+    // Safe Call `?.`: só executa se sobrenome não for nulo
+    val tamanho: Int? = sobrenome?.length
+
+    // Elvis Operator `?:`: retorna valor padrão caso a variável seja nula
+    val tamanhoNaoNulo: Int = sobrenome?.length ?: 0
+
+    // Exemplo do projeto: campo de GitHub do usuário
+    var githubDoProfessor: String? = null
+    val linkSeguro = githubDoProfessor ?: "Não Cadastrado"
+}
+```
+
+### 3. Funções
+
+```kotlin title="basics/FundamentosKotlin.kt"
+// Função tradicional com parâmetros e retorno
+fun sayHello(name: String) {
+    println("Olá, $name!")
+}
+
+// Sintaxe de expressão (single-expression function)
+fun somarModerno(a: Int, b: Int) = a + b
+
+// Função com valores padrão nos parâmetros
+fun saudar(nome: String, saudacao: String = "Olá") {
+    println("$saudacao, $nome!")
+}
+```
+
+### 4. Controle de Fluxo — if, when e Loops
+
+```kotlin title="basics/FundamentosKotlin.kt"
+fun controleDeFluxo(notaMedia: Double) {
+    // IF como expressão (retorna valor)
+    val status = if (notaMedia >= 7.0) "Aprovado" else "Reprovado"
+
+    // WHEN: o Switch-Case potente do Kotlin
+    when (notaMedia) {
+        10.0           -> println("Aluno Perfeito!")
+        in 7.0..9.9    -> println("Aprovado com folga")
+        else           -> println("Precisamos estudar mais")
+    }
+
+    // FOR em coleção
+    val tecnologias = listOf("Kotlin", "Jetpack Compose", "Coroutines", "Koin")
+    for (tech in tecnologias) {
+        println("Aprenderemos: $tech")
+    }
+}
+```
+
+### 5. Coleções — List, Set, Map
+
+```kotlin title="basics/FundamentosKotlin.kt"
+fun exemploColecoes() {
+    // LIST: coleção ordenada, permite duplicatas
+    val nomes = listOf("João", "Maria", "Pedro")    // Imutável
+    val notas = mutableListOf(8, 7, 9)              // Mutável
+    notas.add(10)                                   // [8, 7, 9, 10]
+
+    // SET: coleção de itens únicos, desordenada
+    val frutas = setOf("Maçã", "Banana", "Morango", "Maçã")
+    // frutas conterá apenas "Maçã", "Banana", "Morango" (sem duplicata)
+
+    // MAP: pares chave-valor, chaves únicas
+    val idades = mapOf("João" to 30, "Maria" to 25)
+    val alunos = mutableMapOf<String, Int>()
+    alunos["Pedro"] = 28
+}
+```
+
+### 6. Higher-Order Functions e Lambdas
+
+```kotlin title="basics/FundamentosKotlin.kt"
+fun exemploHigherOrderFunctions() {
+    val numeros = listOf(1, 2, 3, 4)
+    val quadrados = numeros.map { it * it }       // [1, 4, 9, 16]
+
+    val todoNumeros = listOf(1, 2, 3, 4, 5, 6)
+    val pares = todoNumeros.filter { it % 2 == 0 } // [2, 4, 6]
+
+    // Encadeamento de operações (pipeline funcional)
+    numeros
+        .filter { it > 2 }      // [3, 4]
+        .map { it * 10 }        // [30, 40]
+        .forEach { println(it) }
+}
+```
+
+### 7. OOP — Classes e Data Classes
+
+```kotlin title="basics/FundamentosKotlin.kt"
+class AlunoNormal(val nome: String, val idade: Int) {
+    fun apresentar() {
+        println("Olá, me chamo $nome e tenho $idade anos.")
+    }
+}
+
+// Data class: usada para representar dados (ex: respostas de API)
+data class Curso(
+    val id: Int,
+    val titulo: String,
+    val descricao: String
+)
+```
+
+### 8. Herança, Polimorfismo e Interfaces
+
+```kotlin title="basics/FundamentosKotlin.kt"
+open class UsuarioPlataforma(val id: Int, val nickname: String) {
+    open fun autenticar() {
+        println("Autenticando via email e senha padrão...")
+    }
+}
+
+class AlunoPremium(
+    id: Int,
+    nickname: String,
+    val beneficiosVip: Boolean
+) : UsuarioPlataforma(id, nickname) {
+
+    override fun autenticar() {
+        super.autenticar()
+        println("Acesso VIP Liberado instantaneamente!")
+    }
+}
+
+// Interface: define um contrato de ações
+interface NavegadorDeCursos {
+    fun abrirAula(id: Int)
+    fun finalizarCurso()
+}
+```
+
+## 💻 Mão na Massa
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+<Tabs>
+  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
+
+### Atividade Prática (já existe no código)
+
+Abra `FundamentosKotlin.kt` e complete a função `atividadePratica()`:
+1. Crie uma lista mutável de nomes de alunos
+2. Adicione 3 alunos à lista
+3. Use `filter` para manter apenas os nomes com mais de 4 letras
+4. Use `map` para deixar todos os nomes em maiúsculo
+5. Use `forEach` para imprimir cada nome no console
+
+  </TabItem>
+  <TabItem value="ex2" label="Exercício 2 — Aplicação">
+
+### Crie uma `data class Aluno`
+
+Adicione ao `FundamentosKotlin.kt` uma `data class Aluno(val nome: String, val nota: Double)` e:
+1. Crie uma lista de 5 alunos com notas variadas
+2. Use `filter` para exibir apenas aprovados (`nota >= 7.0`)
+3. Use `sortedByDescending` para ordenar por nota
+4. Use `when` para classificar cada aluno (Excelente, Bom, Regular)
+
+  </TabItem>
+  <TabItem value="ex3" label="Exercício 3 — Desafio">
+
+### Sistema de Matrícula
+
+Implemente um sistema de matrícula usando todos os conceitos da aula:
+1. `interface Matriculavel` com `fun matricular()` e `fun cancelar()`
+2. `open class Pessoa(val nome: String, val cpf: String)` 
+3. `class Estudante : Pessoa, Matriculavel` com propriedade `curso: String?` (nullable)
+4. Use `when` para definir o valor da mensalidade baseado no curso
+5. Gerencie uma `mutableListOf<Estudante>` com operações de adicionar, filtrar e buscar
+
+  </TabItem>
+</Tabs>

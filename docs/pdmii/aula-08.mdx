@@ -1,0 +1,239 @@
+---
+sidebar_position: 8
+title: "Aula 08: Auth com API Real e DataStore"
+description: "AuthViewModel com AndroidViewModel, KtorClient configurado com Supabase, TokenDataStore e AuthModels."
+---
+
+# Aula 08: Auth com API Real e DataStore
+
+:::info 🔀 Branch da Aula
+Esta aula refere-se à branch: **`aula-08`**
+```bash
+git checkout aula-08
+```
+:::
+
+## 📖 Conceito
+
+Nesta aula, conectamos as telas de auth (Aula 06) à **API real** hospedada no Render. O `KtorClient` agora envia headers obrigatórios (`apikey`, `X-Timezone`), o `AuthViewModel` persiste tokens no **DataStore**, e os modelos de request/response são definidos com **Kotlinx Serialization**.
+
+### Arquivos novos nesta branch
+
+| Arquivo | Descrição |
+|---------|-----------|
+| `data/remote/ApiConfig.kt` | URLs e chave Supabase centralizadas |
+| `data/remote/KtorClient.kt` | Atualizado com `DefaultRequest` e headers |
+| `data/local/TokenDataStore.kt` | Persistência de token com DataStore |
+| `domain/models/AuthModels.kt` | `User`, `LoginRequest`, `RegisterRequest`, `AuthResponse` |
+| `ui/screens/auth/AuthViewModel.kt` | AndroidViewModel com login/register reais |
+
+## 💻 Código de Referência
+
+### ApiConfig — Configuração centralizada
+
+```kotlin title="data/remote/ApiConfig.kt"
+object ApiConfig {
+    const val BASE_URL = "https://lddm-api-inicial-1.onrender.com"
+
+    const val SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5c..."  // Anon Key
+
+    object Endpoints {
+        const val LOGIN = "$BASE_URL/auth/login"
+        const val REGISTER = "$BASE_URL/auth/register"
+        const val POSTS = "https://jsonplaceholder.typicode.com/posts"
+    }
+}
+```
+
+### KtorClient com DefaultRequest e Headers
+
+```kotlin title="data/remote/KtorClient.kt"
+object KtorClient {
+    val httpClient = HttpClient(Android) {
+        install(ContentNegotiation) {
+            json(Json {
+                ignoreUnknownKeys = true
+                isLenient = true
+            })
+        }
+
+        // Configuração padrão para todas as requisições
+        install(DefaultRequest) {
+            contentType(ContentType.Application.Json)
+            header("apikey", ApiConfig.SUPABASE_KEY)
+            header("Authorization", "Bearer ${ApiConfig.SUPABASE_KEY}")
+            header("X-Timezone", TimeZone.getDefault().id)
+        }
+    }
+}
+```
+
+### TokenDataStore — Persistência segura
+
+```kotlin title="data/local/TokenDataStore.kt"
+private val Context.dataStore by preferencesDataStore(name = "merge_skills_prefs")
+
+object TokenDataStore {
+    private val TOKEN_KEY = stringPreferencesKey("auth_token")
+
+    suspend fun saveToken(context: Context, token: String) {
+        context.dataStore.edit { prefs -> prefs[TOKEN_KEY] = token }
+    }
+
+    fun getToken(context: Context): Flow<String?> {
+        return context.dataStore.data.map { prefs -> prefs[TOKEN_KEY] }
+    }
+
+    suspend fun clearToken(context: Context) {
+        context.dataStore.edit { prefs -> prefs.remove(TOKEN_KEY) }
+    }
+}
+```
+
+### AuthModels — Modelos de autenticação
+
+```kotlin title="domain/models/AuthModels.kt"
+@Serializable
+data class User(
+    val id: Int,
+    val username: String,
+    val email: String,
+    val name: String? = null,
+    val role: String = "user",
+    @SerialName("profile_picture")
+    val profilePictureUrl: String? = null
+)
+
+@Serializable
+data class LoginRequest(val email: String, val password: String? = null)
+
+@Serializable
+data class RegisterRequest(
+    val name: String,
+    val email: String,
+    val password: String? = null,
+    @SerialName("profile_picture")
+    val profilePictureUrl: String? = null
+)
+
+@Serializable
+data class AuthResponse(
+    val token: String? = null,
+    val user: User
+)
+```
+
+### AuthViewModel — Login e registro reais
+
+```kotlin title="ui/screens/auth/AuthViewModel.kt"
+data class AuthUiState(
+    val isLoading: Boolean = false,
+    val isSuccess: Boolean = false,
+    val errorMessage: String? = null
+)
+
+class AuthViewModel(application: Application) : AndroidViewModel(application) {
+    private val _uiState = MutableStateFlow(AuthUiState())
+    val uiState: StateFlow<AuthUiState> = _uiState.asStateFlow()
+
+    fun login(email: String, pass: String) {
+        viewModelScope.launch {
+            _uiState.value = AuthUiState(isLoading = true)
+            try {
+                val requestBody = LoginRequest(email = email, password = pass)
+                val response: AuthResponse = KtorClient.httpClient
+                    .post(ApiConfig.Endpoints.LOGIN) {
+                        setBody(requestBody)
+                    }.body()
+
+                // Persiste o token no DataStore (Spec 6.4)
+                response.token?.let { token ->
+                    TokenDataStore.saveToken(getApplication(), token)
+                }
+
+                _uiState.value = AuthUiState(isSuccess = true)
+            } catch (e: Exception) {
+                _uiState.value = AuthUiState(
+                    isLoading = false,
+                    errorMessage = "Erro ao entrar: Verifique suas credenciais."
+                )
+            }
+        }
+    }
+
+    fun register(name: String, email: String, pass: String) {
+        viewModelScope.launch {
+            _uiState.value = AuthUiState(isLoading = true)
+            try {
+                val requestBody = RegisterRequest(
+                    name = name, email = email, password = pass
+                )
+                val response: AuthResponse = KtorClient.httpClient
+                    .post(ApiConfig.Endpoints.REGISTER) {
+                        setBody(requestBody)
+                    }.body()
+
+                response.token?.let { token ->
+                    TokenDataStore.saveToken(getApplication(), token)
+                }
+                _uiState.value = AuthUiState(isSuccess = true)
+            } catch (e: Exception) {
+                _uiState.value = AuthUiState(
+                    isLoading = false,
+                    errorMessage = "Erro ao cadastrar: E-mail já existe ou falha na rede."
+                )
+            }
+        }
+    }
+
+    fun resetError() {
+        if (_uiState.value.errorMessage != null) {
+            _uiState.value = _uiState.value.copy(errorMessage = null)
+        }
+    }
+
+    fun resetSuccess() {
+        _uiState.value = _uiState.value.copy(isSuccess = false)
+    }
+}
+```
+
+:::caution AndroidViewModel vs ViewModel
+O `AuthViewModel` usa `AndroidViewModel(application)` porque precisa do `Context` para acessar o DataStore. Isso é necessário nesta fase do projeto — em aulas futuras, usaremos **Koin** para injetar dependências sem precisar do `AndroidViewModel`.
+:::
+
+## 💻 Mão na Massa
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+<Tabs>
+  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
+
+### Teste o login real
+
+Execute o app e tente fazer login com credenciais reais no endpoint do Render. Verifique no Logcat se o token é recebido e persistido.
+
+  </TabItem>
+  <TabItem value="ex2" label="Exercício 2 — Aplicação">
+
+### Verificação de token no startup
+
+No `MainActivity`, antes de navegar, verifique se já existe um token no DataStore:
+- Se sim → navegue direto para Home (pule Splash/Login)
+- Se não → siga o fluxo normal Splash → Login
+
+Use `TokenDataStore.getToken(context).first()` dentro de um `LaunchedEffect`.
+
+  </TabItem>
+  <TabItem value="ex3" label="Exercício 3 — Desafio">
+
+### Logout com limpeza de token
+
+Crie um botão de logout que:
+1. Chame `TokenDataStore.clearToken(context)`
+2. Navegue de volta para Login com `popUpTo(0)`
+3. Garanta que o botão "Voltar" do sistema não retorne à Home após logout
+
+  </TabItem>
+</Tabs>

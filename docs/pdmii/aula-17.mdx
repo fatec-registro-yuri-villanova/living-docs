@@ -1,0 +1,143 @@
+---
+sidebar_position: 17
+title: "Aula 17: Testes Unitários"
+description: "Testando ViewModels e Repositórios com JUnit, MockK e Coroutines de teste."
+---
+
+# Aula 17: Testes Unitários
+
+:::info 🔀 Branch da Aula
+Esta aula refere-se à branch: **`aula-17`**
+```bash
+git checkout aula-17
+```
+:::
+
+## 📖 Conceito
+
+Testes são a rede de segurança do seu código. No Android, testamos **ViewModels** e **Repositórios** com **JUnit 5**, **MockK** (mocking Kotlin-first) e o **TestDispatcher** para Coroutines.
+
+### Estrutura de Teste — AAA
+
+```kotlin
+@Test
+fun `loadCourses should update state with courses on success`() {
+    // ARRANGE — prepare o cenário
+    val fakeCourses = listOf(Course("1", "Kotlin", 10, 3))
+    coEvery { repository.getCourses() } returns fakeCourses
+
+    // ACT — execute a ação
+    viewModel.onAction(HomeAction.LoadCourses)
+
+    // ASSERT — verifique o resultado
+    val state = viewModel.uiState.value
+    assertEquals(false, state.isLoading)
+    assertEquals(fakeCourses, state.courses)
+}
+```
+
+### MockK para Kotlin
+
+```kotlin
+// Crie mocks do repositório
+val repository = mockk<CourseRepository>()
+
+// Defina comportamento para funções suspend
+coEvery { repository.getCourses() } returns listOf(...)
+
+// Verifique chamadas
+coVerify { repository.getCourses() }
+```
+
+### TestDispatcher para Coroutines
+
+```kotlin
+@OptIn(ExperimentalCoroutinesApi::class)
+class HomeViewModelTest {
+    private val testDispatcher = UnconfinedTestDispatcher()
+
+    @BeforeEach
+    fun setup() {
+        Dispatchers.setMain(testDispatcher)
+    }
+
+    @AfterEach
+    fun tearDown() {
+        Dispatchers.resetMain()
+    }
+}
+```
+
+## 💻 Código de Referência
+
+```kotlin title="test/viewmodel/HomeViewModelTest.kt"
+@OptIn(ExperimentalCoroutinesApi::class)
+class HomeViewModelTest {
+    private val testDispatcher = UnconfinedTestDispatcher()
+    private val repository = mockk<CourseRepository>()
+    private lateinit var viewModel: HomeViewModel
+
+    @BeforeEach
+    fun setup() {
+        Dispatchers.setMain(testDispatcher)
+        viewModel = HomeViewModel(repository)
+    }
+
+    @AfterEach
+    fun tearDown() { Dispatchers.resetMain() }
+
+    @Test
+    fun `initial state should be loading`() {
+        coEvery { repository.getCourses() } returns emptyList()
+        val vm = HomeViewModel(repository)
+        // Initial load triggers in init
+        assertEquals(false, vm.uiState.value.isLoading)
+    }
+
+    @Test
+    fun `loadCourses error should set error message`() = runTest {
+        coEvery { repository.getCourses() } throws Exception("Network error")
+
+        viewModel.onAction(HomeAction.LoadCourses)
+
+        assertEquals("Network error", viewModel.uiState.value.error)
+        assertEquals(false, viewModel.uiState.value.isLoading)
+    }
+}
+```
+
+## 💻 Mão na Massa
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+<Tabs>
+  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
+
+### Configure o ambiente de testes
+
+Adicione as dependências de teste (`junit`, `mockk`, `coroutines-test`) e crie um teste simples que valide que `HomeUiState()` tem `isLoading = false` por padrão.
+
+  </TabItem>
+  <TabItem value="ex2" label="Exercício 2 — Aplicação">
+
+### Teste o `AuthViewModel`
+
+Crie testes para o fluxo de login:
+1. Login com sucesso atualiza o estado com o User
+2. Login com senha errada retorna erro
+3. Estado de loading é true durante a chamada
+
+  </TabItem>
+  <TabItem value="ex3" label="Exercício 3 — Desafio">
+
+### Teste o fluxo completo do quiz
+
+Teste o `QuizViewModel` (Aulas 11-12):
+1. `SelectOption` atualiza o `selectedOptionId`
+2. `Submit` chama `ProgressRepository.submitAnswer()`
+3. Resposta correta: `showFeedback = true`, `lastAnswerCorrect = true`
+4. `NextQuestion` avança o índice da questão
+
+  </TabItem>
+</Tabs>

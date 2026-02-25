@@ -1,0 +1,154 @@
+---
+sidebar_position: 3
+title: "Aula 03: Scaffold, TopAppBar e Modifier"
+description: "Estruturação de telas com Scaffold, TopAppBar, FloatingActionButton e o poder do Modifier encadeado."
+---
+
+# Aula 03: Scaffold, TopAppBar e Modifier
+
+:::info 🔀 Branch da Aula
+Esta aula refere-se à branch: **`aula-03`**
+```bash
+git checkout aula-03
+```
+:::
+
+## 📖 Conceito
+
+O **Scaffold** é o esqueleto base de uma tela Material Design 3. Ele organiza `TopAppBar`, `FloatingActionButton`, `BottomBar` e `content` de forma padronizada. O **Modifier** é a ferramenta mais poderosa do Compose — substitui completamente o XML antigo para manipulação visual.
+
+### Arquivos novos nesta branch
+
+| Arquivo | Descrição |
+|---------|-----------|
+| `ui/screens/aula03/Aula03Screen.kt` | Scaffold com TopAppBar, FAB e Modifier chains |
+
+## 💻 Código de Referência
+
+### Scaffold Completo com TopAppBar e FAB
+
+```kotlin title="ui/screens/aula03/Aula03Screen.kt"
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun Aula03Screen() {
+    val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
+
+    Scaffold(
+        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
+        containerColor = MaterialTheme.colorScheme.background,
+        topBar = {
+            TopAppBar(
+                title = {
+                    Text(
+                        "Estética MD3",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onPrimary
+                    )
+                },
+                navigationIcon = {
+                    IconButton(onClick = { /* TODO: Open Drawer */ }) {
+                        Icon(
+                            imageVector = Icons.Default.Menu,
+                            contentDescription = "Menu",
+                            tint = MaterialTheme.colorScheme.onPrimary
+                        )
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.primary
+                ),
+                scrollBehavior = scrollBehavior
+            )
+        },
+        floatingActionButton = {
+            FloatingActionButton(
+                onClick = { /* Action */ },
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Icon(Icons.Default.Add, contentDescription = "Add Item")
+            }
+        }
+    ) { innerPadding ->
+        // Conteúdo dentro do Scaffold
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .padding(16.dp)
+        ) {
+            // Card demonstrando Modifier encadeado
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .shadow(8.dp, RoundedCornerShape(12.dp))
+                    .clip(RoundedCornerShape(12.dp))
+                    .border(1.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(12.dp))
+                    .padding(16.dp)
+            ) {
+                Column {
+                    Text(
+                        text = "O Poder do Modifier",
+                        style = MaterialTheme.typography.headlineLarge,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "No Jetpack Compose, quase todo o design visual (sombras, bordas, " +
+                               "tamanho, cliques) é manipulado através da interface Modifier, " +
+                               "substituindo o XML antigo.",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onBackground,
+                        textAlign = TextAlign.Justify
+                    )
+                }
+            }
+        }
+    }
+}
+```
+
+:::caution A ordem dos Modifiers importa!
+O Modifier é encadeado — cada `.` adiciona comportamento **na ordem**. Compare:
+- `.padding(16.dp).background(Color.Red)` → padding **fora** do fundo
+- `.background(Color.Red).padding(16.dp)` → padding **dentro** do fundo
+:::
+
+## 💻 Mão na Massa
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+<Tabs>
+  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
+
+### Altere as cores do TopAppBar
+
+Mude o `containerColor` do TopAppBar para `MaterialTheme.colorScheme.surfaceVariant` e o texto para `onSurface`. Observe a diferença visual.
+
+  </TabItem>
+  <TabItem value="ex2" label="Exercício 2 — Aplicação">
+
+### Adicione mais cards
+
+Crie 3 cards diferentes dentro do `Column`, cada um com:
+- Título diferente
+- Cores de borda variadas
+- Sombras de intensidades diferentes (4.dp, 8.dp, 16.dp)
+  
+Use `Spacer(modifier = Modifier.height(16.dp))` entre eles.
+
+  </TabItem>
+  <TabItem value="ex3" label="Exercício 3 — Desafio">
+
+### Tela completa MergeSkills
+
+Transforme a `Aula03Screen` em uma tela de "Sobre o App" com:
+1. TopAppBar com título "MergeSkills" e botão de voltar
+2. Card com descrição do projeto
+3. Card com lista de tecnologias usadas (`listOf("Kotlin", "Compose", "Ktor")`)
+4. FAB que mostra um `Snackbar` quando clicado
+
+  </TabItem>
+</Tabs>

@@ -1,0 +1,104 @@
+---
+sidebar_position: 3
+title: "Aula 03: Supabase no Server e Compose Desktop"
+description: "Integração do SupabaseClient no Ktor Server e primeiro Compose for Desktop app."
+---
+
+# Aula 03: Supabase no Server e Compose Desktop
+
+:::info 🔀 Branch da Aula
+Esta aula refere-se à branch: **`aula-03`**
+```bash
+git checkout aula-03
+```
+:::
+
+## 📖 Conceito
+
+Nesta aula, o server instancia o `SupabaseClient` compartilhado e o ComposeApp é reestruturado para `commonMain` (preparação para multiplataforma).
+
+## 💻 Código de Referência
+
+### Server com Supabase
+
+```kotlin title="server/src/main/kotlin/.../Application.kt"
+fun Application.module() {
+    val supabaseUrl = System.getProperty("SUPABASE_URL")
+    val supabaseKey = System.getProperty("SUPABASE_KEY")
+
+    var supabase: SupabaseClient? = null
+
+    if (supabaseUrl != null && supabaseKey != null) {
+        supabase = createAppSupabaseClient(supabaseUrl, supabaseKey)
+    }
+
+    install(ContentNegotiation) {
+        json(Json { prettyPrint = true; isLenient = true; ignoreUnknownKeys = true })
+    }
+
+    routing {
+        get("/api/health") {
+            call.respond(HealthResponse(
+                status = "Status UP",
+                timestamp = System.currentTimeMillis()
+            ))
+        }
+    }
+}
+```
+
+### Compose for Desktop App
+
+```kotlin title="composeApp/src/commonMain/kotlin/.../App.kt"
+@Composable
+@Preview
+fun App() {
+    MaterialTheme {
+        var showContent by remember { mutableStateOf(false) }
+        Column(
+            modifier = Modifier
+                .background(MaterialTheme.colorScheme.primaryContainer)
+                .safeContentPadding()
+                .fillMaxSize(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Button(onClick = { showContent = !showContent }) {
+                Text("Click me!")
+            }
+            AnimatedVisibility(showContent) {
+                val greeting = remember { Greeting().greet() }
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Image(painterResource(Res.drawable.compose_multiplatform), null)
+                    Text("Compose: $greeting")
+                }
+            }
+        }
+    }
+}
+```
+
+## 💻 Mão na Massa
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+<Tabs>
+  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
+
+Execute o Desktop App com `./gradlew :composeApp:run` e verifique que o botão exibe o greeting.
+
+  </TabItem>
+  <TabItem value="ex2" label="Exercício 2 — Aplicação">
+
+No servidor, adicione validação: se `SUPABASE_URL` estiver ausente, o health endpoint deve retornar `status = "DEGRADED"`.
+
+  </TabItem>
+  <TabItem value="ex3" label="Exercício 3 — Desafio">
+
+Crie um endpoint `GET /api/courses` que busque cursos do Supabase e uma tela no ComposeApp que exiba os mesmos cursos, ambos usando a mesma `data class Course` do `shared/`.
+
+  </TabItem>
+</Tabs>

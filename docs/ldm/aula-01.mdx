@@ -1,0 +1,122 @@
+---
+sidebar_position: 1
+title: "Aula 01: Setup KMP e Ktor Server"
+description: "Kotlin Multiplatform com shared module, Ktor Server e health endpoint."
+---
+
+# Aula 01: Setup KMP e Ktor Server
+
+:::info 🔀 Branch da Aula
+Esta aula refere-se à branch: **`aula-01`**
+```bash
+git checkout aula-01
+```
+:::
+
+## 📖 Conceito
+
+O **Kotlin Multiplatform (KMP)** permite compartilhar lógica entre Server, Desktop e Mobile. O projeto possui 3 módulos:
+
+| Módulo | Função |
+|--------|--------|
+| `shared/` | Lógica compartilhada (expect/actual, models) |
+| `server/` | Backend Ktor (API REST) |
+| `composeApp/` | CMS Desktop com Compose for Desktop |
+
+## 💻 Código de Referência
+
+### Application.kt — Servidor Ktor
+
+```kotlin title="server/src/main/kotlin/.../Application.kt"
+fun main() {
+    val port = System.getenv("PORT")?.toIntOrNull() ?: 8080
+    embeddedServer(Netty, port = port, host = "0.0.0.0",
+                   module = Application::module)
+        .start(wait = true)
+}
+
+@Serializable
+data class HealthResponse(
+    val status: String,
+    val timestamp: Long
+)
+
+fun Application.module() {
+    install(ContentNegotiation) {
+        json(Json {
+            prettyPrint = true
+            isLenient = true
+            ignoreUnknownKeys = true
+        })
+    }
+
+    routing {
+        get("/") {
+            call.respondText("API LDDM/PDM (Aula 01). Tente acessar /api/health")
+        }
+
+        get("/api/health") {
+            call.respond(
+                HealthResponse(
+                    status = "Status UP",
+                    timestamp = System.currentTimeMillis()
+                )
+            )
+        }
+    }
+}
+```
+
+### Platform Interface — expect/actual
+
+```kotlin title="shared/src/commonMain/kotlin/.../Platform.kt"
+interface Platform {
+    val name: String
+}
+
+expect fun getPlatform(): Platform
+```
+
+```kotlin title="shared/src/jvmMain/kotlin/.../Platform.jvm.kt"
+class JVMPlatform : Platform {
+    override val name: String =
+        "Java ${System.getProperty("java.version")}"
+}
+
+actual fun getPlatform(): Platform = JVMPlatform()
+```
+
+### Greeting — Lógica compartilhada
+
+```kotlin title="shared/src/commonMain/kotlin/.../Greeting.kt"
+class Greeting {
+    private val platform = getPlatform()
+
+    fun greet(): String {
+        return "Hello, ${platform.name}!"
+    }
+}
+```
+
+## 💻 Mão na Massa
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+<Tabs>
+  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
+
+Execute o servidor com `./gradlew :server:run` e acesse `http://localhost:8080/api/health` no navegador.
+
+  </TabItem>
+  <TabItem value="ex2" label="Exercício 2 — Aplicação">
+
+Adicione um endpoint `GET /api/version` que retorne `{ "version": "1.0.0", "kmp": true }` como JSON serializado.
+
+  </TabItem>
+  <TabItem value="ex3" label="Exercício 3 — Desafio">
+
+Crie uma data class `AppInfo` no módulo `shared/` e use-a tanto no `server/` (endpoint) quanto no `composeApp/` (UI). Isso demonstra o poder do KMP.
+
+  </TabItem>
+</Tabs>

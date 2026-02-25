@@ -1,0 +1,74 @@
+---
+sidebar_position: 4
+title: "Aula 04: CRUD Endpoints"
+description: "Endpoints REST completos para Courses — GET, POST, PUT, DELETE com Ktor Routing."
+---
+
+# Aula 04: CRUD Endpoints
+
+:::info 🔀 Branch da Aula
+Esta aula refere-se à branch: **`aula-04`**
+```bash
+git checkout aula-04
+```
+:::
+
+:::caution 🚧 Conteúdo Prospectivo
+Esta branch ainda não possui código implementado.
+:::
+
+## 📖 Conceito
+
+CRUD (Create, Read, Update, Delete) é o padrão base de qualquer API REST. Cada endpoint mapeia para uma operação no Supabase via Postgrest.
+
+## 💻 Código de Referência
+
+```kotlin title="server/.../routes/CourseRoutes.kt"
+fun Route.courseRoutes(supabase: SupabaseClient) {
+    route("/api/courses") {
+        get {
+            val courses = supabase.postgrest.from("courses").select()
+            call.respond(courses.decodeList<Course>())
+        }
+        get("/{id}") {
+            val id = call.parameters["id"]!!
+            val course = supabase.postgrest.from("courses")
+                .select { filter { eq("id", id) } }
+            call.respond(course.decodeSingle<Course>())
+        }
+        post {
+            val body = call.receive<CreateCourseRequest>()
+            supabase.postgrest.from("courses").insert(body)
+            call.respond(HttpStatusCode.Created)
+        }
+        delete("/{id}") {
+            val id = call.parameters["id"]!!
+            supabase.postgrest.from("courses").delete { filter { eq("id", id) } }
+            call.respond(HttpStatusCode.NoContent)
+        }
+    }
+}
+```
+
+## 💻 Mão na Massa
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+<Tabs>
+  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
+
+Implemente o endpoint `PUT /api/courses/{id}` para atualização parcial.
+
+  </TabItem>
+  <TabItem value="ex2" label="Exercício 2 — Aplicação">
+
+Adicione paginação com `?page=1&limit=10` usando `range()` do Postgrest.
+
+  </TabItem>
+  <TabItem value="ex3" label="Exercício 3 — Desafio">
+
+Crie rotas para `Lessons` (aulas dentro de um curso) com relação `course_id` e busca aninhada.
+
+  </TabItem>
+</Tabs>

@@ -1,0 +1,108 @@
+---
+sidebar_position: 10
+title: "Aula 10: Quiz — Lógica e Estado"
+description: "Implementação do quiz com estado local, temporizador e controle de respostas."
+---
+
+# Aula 10: Quiz — Lógica e Estado
+
+:::info 🔀 Branch da Aula
+Esta aula refere-se à branch: **`aula-10`**
+```bash
+git checkout aula-10
+```
+:::
+
+:::caution 🚧 Conteúdo Prospectivo
+Esta branch ainda não possui código implementado.
+:::
+
+## 📖 Conceito
+
+O **Quiz** é o coração do MergeSkills. Cada pergunta possui 4 alternativas e feedback visual instantâneo. O estado gerencia: pergunta atual, resposta selecionada, pontuação e progresso.
+
+## 💻 Código de Referência
+
+### Modelo de Quiz
+
+```tsx title="types/quiz.ts"
+interface QuizQuestion {
+    id: string;
+    text: string;
+    options: string[];
+    correctIndex: number;
+    explanation: string;
+}
+
+interface QuizState {
+    questions: QuizQuestion[];
+    currentIndex: number;
+    score: number;
+    selectedAnswer: number | null;
+    isRevealed: boolean;
+}
+```
+
+### QuizScreen com estado
+
+```tsx title="app/quiz.tsx"
+export default function QuizScreen() {
+    const [state, setState] = useState<QuizState>({
+        questions: [], currentIndex: 0,
+        score: 0, selectedAnswer: null, isRevealed: false
+    });
+
+    const current = state.questions[state.currentIndex];
+
+    function handleAnswer(index: number) {
+        if (state.isRevealed) return;
+        const isCorrect = index === current.correctIndex;
+        setState(prev => ({
+            ...prev,
+            selectedAnswer: index,
+            isRevealed: true,
+            score: isCorrect ? prev.score + 1 : prev.score
+        }));
+    }
+
+    function handleNext() {
+        setState(prev => ({
+            ...prev,
+            currentIndex: prev.currentIndex + 1,
+            selectedAnswer: null,
+            isRevealed: false
+        }));
+    }
+
+    return (/* UI com opções coloridas baseado em isRevealed */);
+}
+```
+
+## 💻 Mão na Massa
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+<Tabs>
+  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
+
+### Renderize as 4 opções
+
+Use `.map()` para renderizar cada opção como um `TouchableOpacity`. Mude a cor para verde (correto) ou vermelho (errado) quando `isRevealed === true`.
+
+  </TabItem>
+  <TabItem value="ex2" label="Exercício 2 — Aplicação">
+
+### Barra de progresso
+
+Adicione uma barra de progresso `(currentIndex + 1) / totalQuestions * 100%` no topo da tela.
+
+  </TabItem>
+  <TabItem value="ex3" label="Exercício 3 — Desafio">
+
+### Tela de resultado
+
+Ao finalizar todas as perguntas, navegue para uma `ResultScreen` exibindo a nota, percentual e botão "Refazer Quiz".
+
+  </TabItem>
+</Tabs>

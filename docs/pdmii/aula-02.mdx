@@ -1,0 +1,163 @@
+---
+sidebar_position: 2
+title: "Aula 02: Data Classes, SafeCall e Layouts Compose"
+description: "Data classes, operador SafeCall (?.), Row, Column, Box — componentes visuais interativos com estado."
+---
+
+# Aula 02: Data Classes, SafeCall e Layouts Compose
+
+:::info 🔀 Branch da Aula
+Esta aula refere-se à branch: **`aula-02`**
+```bash
+git checkout aula-02
+```
+:::
+
+## 📖 Conceito
+
+Nesta aula, unimos conceitos Kotlin (`data class`, `?.` SafeCall, lambdas) com os três **layouts fundamentais** do Jetpack Compose: `Column`, `Row` e `Box`. A tela constrói um perfil de usuário interativo onde o estado muda ao toque.
+
+### Arquivos novos nesta branch
+
+| Arquivo | Descrição |
+|---------|-----------|
+| `ui/screens/aula02/Aula02Screen.kt` | Tela com UserProfile, layouts e SafeCall |
+
+## 💻 Código de Referência
+
+### Data Class com Nullable
+
+```kotlin title="ui/screens/aula02/Aula02Screen.kt"
+// Data class para representar o perfil do usuário
+data class UserProfile(
+    val name: String,
+    val role: String? // Nullable para demonstrar SafeCall ?.
+)
+```
+
+### Tela Completa — Row, Column, Box
+
+```kotlin title="ui/screens/aula02/Aula02Screen.kt"
+@Composable
+fun Aula02Screen(modifier: Modifier = Modifier) {
+    // Estado mutável para simular troca de perfil
+    var activeProfile by remember {
+        mutableStateOf(UserProfile("Aluno MergeSkills", "Developer"))
+    }
+
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(24.dp)
+    ) {
+        Text(
+            text = "Prática Aula 02",
+            style = MaterialTheme.typography.headlineLarge,
+            color = MaterialTheme.colorScheme.primary
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Row + Box para layout de avatar + informações
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Box circular para um "Avatar" improvisado
+            Box(
+                modifier = Modifier
+                    .size(64.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primary),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = activeProfile.name.take(1).uppercase(),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onPrimary
+                )
+            }
+
+            Spacer(modifier = Modifier.width(16.dp))
+
+            Column {
+                Text(
+                    text = activeProfile.name,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onBackground
+                )
+                // Usando SafeCall e Elvis para renderizar o subtítulo
+                Text(
+                    text = activeProfile.role?.uppercase() ?: "SEM CARGO",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(32.dp))
+
+        // Botão demonstra Lambda + mudança de estado para nullable
+        Button(
+            onClick = {
+                activeProfile = UserProfile("Visitante", null)  // role null!
+            },
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                contentColor = MaterialTheme.colorScheme.onSurface
+            )
+        ) {
+            Text("Simular Nullable (SafeCall)")
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Button(
+            onClick = {
+                activeProfile = UserProfile("Aluno Vip", "Senior Android Dev")
+            },
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary
+            )
+        ) {
+            Text("Restaurar Dev")
+        }
+    }
+}
+```
+
+:::tip Observe
+Quando o botão "Simular Nullable" é pressionado, o `role` vira `null`. O `?.uppercase()` retorna `null` e o Elvis `?:` exibe **"SEM CARGO"**. Esse é o **SafeCall** do Kotlin em ação.
+:::
+
+## 💻 Mão na Massa
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+<Tabs>
+  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
+
+### Adicione um terceiro botão
+
+Crie um botão "Modo Instrutor" que defina `activeProfile = UserProfile("Prof. Yuri", "Instrutor Fatec")` com cores diferentes.
+
+  </TabItem>
+  <TabItem value="ex2" label="Exercício 2 — Aplicação">
+
+### Melhore o Avatar
+
+Substitua a `Box` circular por um componente que exiba as **duas primeiras letras** do nome. Use `activeProfile.name.split(" ")` para pegar as iniciais de nome e sobrenome.
+
+  </TabItem>
+  <TabItem value="ex3" label="Exercício 3 — Desafio">
+
+### Lista de Perfis
+
+Crie uma `List<UserProfile>` com 5 perfis diferentes (incluindo alguns com `role = null`). Use `Column` para renderizar todos como cards, mostrando o tratamento adequado do nullable para cada um.
+
+  </TabItem>
+</Tabs>

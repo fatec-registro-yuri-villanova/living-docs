@@ -1,0 +1,202 @@
+---
+sidebar_position: 8
+title: "Aula 08: Tabs, Perfil e Integração"
+description: "Bottom Tabs com Expo Router, tela de perfil com estatísticas, StitchButton e apiClient evoluído."
+---
+
+# Aula 08: Tabs, Perfil e Integração
+
+:::info 🔀 Branch da Aula
+Esta aula refere-se à branch: **`aula-08`**
+```bash
+git checkout aula-08
+```
+:::
+
+## 📖 Conceito
+
+Nesta aula, o app ganha **Bottom Tabs** com Expo Router, uma **tela de Perfil** completa e o `apiClient` evoluído com persistência de token e header `X-Timezone`.
+
+### Arquivos novos/evoluídos nesta branch
+
+| Arquivo | Descrição |
+|---------|-----------|
+| `app/(tabs)/_layout.tsx` | Tab Navigator com Ionicons |
+| `app/(tabs)/index.tsx` | Home com FlatList, streak badge, progress bar |
+| `app/(tabs)/profile.tsx` | Perfil com avatar, stats, logout |
+| `components/StitchButton.tsx` | Componente reutilizável |
+| `lib/api.ts` | apiClient com token persistence e X-Timezone |
+
+## 💻 Código de Referência
+
+### Tab Navigator
+
+```tsx title="app/(tabs)/_layout.tsx"
+import { Tabs } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import Colors from '../../constants/Colors';
+
+export default function TabLayout() {
+    return (
+        <Tabs screenOptions={{
+            tabBarActiveTintColor: Colors.colors.stitchGreen,
+            tabBarInactiveTintColor: '#8E8E93',
+            tabBarStyle: {
+                backgroundColor: Colors.dark.nav,
+                borderTopWidth: 0,
+                elevation: 0,
+            },
+            headerShown: false,
+        }}>
+            <Tabs.Screen name="index" options={{
+                title: 'Trilhas',
+                tabBarIcon: ({ color, size }) => (
+                    <Ionicons name="library-outline" size={size} color={color} />
+                ),
+            }} />
+            <Tabs.Screen name="profile" options={{
+                title: 'Perfil',
+                tabBarIcon: ({ color, size }) => (
+                    <Ionicons name="person-outline" size={size} color={color} />
+                ),
+            }} />
+        </Tabs>
+    );
+}
+```
+
+### Tela de Perfil
+
+```tsx title="app/(tabs)/profile.tsx"
+export default function ProfileScreen() {
+    const router = useRouter();
+
+    const handleLogout = async () => {
+        await apiClient.auth.signOut();
+        router.replace('/login');
+    };
+
+    return (
+        <SafeAreaView style={styles.safeArea}>
+            <ScrollView contentContainerStyle={styles.container}>
+                {/* Avatar */}
+                <View style={styles.avatarPlaceholder}>
+                    <Ionicons name="person" size={50}
+                              color={Colors.colors.stitchGreen} />
+                </View>
+                <Text style={styles.userName}>Estudante Merge</Text>
+
+                {/* Stats */}
+                <View style={styles.statsContainer}>
+                    <View style={styles.statCard}>
+                        <Ionicons name="flame" size={24} color="#FF9500" />
+                        <Text style={styles.statValue}>5</Text>
+                        <Text style={styles.statLabel}>Ofensiva</Text>
+                    </View>
+                    <View style={styles.statCard}>
+                        <Ionicons name="trophy" size={24} color="#FFD60A" />
+                        <Text style={styles.statValue}>12</Text>
+                        <Text style={styles.statLabel}>Aulas</Text>
+                    </View>
+                </View>
+
+                {/* Menu com Logout */}
+                <TouchableOpacity style={styles.menuItem} onPress={handleLogout}>
+                    <Ionicons name="log-out-outline" size={20}
+                              color={Colors.colors.stitchError} />
+                    <Text style={[styles.menuText,
+                          { color: Colors.colors.stitchError }]}>
+                        Sair da Conta
+                    </Text>
+                </TouchableOpacity>
+            </ScrollView>
+        </SafeAreaView>
+    );
+}
+```
+
+### apiClient Evoluído
+
+```ts title="lib/api.ts (aula-08)"
+export const apiClient = {
+    privateToken: null as string | null,
+
+    async fetch(endpoint: string, options: RequestInit = {}) {
+        const url = endpoint.startsWith('http')
+            ? endpoint : `${API_CONFIG.BASE_URL}${endpoint}`;
+
+        // Carrega token se ainda não estiver em memória
+        if (!this.privateToken) {
+            this.privateToken = await AsyncStorage.getItem(API_CONFIG.TOKEN_KEY);
+        }
+
+        const headers: any = {
+            'Content-Type': 'application/json',
+            'apikey': API_CONFIG.SUPABASE_KEY,
+            'X-Timezone': Intl.DateTimeFormat().resolvedOptions().timeZone,
+            ...options.headers,
+        };
+
+        // Usa o token salvo se disponível
+        headers['Authorization'] = this.privateToken
+            ? `Bearer ${this.privateToken}`
+            : `Bearer ${API_CONFIG.SUPABASE_KEY}`;
+
+        const response = await fetch(url, { ...options, headers });
+        if (!response.ok) throw new Error(`Erro HTTP: ${response.status}`);
+        return await response.json();
+    },
+
+    auth: {
+        async signIn(email: string, pass: string) {
+            const response = await apiClient.fetch('/auth/login', {
+                method: 'POST',
+                body: JSON.stringify({ email, password: pass }),
+            });
+            if (response?.access_token) {
+                apiClient.privateToken = response.access_token;
+                await AsyncStorage.setItem(API_CONFIG.TOKEN_KEY,
+                    response.access_token);
+            }
+            return response;
+        },
+        async signOut() {
+            apiClient.privateToken = null;
+            await AsyncStorage.removeItem(API_CONFIG.TOKEN_KEY);
+        },
+        async isAuthenticated() {
+            const token = await AsyncStorage.getItem(API_CONFIG.TOKEN_KEY);
+            return !!token;
+        }
+    },
+};
+```
+
+## 💻 Mão na Massa
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+<Tabs>
+  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
+
+### Adicione uma terceira tab
+
+Crie `app/(tabs)/settings.tsx` e registre no `_layout.tsx` com ícone `settings-outline`.
+
+  </TabItem>
+  <TabItem value="ex2" label="Exercício 2 — Aplicação">
+
+### Streak Badge na Home
+
+O header da Home já mostra `🔥 5` hardcoded. Refatore para buscar o `streak_count` da API ao carregar a tela.
+
+  </TabItem>
+  <TabItem value="ex3" label="Exercício 3 — Desafio">
+
+### Perfil dinâmico com dados do usuário
+
+Substitua os dados hardcoded do perfil ("Estudante Merge") por dados reais retornados do `POST /auth/login`. Armazene o `User` no estado global (Context ou AsyncStorage).
+
+  </TabItem>
+</Tabs>

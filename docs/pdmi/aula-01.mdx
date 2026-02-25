@@ -1,0 +1,191 @@
+---
+sidebar_position: 1
+title: "Aula 01: Setup Expo e Fundamentos JS"
+description: "Criação do projeto com Expo, componentes básicos (View, Text, TextInput) e estado com useState."
+---
+
+# Aula 01: Setup Expo e Fundamentos JS
+
+:::info 🔀 Branch da Aula
+Esta aula refere-se à branch: **`aula-01`**
+```bash
+git checkout aula-01
+```
+:::
+
+## 📖 Conceito
+
+O React Native permite criar apps móveis nativos com JavaScript/TypeScript. O **Expo** simplifica o setup, build e deploy. Usamos **Expo Router** para navegação baseada em arquivos — cada arquivo na pasta `app/` vira uma rota.
+
+### Arquivos da Branch
+
+| Arquivo | Descrição |
+|---------|-----------|
+| `app/index.tsx` | Tela inicial (Splash) |
+| `app/login.tsx` | Tela de login com formulário |
+| `app/register.tsx` | Tela de registro |
+| `app/_layout.tsx` | Layout raiz com Stack navigator |
+| `constants/Colors.ts` | Tokens de cor (light/dark) |
+| `lib/api.ts` | Cliente API REST (equivalente ao KtorClient) |
+
+### Componentes Básicos
+
+| React Native | Web (equivalente) |
+|:-------------|:-------------------|
+| `<View>` | `<div>` |
+| `<Text>` | `<p>` / `<span>` |
+| `<TextInput>` | `<input>` |
+| `<TouchableOpacity>` | `<button>` |
+| `<StyleSheet>` | CSS-in-JS |
+
+## 💻 Código de Referência
+
+### Login com Formulário e Estado
+
+```tsx title="app/login.tsx"
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity,
+         Alert, ActivityIndicator } from 'react-native';
+import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import { apiClient } from '../lib/api';
+
+export default function LoginScreen() {
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [loading, setLoading] = useState(false);
+    const router = useRouter();
+
+    async function handleLogin() {
+        setLoading(true);
+        try {
+            await apiClient.auth.signIn(email, password);
+            router.replace('/courses');
+        } catch (error: any) {
+            Alert.alert('Erro ao entrar',
+                error.message || 'Verifique suas credenciais');
+        } finally {
+            setLoading(false);
+        }
+    }
+
+    return (
+        <View style={styles.container}>
+            <Text style={styles.header}>Merge Skills</Text>
+
+            <View style={styles.inputContainer}>
+                <Ionicons name="mail-outline" size={20}
+                          color="#666" style={styles.icon} />
+                <TextInput
+                    style={styles.input}
+                    placeholder="E-mail"
+                    value={email}
+                    onChangeText={setEmail}
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                />
+            </View>
+
+            <View style={styles.inputContainer}>
+                <Ionicons name="lock-closed-outline" size={20}
+                          color="#666" style={styles.icon} />
+                <TextInput
+                    style={styles.input}
+                    placeholder="Senha"
+                    value={password}
+                    onChangeText={setPassword}
+                    secureTextEntry
+                />
+            </View>
+
+            <TouchableOpacity
+                style={styles.button}
+                onPress={handleLogin}
+                disabled={loading}>
+                {loading
+                    ? <ActivityIndicator color="#fff" />
+                    : <Text style={styles.buttonText}>Entrar</Text>}
+            </TouchableOpacity>
+
+            <TouchableOpacity onPress={() => router.push('/register')}>
+                <Text style={styles.linkText}>Criar nova conta</Text>
+            </TouchableOpacity>
+        </View>
+    );
+}
+```
+
+### Cliente API — api.ts
+
+```ts title="lib/api.ts"
+export const API_CONFIG = {
+    BASE_URL: 'https://lddm-api-inicial-1.onrender.com',
+    SUPABASE_KEY: 'eyJhbGciOiJIUzI1NiIsInR5c...',
+};
+
+export const apiClient = {
+    async fetch(endpoint: string, options: RequestInit = {}) {
+        const url = endpoint.startsWith('http')
+            ? endpoint
+            : `${API_CONFIG.BASE_URL}${endpoint}`;
+
+        const headers = {
+            'Content-Type': 'application/json',
+            'apikey': API_CONFIG.SUPABASE_KEY,
+            'Authorization': `Bearer ${API_CONFIG.SUPABASE_KEY}`,
+            ...options.headers,
+        };
+
+        const response = await fetch(url, { ...options, headers });
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.message || `Erro HTTP: ${response.status}`);
+        }
+        return await response.json();
+    },
+
+    auth: {
+        async signIn(email: string, pass: string) {
+            return apiClient.fetch('/auth/login', {
+                method: 'POST',
+                body: JSON.stringify({ email, password: pass }),
+            });
+        },
+        async signUp(name: string, email: string, pass: string) {
+            return apiClient.fetch('/auth/register', {
+                method: 'POST',
+                body: JSON.stringify({ name, email, password: pass }),
+            });
+        }
+    },
+};
+```
+
+## 💻 Mão na Massa
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+<Tabs>
+  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
+
+### Altere os textos do login
+
+Mude o título de "Merge Skills" para seu nome e adicione a data atual com `new Date().toLocaleDateString('pt-BR')`.
+
+  </TabItem>
+  <TabItem value="ex2" label="Exercício 2 — Aplicação">
+
+### Estilize com o tema escuro
+
+Mude o `backgroundColor` do container de `'#fff'` para `'#0F0F0F'` e os textos para cores claras. Compare o resultado visual com a versão original.
+
+  </TabItem>
+  <TabItem value="ex3" label="Exercício 3 — Desafio">
+
+### Crie a tela de Registro
+
+Crie `app/register.tsx` com os campos Nome, Email e Senha. Ao submeter, chame `apiClient.auth.signUp(name, email, password)`. Use `router.back()` para voltar ao login após sucesso.
+
+  </TabItem>
+</Tabs>

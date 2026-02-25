@@ -1,0 +1,98 @@
+---
+sidebar_position: 11
+title: "Aula 11: Quiz — Feedback Visual"
+description: "Modal de feedback, animações de resposta e integração visual do quiz."
+---
+
+# Aula 11: Quiz — Feedback Visual
+
+:::info 🔀 Branch da Aula
+Esta aula refere-se à branch: **`aula-11`**
+```bash
+git checkout aula-11
+```
+:::
+
+:::caution 🚧 Conteúdo Prospectivo
+Esta branch ainda não possui código implementado.
+:::
+
+## 📖 Conceito
+
+Após selecionar uma resposta, o app exibe um **modal de feedback** com a explicação da resposta correta. Ícones e cores reforçam o resultado (✅ verde / ❌ vermelho).
+
+## 💻 Código de Referência
+
+### Modal de Feedback
+
+```tsx title="components/QuizFeedbackModal.tsx"
+import { Modal, View, Text, StyleSheet } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import Colors from '../constants/Colors';
+import StitchButton from './StitchButton';
+
+interface Props {
+    visible: boolean;
+    isCorrect: boolean;
+    explanation: string;
+    onNext: () => void;
+}
+
+export default function QuizFeedbackModal(
+    { visible, isCorrect, explanation, onNext }: Props
+) {
+    return (
+        <Modal visible={visible} transparent animationType="slide">
+            <View style={styles.overlay}>
+                <View style={[styles.card, {
+                    borderColor: isCorrect
+                        ? Colors.colors.stitchGreen
+                        : Colors.colors.stitchError
+                }]}>
+                    <Ionicons
+                        name={isCorrect ? "checkmark-circle" : "close-circle"}
+                        size={64}
+                        color={isCorrect
+                            ? Colors.colors.stitchGreen
+                            : Colors.colors.stitchError}
+                    />
+                    <Text style={styles.title}>
+                        {isCorrect ? "Correto!" : "Incorreto"}
+                    </Text>
+                    <Text style={styles.explanation}>{explanation}</Text>
+                    <StitchButton title="Próxima" onPress={onNext} />
+                </View>
+            </View>
+        </Modal>
+    );
+}
+```
+
+## 💻 Mão na Massa
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+<Tabs>
+  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
+
+### Integre o modal ao QuizScreen
+
+Exiba o `QuizFeedbackModal` quando `isRevealed === true`. Passe `explanation` e `isCorrect`.
+
+  </TabItem>
+  <TabItem value="ex2" label="Exercício 2 — Aplicação">
+
+### Animação nos botões de resposta
+
+Use `Animated.timing` para fazer as opções incorretas desaparecerem (opacity → 0.3) e a correta pulsar (scale 1 → 1.05 → 1).
+
+  </TabItem>
+  <TabItem value="ex3" label="Exercício 3 — Desafio">
+
+### Contagem regressiva por questão
+
+Adicione um timer de 30 segundos. Se acabar o tempo, marque como errada automaticamente e mostre o modal.
+
+  </TabItem>
+</Tabs>

@@ -1,0 +1,106 @@
+---
+sidebar_position: 16
+title: "Aula 16: Image Loading com Coil"
+description: "Carregamento de imagens remotas com Coil, placeholders, cache e avatares."
+---
+
+# Aula 16: Image Loading com Coil
+
+:::info 🔀 Branch da Aula
+Esta aula refere-se à branch: **`aula-16`**
+```bash
+git checkout aula-16
+```
+:::
+
+## 📖 Conceito
+
+**Coil** (Coroutine Image Loader) é a biblioteca de carregamento de imagens recomendada para Compose. É leve, usa Coroutines, e tem integração nativa com Compose.
+
+### AsyncImage
+
+```kotlin
+AsyncImage(
+    model = ImageRequest.Builder(LocalContext.current)
+        .data(user.avatarUrl)
+        .crossfade(true)
+        .placeholder(R.drawable.avatar_placeholder)
+        .error(R.drawable.avatar_default)
+        .build(),
+    contentDescription = "Avatar do usuário",
+    modifier = Modifier.size(80.dp).clip(CircleShape),
+    contentScale = ContentScale.Crop
+)
+```
+
+### Cache e Performance
+
+Coil faz cache automaticamente em disco e memória. Para configuração global:
+
+```kotlin
+// No Application (ou Koin module)
+val imageLoader = ImageLoader.Builder(context)
+    .memoryCachePolicy(CachePolicy.ENABLED)
+    .diskCachePolicy(CachePolicy.ENABLED)
+    .crossfade(true)
+    .build()
+```
+
+## 💻 Código de Referência
+
+```kotlin title="components/UserAvatar.kt"
+@Composable
+fun UserAvatar(
+    avatarUrl: String?,
+    size: Dp = 48.dp,
+    modifier: Modifier = Modifier
+) {
+    AsyncImage(
+        model = ImageRequest.Builder(LocalContext.current)
+            .data(avatarUrl)
+            .crossfade(300)
+            .build(),
+        contentDescription = "Avatar",
+        modifier = modifier
+            .size(size)
+            .clip(CircleShape)
+            .border(2.dp, MaterialTheme.colorScheme.primary, CircleShape),
+        contentScale = ContentScale.Crop,
+        placeholder = painterResource(R.drawable.ic_person),
+        error = painterResource(R.drawable.ic_person)
+    )
+}
+```
+
+## 💻 Mão na Massa
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+<Tabs>
+  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
+
+### Adicione Coil ao projeto
+
+Adicione a dependência `coil-compose` e substitua qualquer `Image` placeholder pelo `AsyncImage` com a URL real do avatar do usuário.
+
+  </TabItem>
+  <TabItem value="ex2" label="Exercício 2 — Aplicação">
+
+### Crie imagens de capa para cursos
+
+Cada curso na lista deve exibir uma imagem de capa usando `AsyncImage`. Use `contentScale = ContentScale.Crop` e `RoundedCornerShape(16.dp)`.
+
+  </TabItem>
+  <TabItem value="ex3" label="Exercício 3 — Desafio">
+
+### Integre com upload de avatar
+
+No perfil (Aula 14), adicione um botão "Alterar Foto" que:
+1. Abra o seletor de imagens do dispositivo
+2. Faça upload para o Supabase Storage
+3. Atualize a `avatar_url` do usuário via API
+4. Recarregue o avatar com Coil
+
+  </TabItem>
+</Tabs>

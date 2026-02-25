@@ -1,0 +1,139 @@
+---
+sidebar_position: 20
+title: "Aula 20: APK e Play Store"
+description: "Geração de build de release, assinatura de APK, ProGuard e preparação para a Play Store."
+---
+
+# Aula 20: APK e Play Store
+
+:::info 🔀 Branch da Aula
+Esta aula refere-se à branch: **`aula-20`**
+```bash
+git checkout aula-20
+```
+:::
+
+## 📖 Conceito
+
+A jornada do app termina com a publicação. Nesta aula, aprenderemos a gerar um **APK/AAB de release**, assinar o aplicativo, e preparar o envio para a **Google Play Store**.
+
+### Build Variants
+
+| Variant | Uso | Minify | Debug |
+|---------|-----|--------|-------|
+| `debug` | Desenvolvimento | ❌ | ✅ |
+| `release` | Produção | ✅ R8/ProGuard | ❌ |
+
+### Assinatura
+
+```groovy
+// build.gradle.kts
+android {
+    signingConfigs {
+        create("release") {
+            storeFile = file("keystore/release.keystore")
+            storePassword = System.getenv("KEYSTORE_PASSWORD")
+            keyAlias = System.getenv("KEY_ALIAS")
+            keyPassword = System.getenv("KEY_PASSWORD")
+        }
+    }
+
+    buildTypes {
+        release {
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+            signingConfig = signingConfigs.getByName("release")
+        }
+    }
+}
+```
+
+### Gerar AAB (Android App Bundle)
+
+```bash
+# Terminal
+./gradlew bundleRelease
+
+# Output: app/build/outputs/bundle/release/app-release.aab
+```
+
+### ProGuard/R8 — Regras para Ktor e Kotlin Serialization
+
+```proguard
+# Ktor
+-keep class io.ktor.** { *; }
+-dontwarn io.ktor.**
+
+# Kotlin Serialization
+-keepattributes *Annotation*, InnerClasses
+-dontnote kotlinx.serialization.AnnotationsKt
+-keepclassmembers class kotlinx.serialization.json.** { *** Companion; }
+-keep,includedescriptorclasses class com.example.mergeskills.** { *; }
+```
+
+## 💻 Código de Referência
+
+```kotlin title="build.gradle.kts (app)"
+android {
+    namespace = "com.example.mergeskills"
+    compileSdk = 34
+
+    defaultConfig {
+        applicationId = "com.example.mergeskills"
+        minSdk = 26
+        targetSdk = 34
+        versionCode = 1
+        versionName = "1.0.0"
+    }
+
+    buildTypes {
+        release {
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+        }
+    }
+}
+```
+
+## 💻 Mão na Massa
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+<Tabs>
+  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
+
+### Gere um APK de debug
+
+Execute `./gradlew assembleDebug` e localize o APK gerado. Instale em um dispositivo físico e teste o fluxo completo.
+
+  </TabItem>
+  <TabItem value="ex2" label="Exercício 2 — Aplicação">
+
+### Configure o ProGuard
+
+Ative `isMinifyEnabled = true` no build de release e adicione as regras de ProGuard para Ktor e Kotlin Serialization. Gere o release e verifique que o app funciona sem crashes.
+
+  </TabItem>
+  <TabItem value="ex3" label="Exercício 3 — Desafio">
+
+### Preparação completa para a Play Store
+
+1. Crie um keystore de release com `keytool`
+2. Configure a assinatura no `build.gradle.kts` (usando variáveis de ambiente)
+3. Gere o AAB de release
+4. Prepare os assets de loja: ícone, screenshots, descrição
+5. Faça o upload para o Google Play Console (conta de teste)
+
+Documente todo o processo em um `RELEASE.md` no repositório.
+
+  </TabItem>
+</Tabs>

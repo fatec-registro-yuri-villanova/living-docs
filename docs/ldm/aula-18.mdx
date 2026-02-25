@@ -1,0 +1,54 @@
+---
+sidebar_position: 18
+title: "Aula 18: Docker e Containerização"
+description: "Dockerfile multi-stage, docker-compose e deployment containerizado."
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+# Aula 18: Docker e Containerização
+:::info 🔀 Branch da Aula
+**`aula-18`** — `git checkout aula-18`
+:::
+:::caution 🚧 Conteúdo Prospectivo
+Esta branch ainda não possui código implementado.
+:::
+## 📖 Conceito
+Docker empacota o server Ktor em um container reproduzível. Multi-stage build reduz o tamanho da imagem.
+## 💻 Código de Referência
+```dockerfile title="Dockerfile"
+FROM gradle:8.7-jdk17 AS build
+WORKDIR /app
+COPY . .
+RUN gradle :server:buildFatJar --no-daemon
+
+FROM eclipse-temurin:17-jre-alpine
+WORKDIR /app
+COPY --from=build /app/server/build/libs/server-all.jar app.jar
+EXPOSE 8080
+ENTRYPOINT ["java", "-jar", "app.jar"]
+```
+```yaml title="docker-compose.yml"
+services:
+  server:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_KEY=${SUPABASE_KEY}
+```
+## 💻 Mão na Massa
+
+<Tabs>
+  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
+Execute `docker build -t mergeskills-api .` e `docker run -p 8080:8080 mergeskills-api`.
+  </TabItem>
+  <TabItem value="ex2" label="Exercício 2 — Aplicação">
+Configure variáveis de ambiente via `.env` file com `docker-compose --env-file .env up`.
+  </TabItem>
+  <TabItem value="ex3" label="Exercício 3 — Desafio">
+Reduza a imagem final usando `alpine` e verifique o tamanho com `docker images`.
+  </TabItem>
+</Tabs>

@@ -1,0 +1,45 @@
+---
+sidebar_position: 12
+title: "Aula 12: Push Notifications Server"
+description: "Envio de push notifications via Expo Push API a partir do Ktor server."
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+# Aula 12: Push Notifications Server
+:::info 🔀 Branch da Aula
+**`aula-12`** — `git checkout aula-12`
+:::
+:::caution 🚧 Conteúdo Prospectivo
+Esta branch ainda não possui código implementado.
+:::
+## 📖 Conceito
+O server envia push notifications para lembrar alunos sobre streaks, novos quizzes ou badges desbloqueados. Usa a Expo Push API.
+## 💻 Código de Referência
+```kotlin title="server/.../services/PushService.kt"
+class PushService(private val httpClient: HttpClient) {
+    suspend fun sendPush(token: String, title: String, body: String) {
+        httpClient.post("https://exp.host/--/api/v2/push/send") {
+            contentType(ContentType.Application.Json)
+            setBody(mapOf(
+                "to" to token, "title" to title,
+                "body" to body, "sound" to "default"
+            ))
+        }
+    }
+}
+```
+## 💻 Mão na Massa
+
+<Tabs>
+  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
+Salve o push token do client em `user_push_tokens` no Supabase.
+  </TabItem>
+  <TabItem value="ex2" label="Exercício 2 — Aplicação">
+Envie push automaticamente quando o streak está prestes a expirar (22h sem atividade).
+  </TabItem>
+  <TabItem value="ex3" label="Exercício 3 — Desafio">
+Implemente batch push para todos os alunos quando um novo curso é publicado.
+  </TabItem>
+</Tabs>

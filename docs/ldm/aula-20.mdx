@@ -1,0 +1,47 @@
+---
+sidebar_position: 20
+title: "Aula 20: Produção e Monitoramento"
+description: "Deploy final, monitoramento, health checks e preparação para produção."
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+# Aula 20: Produção e Monitoramento
+:::info 🔀 Branch da Aula
+**`aula-20`** — `git checkout aula-20`
+:::
+:::caution 🚧 Conteúdo Prospectivo
+Esta branch ainda não possui código implementado.
+:::
+## 📖 Conceito
+Preparar para produção envolve: variáveis de ambiente seguras, health checks, logging estruturado, CORS e rate limiting.
+## 💻 Código de Referência
+```kotlin title="server/.../plugins/Production.kt"
+fun Application.configureProduction() {
+    install(CORS) {
+        allowHost("mergeskills.com")
+        allowHeader(HttpHeaders.ContentType)
+        allowHeader(HttpHeaders.Authorization)
+    }
+
+    install(RateLimit) {
+        register(RateLimitName("api")) {
+            rateLimiter(limit = 100, refillPeriod = 1.minutes)
+        }
+    }
+}
+```
+## 💻 Mão na Massa
+
+<Tabs>
+  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
+Configure CORS para aceitar requisições dos apps mobile e desktop.
+  </TabItem>
+  <TabItem value="ex2" label="Exercício 2 — Aplicação">
+Implemente um endpoint `/api/readiness` que verifica conexão com Supabase antes de responder "ready".
+  </TabItem>
+  <TabItem value="ex3" label="Exercício 3 — Desafio">
+Configure monitoramento com logs estruturados (JSON), métricas de latência por endpoint e alertas de erro no deploy.
+  </TabItem>
+</Tabs>

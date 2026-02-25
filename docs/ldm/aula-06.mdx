@@ -1,0 +1,66 @@
+---
+sidebar_position: 6
+title: "Aula 06: Modelos Shared e DTOs"
+description: "Data classes compartilhadas entre server e client — Course, User, Quiz models."
+---
+
+# Aula 06: Modelos Shared e DTOs
+
+:::info 🔀 Branch da Aula
+Esta aula refere-se à branch: **`aula-06`**
+```bash
+git checkout aula-06
+```
+:::
+
+:::caution 🚧 Conteúdo Prospectivo — Esta branch ainda não possui código implementado.
+:::
+
+## 📖 Conceito
+
+O maior poder do KMP: **modelos definidos uma vez no shared**, usados tanto no server quanto no client. Inclui `@Serializable` para JSON automático.
+
+## 💻 Código de Referência
+
+```kotlin title="shared/.../models/Course.kt"
+@Serializable
+data class Course(
+    val id: String,
+    val title: String,
+    val description: String,
+    @SerialName("created_at") val createdAt: String? = null,
+    @SerialName("lesson_count") val lessonCount: Int = 0
+)
+
+@Serializable
+data class Lesson(
+    val id: String,
+    @SerialName("course_id") val courseId: String,
+    val title: String,
+    val content: String,
+    @SerialName("order_index") val orderIndex: Int
+)
+```
+
+## 💻 Mão na Massa
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+<Tabs>
+  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
+
+Crie `QuizQuestion` e `QuizAnswer` no shared com `@Serializable`.
+
+  </TabItem>
+  <TabItem value="ex2" label="Exercício 2 — Aplicação">
+
+Use essas models no endpoint `GET /api/courses` do server E na tela de cursos do ComposeApp.
+
+  </TabItem>
+  <TabItem value="ex3" label="Exercício 3 — Desafio">
+
+Crie um `UserProfile` shared que inclua `streakCount` e `totalXp`. Use no perfil do Desktop e como response do endpoint `/users/me`.
+
+  </TabItem>
+</Tabs>

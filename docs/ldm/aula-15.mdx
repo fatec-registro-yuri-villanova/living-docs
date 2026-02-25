@@ -1,0 +1,55 @@
+---
+sidebar_position: 15
+title: "Aula 15: CMS — Gerenciamento de Quizzes"
+description: "Editor visual de quizzes no Desktop — criar questões, definir alternativas e resposta correta."
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+# Aula 15: CMS — Gerenciamento de Quizzes
+:::info 🔀 Branch da Aula
+**`aula-15`** — `git checkout aula-15`
+:::
+:::caution 🚧 Conteúdo Prospectivo
+Esta branch ainda não possui código implementado.
+:::
+## 📖 Conceito
+O CMS permite criar e editar quizzes como um formulário no Desktop. Cada quiz é vinculado a uma aula.
+## 💻 Código de Referência
+```kotlin title="composeApp/.../screens/QuizEditorScreen.kt"
+@Composable
+fun QuizEditorScreen(lessonId: String) {
+    var questions by remember { mutableStateOf<List<QuizQuestion>>(emptyList()) }
+
+    Column(modifier = Modifier.fillMaxSize().padding(24.dp)) {
+        Text("Editor de Quiz — Aula $lessonId",
+             style = MaterialTheme.typography.headlineMedium)
+
+        LazyColumn {
+            itemsIndexed(questions) { index, question ->
+                QuestionCard(index + 1, question,
+                    onUpdate = { updated -> questions = questions.toMutableList()
+                        .apply { this[index] = updated } })
+            }
+        }
+
+        Button(onClick = { questions = questions + QuizQuestion.empty() }) {
+            Text("+ Adicionar Questão")
+        }
+    }
+}
+```
+## 💻 Mão na Massa
+
+<Tabs>
+  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
+Implemente `QuestionCard` com TextFields para texto e 4 opções.
+  </TabItem>
+  <TabItem value="ex2" label="Exercício 2 — Aplicação">
+Adicione seleção de resposta correta com `RadioButton`.
+  </TabItem>
+  <TabItem value="ex3" label="Exercício 3 — Desafio">
+Implemente preview: ao lado do editor, mostre como o quiz aparecerá no app mobile.
+  </TabItem>
+</Tabs>

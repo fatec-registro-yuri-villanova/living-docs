@@ -1,0 +1,62 @@
+---
+sidebar_position: 13
+title: "Aula 13: Gamificação — XP e Streak"
+description: "Sistema de XP, streak diário e badges com lógica server-side."
+---
+
+# Aula 13: Gamificação — XP e Streak
+
+:::info 🔀 Branch da Aula
+Esta aula refere-se à branch: **`aula-13`**
+```bash
+git checkout aula-13
+```
+:::
+
+:::caution 🚧 Conteúdo Prospectivo
+Esta branch ainda não possui código implementado.
+:::
+
+## 📖 Conceito
+
+A gamificação motiva os alunos. O **XP** é ganho ao completar quizzes. O **Streak** conta dias consecutivos de estudo. Ambos são validados no server para evitar trapaça.
+
+## 💻 Código de Referência
+
+```tsx title="components/StreakBadge.tsx"
+interface StreakBadgeProps {
+    count: number;
+}
+
+export default function StreakBadge({ count }: StreakBadgeProps) {
+    return (
+        <View style={styles.badge}>
+            <Ionicons name="flame" size={20} color="#FF9500" />
+            <Text style={styles.count}>{count}</Text>
+        </View>
+    );
+}
+```
+
+## 💻 Mão na Massa
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+<Tabs>
+  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
+
+Exiba o XP total do usuário na tela de perfil buscando de `/users/me/stats`.
+
+  </TabItem>
+  <TabItem value="ex2" label="Exercício 2 — Aplicação">
+
+Crie um componente `XPProgressBar` que mostra o progresso até o próximo nível (ex: 750/1000 XP).
+
+  </TabItem>
+  <TabItem value="ex3" label="Exercício 3 — Desafio">
+
+Implemente um sistema de **badges** (Iniciante, Dedicado, Mestre) que desbloqueia automaticamente baseado no XP acumulado.
+
+  </TabItem>
+</Tabs>

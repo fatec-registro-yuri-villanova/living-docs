@@ -1,0 +1,85 @@
+---
+sidebar_position: 2
+title: "Aula 02: Supabase Client Compartilhado"
+description: "Configuração do SupabaseClient no módulo shared — Auth, Postgrest e Storage."
+---
+
+# Aula 02: Supabase Client Compartilhado
+
+:::info 🔀 Branch da Aula
+Esta aula refere-se à branch: **`aula-02`**
+```bash
+git checkout aula-02
+```
+:::
+
+## 📖 Conceito
+
+O **Supabase Client** é configurado no módulo `shared/` para ser reutilizado em todas as plataformas (Server, Desktop, Mobile). Instala plugins de Auth, Postgrest (banco) e Storage (arquivos).
+
+### Arquivo novo nesta branch
+
+| Arquivo | Descrição |
+|---------|-----------|
+| `shared/.../SupabaseClient.kt` | Factory function do SupabaseClient compartilhado |
+
+## 💻 Código de Referência
+
+### SupabaseClient — Factory Function
+
+```kotlin title="shared/src/commonMain/kotlin/.../SupabaseClient.kt"
+import io.github.jan.supabase.SupabaseClient
+import io.github.jan.supabase.createSupabaseClient
+import io.github.jan.supabase.gotrue.Auth
+import io.github.jan.supabase.postgrest.Postgrest
+import io.github.jan.supabase.serializer.KotlinXSerializer
+import io.github.jan.supabase.storage.Storage
+import kotlinx.serialization.json.Json
+
+fun createAppSupabaseClient(
+    supabaseUrl: String,
+    supabaseKey: String
+): SupabaseClient {
+    return createSupabaseClient(
+        supabaseUrl = supabaseUrl,
+        supabaseKey = supabaseKey
+    ) {
+        install(Postgrest)
+        install(Auth)
+        install(Storage)
+
+        defaultSerializer = KotlinXSerializer(Json {
+            ignoreUnknownKeys = true
+            prettyPrint = true
+            isLenient = true
+        })
+    }
+}
+```
+
+:::tip Shared = Reutilizado
+Essa função vive no `commonMain` — qualquer módulo (server, desktop, mobile) pode chamá-la com suas credenciais específicas. O server usa `System.getProperty()`, o mobile usa `BuildConfig`.
+:::
+
+## 💻 Mão na Massa
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+<Tabs>
+  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
+
+Configure variáveis de ambiente `SUPABASE_URL` e `SUPABASE_KEY` no `build.gradle.kts` do server e instancie o client.
+
+  </TabItem>
+  <TabItem value="ex2" label="Exercício 2 — Aplicação">
+
+No servidor, crie um endpoint `GET /api/courses` que use `supabase.postgrest.from("courses").select()` para buscar dados reais.
+
+  </TabItem>
+  <TabItem value="ex3" label="Exercício 3 — Desafio">
+
+Crie uma data class `Course` no `shared/` com `@Serializable` e use-a tanto no endpoint do server quanto na UI do ComposeApp para listar cursos.
+
+  </TabItem>
+</Tabs>

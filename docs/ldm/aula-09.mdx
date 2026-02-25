@@ -1,0 +1,48 @@
+---
+sidebar_position: 9
+title: "Aula 09: Error Handling e Logging"
+description: "Tratamento de erros no Ktor, StatusPages plugin, logging com Logback."
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+# Aula 09: Error Handling e Logging
+:::info 🔀 Branch da Aula
+**`aula-09`** — `git checkout aula-09`
+:::
+:::caution 🚧 Conteúdo Prospectivo
+Esta branch ainda não possui código implementado.
+:::
+## 📖 Conceito
+O plugin `StatusPages` do Ktor intercepta exceções e retorna respostas padronizadas. Logback registra cada requisição e erro para debugging.
+## 💻 Código de Referência
+```kotlin title="server/.../plugins/ErrorHandling.kt"
+fun Application.configureErrorHandling() {
+    install(StatusPages) {
+        exception<NotFoundException> { call, _ ->
+            call.respond(HttpStatusCode.NotFound, ErrorResponse("Recurso não encontrado"))
+        }
+        exception<BadRequestException> { call, cause ->
+            call.respond(HttpStatusCode.BadRequest, ErrorResponse(cause.message ?: "Requisição inválida"))
+        }
+        exception<Throwable> { call, cause ->
+            application.log.error("Erro interno", cause)
+            call.respond(HttpStatusCode.InternalServerError, ErrorResponse("Erro interno do servidor"))
+        }
+    }
+}
+```
+## 💻 Mão na Massa
+
+<Tabs>
+  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
+Adicione `StatusPages` ao `Application.module()` e teste com um endpoint que lança exceção.
+  </TabItem>
+  <TabItem value="ex2" label="Exercício 2 — Aplicação">
+Configure Logback com rotação de logs diária e formato JSON para produção.
+  </TabItem>
+  <TabItem value="ex3" label="Exercício 3 — Desafio">
+Crie uma `@Serializable data class ErrorResponse` que inclua `code`, `message` e `timestamp` padronizados.
+  </TabItem>
+</Tabs>

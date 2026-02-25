@@ -1,0 +1,101 @@
+---
+sidebar_position: 2
+title: "Aula 02: Expo Router e Navegação"
+description: "File-based routing, Stack Navigator, rotas dinâmicas e navegação programática."
+---
+
+# Aula 02: Expo Router e Navegação
+
+:::info 🔀 Branch da Aula
+Esta aula refere-se à branch: **`aula-02`**
+```bash
+git checkout aula-02
+```
+:::
+
+## 📖 Conceito
+
+O **Expo Router** usa navegação baseada em arquivos. A estrutura de pastas dentro de `app/` define as rotas do app automaticamente.
+
+### Estrutura de Rotas (aula-02)
+
+```
+app/
+├── _layout.tsx       ← Layout raiz (Stack Navigator)
+├── index.tsx         ← Rota "/" (Splash)
+├── login.tsx         ← Rota "/login"
+├── register.tsx      ← Rota "/register"
+├── courses.tsx       ← Rota "/courses" (listagem)
+└── (tabs)/
+    ├── _layout.tsx   ← Layout das Tabs
+    └── index.tsx     ← Tab Home
+```
+
+## 💻 Código de Referência
+
+### _layout.tsx — Stack Navigator
+
+```tsx title="app/_layout.tsx"
+import { Stack } from 'expo-router';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+
+export default function RootLayout() {
+  return (
+    <SafeAreaProvider>
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="index" />
+        <Stack.Screen name="login" />
+        <Stack.Screen name="register"
+          options={{ headerShown: true, title: 'Criar Conta' }} />
+        <Stack.Screen name="(tabs)" />
+      </Stack>
+    </SafeAreaProvider>
+  );
+}
+```
+
+### Navegação Programática
+
+```tsx
+import { useRouter } from 'expo-router';
+
+const router = useRouter();
+
+// Push: adiciona ao stack (permite voltar)
+router.push('/register');
+
+// Replace: substitui a rota atual (sem voltar)
+router.replace('/login');
+
+// Back: volta à rota anterior
+router.back();
+```
+
+## 💻 Mão na Massa
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+<Tabs>
+  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
+
+### Adicione uma rota `/about`
+
+Crie `app/about.tsx` com informações sobre o app. Na tela de login, adicione um link que navegue para `/about`.
+
+  </TabItem>
+  <TabItem value="ex2" label="Exercício 2 — Aplicação">
+
+### Rotas dinâmicas
+
+Crie `app/course/[id].tsx` que receba o ID via `useLocalSearchParams()`. Na tela de courses, navegue para `/course/123` ao clicar em um item.
+
+  </TabItem>
+  <TabItem value="ex3" label="Exercício 3 — Desafio">
+
+### Fluxo completo: Splash → Login → Tabs
+
+Configure no `_layout.tsx` o fluxo: index (splash) → login → `(tabs)`. Garanta que `router.replace()` limpe o back stack ao navegar de login para tabs.
+
+  </TabItem>
+</Tabs>

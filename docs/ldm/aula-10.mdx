@@ -1,0 +1,48 @@
+---
+sidebar_position: 10
+title: "Aula 10: Storage e Upload"
+description: "Upload de arquivos com Supabase Storage — avatars, imagens de cursos."
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+# Aula 10: Storage e Upload
+:::info 🔀 Branch da Aula
+**`aula-10`** — `git checkout aula-10`
+:::
+:::caution 🚧 Conteúdo Prospectivo
+Esta branch ainda não possui código implementado.
+:::
+## 📖 Conceito
+O Supabase Storage permite upload/download de arquivos. O server recebe multipart form data via Ktor e armazena no bucket.
+## 💻 Código de Referência
+```kotlin title="server/.../routes/StorageRoutes.kt"
+fun Route.storageRoutes(supabase: SupabaseClient) {
+    post("/api/upload/avatar") {
+        val multipart = call.receiveMultipart()
+        multipart.forEachPart { part ->
+            if (part is PartData.FileItem) {
+                val bytes = part.streamProvider().readBytes()
+                supabase.storage.from("avatars")
+                    .upload("user_${userId}/${part.originalFileName}", bytes)
+            }
+            part.dispose()
+        }
+        call.respond(HttpStatusCode.OK)
+    }
+}
+```
+## 💻 Mão na Massa
+
+<Tabs>
+  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
+Implemente upload de avatar e retorne a URL pública do arquivo.
+  </TabItem>
+  <TabItem value="ex2" label="Exercício 2 — Aplicação">
+Adicione validação: apenas imagens (JPEG/PNG), máximo 2MB.
+  </TabItem>
+  <TabItem value="ex3" label="Exercício 3 — Desafio">
+Implemente redimensionamento de imagem no server antes do upload usando uma lib JVM.
+  </TabItem>
+</Tabs>

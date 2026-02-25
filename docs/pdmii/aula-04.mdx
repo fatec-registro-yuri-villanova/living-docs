@@ -1,0 +1,145 @@
+---
+sidebar_position: 4
+title: "Aula 04: Navegação entre Telas"
+description: "Navigation Compose com NavHost, composable routes e navegação programática entre Home e Detalhes."
+---
+
+# Aula 04: Navegação entre Telas
+
+:::info 🔀 Branch da Aula
+Esta aula refere-se à branch: **`aula-04`**
+```bash
+git checkout aula-04
+```
+:::
+
+## 📖 Conceito
+
+A **Navigation Compose** permite criar fluxos de telas sem Activities múltiplas. Cada tela é uma `composable` route dentro de um `NavHost`, e a navegação acontece via `NavController`.
+
+### Design Tokens (Color.kt desta branch)
+
+```kotlin title="ui/theme/Color.kt"
+val StitchGreen = Color(0xFF4CDF20)
+val StitchGreenDark = Color(0xFF36A015)
+val StitchGreenContainer = Color(0xFF1B4D0B)
+
+val Background = Color(0xFF0F0F0F)
+val Surface = Color(0xFF1C1C1E)
+val SurfaceVariant = Color(0xFF2C2C2E)
+val OnSurface = Color(0xFFE5E5E5)
+val StitchError = Color(0xFFFF453A)
+```
+
+### Arquivos novos nesta branch
+
+| Arquivo | Descrição |
+|---------|-----------|
+| `ui/screens/aula04/Aula04Screen.kt` | Duas telas: Home e Detail com navegação |
+
+## 💻 Código de Referência
+
+### Telas de Navegação — Home e Detail
+
+```kotlin title="ui/screens/aula04/Aula04Screen.kt"
+@Composable
+fun Aula04HomeScreen(onNavigateToDetails: () -> Unit) {
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            text = "Tela Inicial (Home)",
+            style = MaterialTheme.typography.headlineLarge,
+            color = MaterialTheme.colorScheme.primary
+        )
+
+        Button(onClick = onNavigateToDetails) {
+            Text("Ir para Detalhes")
+        }
+    }
+}
+
+@Composable
+fun Aula04DetailScreen(onNavigateBack: () -> Unit) {
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            text = "Detalhes do Curso",
+            style = MaterialTheme.typography.headlineLarge,
+            color = MaterialTheme.colorScheme.secondary
+        )
+
+        Button(onClick = onNavigateBack) {
+            Text("Voltar")
+        }
+    }
+}
+```
+
+### Configuração do NavHost (na MainActivity)
+
+```kotlin title="MainActivity.kt (trecho de navegação)"
+val navController = rememberNavController()
+
+NavHost(navController = navController, startDestination = "home") {
+    composable("home") {
+        Aula04HomeScreen(
+            onNavigateToDetails = { navController.navigate("details") }
+        )
+    }
+    composable("details") {
+        Aula04DetailScreen(
+            onNavigateBack = { navController.popBackStack() }
+        )
+    }
+}
+```
+
+:::tip Padrão de callbacks
+Note que as telas **não recebem o NavController diretamente**. Elas recebem lambdas (`onNavigateToDetails`, `onNavigateBack`). Isso mantém as telas **testáveis** e **desacopladas** da navegação.
+:::
+
+## 💻 Mão na Massa
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+<Tabs>
+  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
+
+### Adicione uma terceira tela
+
+Crie `Aula04SettingsScreen` e adicione à rota `"settings"` no NavHost. Na Home, adicione um segundo botão que navegue para Settings.
+
+  </TabItem>
+  <TabItem value="ex2" label="Exercício 2 — Aplicação">
+
+### Navegação com argumentos
+
+Modifique a rota de detalhes para receber um `courseId`:
+```kotlin
+composable("details/{courseId}") { backStackEntry ->
+    val courseId = backStackEntry.arguments?.getString("courseId")
+    // Exiba o courseId na tela de detalhes
+}
+```
+Na Home, navegue com `navController.navigate("details/kotlin-101")`.
+
+  </TabItem>
+  <TabItem value="ex3" label="Exercício 3 — Desafio">
+
+### Navegação completa tipo app real
+
+Implemente o fluxo: **Splash → Login → Home (Tabs)** onde:
+1. Splash navega para Login após 2 segundos
+2. Login navega para Home limpando o back stack (`popUpTo(0)`)
+3. Home tem 2 tabs simuladas: "Cursos" e "Perfil"
+4. Use os Design Tokens do `Color.kt` para estilizar tudo
+
+  </TabItem>
+</Tabs>

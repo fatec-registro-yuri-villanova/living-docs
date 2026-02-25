@@ -1,0 +1,264 @@
+---
+sidebar_position: 6
+title: "Aula 06: Telas de Autenticação"
+description: "SplashScreen, LoginScreen e RegisterScreen com AuthScreens.kt — fluxo visual completo de auth."
+---
+
+# Aula 06: Telas de Autenticação
+
+:::info 🔀 Branch da Aula
+Esta aula refere-se à branch: **`aula-06`**
+```bash
+git checkout aula-06
+```
+:::
+
+## 📖 Conceito
+
+Nesta aula, criamos as **telas visuais** do fluxo de autenticação: Splash, Login e Registro. A lógica de rede será adicionada nas próximas aulas — aqui focamos na construção das telas usando Compose.
+
+### Arquivos novos nesta branch
+
+| Arquivo | Descrição |
+|---------|-----------|
+| `ui/screens/auth/AuthScreens.kt` | Contém `MergeSkillsLogo`, `SplashScreen`, `LoginScreen`, `RegisterScreen` |
+
+## 💻 Código de Referência
+
+### Logo da Marca
+
+```kotlin title="ui/screens/auth/AuthScreens.kt"
+@Composable
+fun MergeSkillsLogo() {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+            text = "M",
+            style = MaterialTheme.typography.displayLarge,
+            color = MaterialTheme.colorScheme.primary
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            text = "MergeSkills",
+            style = MaterialTheme.typography.headlineLarge,
+            color = MaterialTheme.colorScheme.onBackground
+        )
+    }
+}
+```
+
+### SplashScreen com LaunchedEffect
+
+```kotlin title="ui/screens/auth/AuthScreens.kt"
+@Composable
+fun SplashScreen(onSplashFinished: () -> Unit) {
+    LaunchedEffect(key1 = true) {
+        delay(2000)
+        onSplashFinished()
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background),
+        contentAlignment = Alignment.Center
+    ) {
+        MergeSkillsLogo()
+    }
+}
+```
+
+### LoginScreen
+
+```kotlin title="ui/screens/auth/AuthScreens.kt"
+@Composable
+fun LoginScreen(
+    viewModel: AuthViewModel,
+    onNavigateToRegister: () -> Unit,
+    onLoginSuccess: () -> Unit
+) {
+    var email by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    val uiState by viewModel.uiState.collectAsState()
+
+    // Observa o sucesso da Autenticação
+    LaunchedEffect(uiState.isSuccess) {
+        if (uiState.isSuccess) { onLoginSuccess() }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .padding(24.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            text = "Entrar",
+            style = MaterialTheme.typography.headlineLarge,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(bottom = 32.dp)
+        )
+
+        OutlinedTextField(
+            value = email,
+            onValueChange = {
+                email = it
+                viewModel.resetError()
+            },
+            label = { Text("E-mail") },
+            leadingIcon = { Icon(Icons.Default.Person, contentDescription = null) },
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true
+        )
+
+        OutlinedTextField(
+            value = password,
+            onValueChange = { password = it },
+            label = { Text("Senha") },
+            leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
+            visualTransformation = PasswordVisualTransformation(),
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
+            singleLine = true
+        )
+
+        if (uiState.errorMessage != null) {
+            Text(
+                text = uiState.errorMessage!!,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(top = 16.dp)
+            )
+        }
+
+        Button(
+            onClick = { viewModel.login(email, password) },
+            enabled = !uiState.isLoading,
+            modifier = Modifier.fillMaxWidth().padding(top = 32.dp)
+        ) {
+            if (uiState.isLoading) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(24.dp),
+                    color = MaterialTheme.colorScheme.onPrimary
+                )
+            } else {
+                Text("Acessar Plataforma")
+            }
+        }
+
+        TextButton(
+            onClick = onNavigateToRegister,
+            modifier = Modifier.padding(top = 16.dp)
+        ) {
+            Text("Não possui conta? Cadastre-se",
+                 color = MaterialTheme.colorScheme.onSurface)
+        }
+    }
+}
+```
+
+### RegisterScreen
+
+```kotlin title="ui/screens/auth/AuthScreens.kt"
+@Composable
+fun RegisterScreen(
+    viewModel: AuthViewModel,
+    onNavigateBack: () -> Unit
+) {
+    var name by remember { mutableStateOf("") }
+    var email by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    val uiState by viewModel.uiState.collectAsState()
+
+    LaunchedEffect(uiState.isSuccess) {
+        if (uiState.isSuccess) {
+            viewModel.resetSuccess()
+            onNavigateBack()
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .padding(24.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text("Cadastrar",
+            style = MaterialTheme.typography.headlineLarge,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(bottom = 32.dp))
+
+        OutlinedTextField(
+            value = name,
+            onValueChange = { name = it; viewModel.resetError() },
+            label = { Text("Nome Completo") },
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.fillMaxWidth(), singleLine = true)
+
+        OutlinedTextField(
+            value = email,
+            onValueChange = { email = it },
+            label = { Text("E-mail") },
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.fillMaxWidth().padding(top = 16.dp), singleLine = true)
+
+        OutlinedTextField(
+            value = password,
+            onValueChange = { password = it },
+            label = { Text("Senha") },
+            visualTransformation = PasswordVisualTransformation(),
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.fillMaxWidth().padding(top = 16.dp), singleLine = true)
+
+        Button(
+            onClick = { viewModel.register(name, email, password) },
+            enabled = !uiState.isLoading,
+            modifier = Modifier.fillMaxWidth().padding(top = 32.dp)
+        ) {
+            if (uiState.isLoading) CircularProgressIndicator(modifier = Modifier.size(24.dp))
+            else Text("Criar Conta")
+        }
+
+        TextButton(onClick = onNavigateBack, modifier = Modifier.padding(top = 16.dp)) {
+            Text("Voltar para o Login", color = MaterialTheme.colorScheme.onSurface)
+        }
+    }
+}
+```
+
+## 💻 Mão na Massa
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+<Tabs>
+  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
+
+### Melhore o Logo
+
+Substitua a letra "M" do `MergeSkillsLogo()` por um `Icon` vetorial. Use `Icons.Default.Code` ou crie um ícone customizado.
+
+  </TabItem>
+  <TabItem value="ex2" label="Exercício 2 — Aplicação">
+
+### Validação visual nos campos
+
+Adicione validação visual nos `OutlinedTextField`:
+1. Email deve conter `@` — borda vermelha se inválido
+2. Senha deve ter pelo menos 6 caracteres — texto auxiliar "Mínimo 6 caracteres"
+3. Botão "Acessar" desabilitado até ambos serem válidos
+
+  </TabItem>
+  <TabItem value="ex3" label="Exercício 3 — Desafio">
+
+### Fluxo Splash → Login → Register no NavHost
+
+Configure o `NavHost` com 3 rotas:
+
+`"splash"` → `SplashScreen(onSplashFinished = { navController.navigate("login") })`, `"login"` → `LoginScreen(...)`, `"register"` → `RegisterScreen(...)`. Garanta que o back stack seja limpo ao navegar de Splash para Login.
+
+  </TabItem>
+</Tabs>

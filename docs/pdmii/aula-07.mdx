@@ -1,0 +1,137 @@
+---
+sidebar_position: 7
+title: "Aula 07: Ktor Client e Coroutines"
+description: "Cliente HTTP com Ktor, chamadas assíncronas com Coroutines e exibição de dados remotos."
+---
+
+# Aula 07: Ktor Client e Coroutines
+
+:::info 🔀 Branch da Aula
+Esta aula refere-se à branch: **`aula-07`**
+```bash
+git checkout aula-07
+```
+:::
+
+## 📖 Conceito
+
+Nesta aula, o app faz sua **primeira chamada real a uma API externa**. Usamos o **Ktor Client** para requisições HTTP e **Coroutines** para executá-las de forma assíncrona sem travar a UI.
+
+### Arquivos novos nesta branch
+
+| Arquivo | Descrição |
+|---------|-----------|
+| `data/remote/KtorClient.kt` | HttpClient configurado com ContentNegotiation |
+| `domain/models/PostInfo.kt` | Data class para deserialização da API |
+| `ui/screens/aula07/Aula07ViewModel.kt` | ViewModel que busca dados da API |
+| `ui/screens/aula07/Aula07Screen.kt` | Tela que exibe os posts carregados |
+
+## 💻 Código de Referência
+
+### KtorClient — HttpClient Base
+
+```kotlin title="data/remote/KtorClient.kt"
+object KtorClient {
+    val httpClient = HttpClient(Android) {
+        install(ContentNegotiation) {
+            json(Json {
+                ignoreUnknownKeys = true // Se a API enviar campos extras, não dá crash
+                isLenient = true // Aceita JSON mal formatado em alguns casos
+            })
+        }
+    }
+}
+```
+
+### PostInfo — Modelo de dados
+
+```kotlin title="domain/models/PostInfo.kt"
+@Serializable
+data class PostInfo(
+    val userId: Int,
+    val id: Int,
+    val title: String,
+    val body: String
+)
+```
+
+### Aula07ViewModel — Chamada assíncrona real
+
+```kotlin title="ui/screens/aula07/Aula07ViewModel.kt"
+data class Aula07UiState(
+    val posts: List<PostInfo> = emptyList(),
+    val isLoading: Boolean = false,
+    val errorMessage: String? = null
+)
+
+class Aula07ViewModel : ViewModel() {
+    private val _uiState = MutableStateFlow(Aula07UiState())
+    val uiState: StateFlow<Aula07UiState> = _uiState.asStateFlow()
+
+    fun fetchPosts() {
+        // ViewModelScope é uma Coroutine atrelada à vida útil da Tela.
+        // Se a tela for destruída, a call morre junto,
+        // economizando memória e bateria.
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isLoading = true, errorMessage = null)
+            try {
+                // Suspende a execução (fora da Main Thread) aguardando o Backend
+                val response: List<PostInfo> = KtorClient.httpClient
+                    .get("https://jsonplaceholder.typicode.com/posts")
+                    .body()
+
+                // Sucesso: popula a lista de posts e retira o Loading
+                _uiState.value = _uiState.value.copy(
+                    posts = response,
+                    isLoading = false
+                )
+            } catch (e: Exception) {
+                e.printStackTrace()
+                // Erro: exibe a mensagem amigável e retira o Loading
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    errorMessage = "Falha ao buscar dados: ${e.localizedMessage}"
+                )
+            }
+        }
+    }
+}
+```
+
+:::tip viewModelScope
+O `viewModelScope` é automaticamente cancelado quando o ViewModel é destruído. Isso evita **memory leaks** — se o usuário sai da tela durante uma chamada de rede, a coroutine é cancelada automaticamente.
+:::
+
+## 💻 Mão na Massa
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+<Tabs>
+  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
+
+### Exiba a lista de posts
+
+Na `Aula07Screen`, use `LazyColumn` para exibir a `list<PostInfo>` com cada post mostrando `title` e `body` (truncado a 100 caracteres com `take(100)`).
+
+  </TabItem>
+  <TabItem value="ex2" label="Exercício 2 — Aplicação">
+
+### Adicione tratamento de estados
+
+Implemente 3 estados visuais na tela:
+1. **Loading** → `CircularProgressIndicator` centralizado
+2. **Erro** → Mensagem em vermelho + botão "Tentar Novamente"
+3. **Sucesso** → Lista de posts
+
+Use o `when` com `uiState.isLoading`, `uiState.errorMessage` e `uiState.posts`.
+
+  </TabItem>
+  <TabItem value="ex3" label="Exercício 3 — Desafio">
+
+### Busque uma segunda API
+
+Crie um `Comment` model e busque `https://jsonplaceholder.typicode.com/comments?postId={id}`. Ao clicar em um post, navegue para uma tela de detalhes que exibe o post + seus comentários.
+
+  </TabItem>
+</Tabs>

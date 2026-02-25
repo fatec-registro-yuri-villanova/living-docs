@@ -1,0 +1,131 @@
+---
+sidebar_position: 9
+title: "Aula 09: Repositórios e Koin"
+description: "Padrão Repository para abstração de dados e injeção de dependência com Koin."
+---
+
+# Aula 09: Repositórios e Koin
+
+:::info 🔀 Branch da Aula
+Esta aula refere-se à branch: **`aula-09`**
+```bash
+git checkout aula-09
+```
+:::
+
+## 📖 Conceito
+
+O **Repository Pattern** é uma camada de abstração entre os ViewModels e as fontes de dados (API, banco local, cache). O **Koin** é um framework de injeção de dependência leve e idiomático para Kotlin.
+
+### Por que Repository?
+
+```
+ViewModel → Repository → DataSource (API / DB / Cache)
+```
+
+- O ViewModel **não sabe** de onde os dados vêm
+- Facilita testes: mock do Repository = ViewModel testável
+- Centraliza lógica de cache e fallback
+
+### Koin — Injeção de Dependência
+
+```kotlin
+// 1. Defina os módulos
+val appModule = module {
+    // Singleton
+    single { KtorClient.httpClient }
+
+    // Factory (nova instância a cada pedido)
+    factory { CourseRepository(get()) }
+
+    // ViewModel
+    viewModel { HomeViewModel(get()) }
+    viewModel { (courseId: String) ->
+        CourseDetailViewModel(courseId, get())
+    }
+}
+
+// 2. Inicialize no Application
+class MergeSkillsApp : Application() {
+    override fun onCreate() {
+        super.onCreate()
+        startKoin {
+            androidContext(this@MergeSkillsApp)
+            modules(appModule)
+        }
+    }
+}
+
+// 3. Use no Compose
+@Composable
+fun HomeScreen(
+    viewModel: HomeViewModel = koinViewModel()
+) { /* ... */ }
+```
+
+## 💻 Código de Referência
+
+```kotlin title="di/AppModule.kt"
+val networkModule = module {
+    single {
+        HttpClient(CIO) {
+            install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+            install(DefaultRequest) {
+                url(ApiConfig.BASE_URL)
+                header("X-Timezone", TimeZone.getDefault().id)
+            }
+        }
+    }
+}
+
+val repositoryModule = module {
+    factory { CourseRepository(get()) }
+    factory { ProgressRepository(get()) }
+}
+
+val viewModelModule = module {
+    viewModel { HomeViewModel(get()) }
+    viewModel { (courseId: String) -> CourseDetailViewModel(courseId, get()) }
+}
+
+val appModules = listOf(networkModule, repositoryModule, viewModelModule)
+```
+
+## 💻 Mão na Massa
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+<Tabs>
+  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
+
+### Configure o Koin no projeto
+
+Adicione a dependência do Koin no `build.gradle.kts` e crie a classe `MergeSkillsApp` com `startKoin`. Registre-a no `AndroidManifest.xml`.
+
+**Critério:** O app deve iniciar sem erros e os ViewModels devem ser injetados via `koinViewModel()`.
+
+  </TabItem>
+  <TabItem value="ex2" label="Exercício 2 — Aplicação">
+
+### Crie o `ProgressRepository`
+
+Implemente um `ProgressRepository` que tenha:
+- `getHistory(userId: String): List<ProgressDto>` — `GET /progress/history/{userId}`
+- `submitAnswer(request: SubmitRequest): SubmitResponse` — `POST /progress/submit`
+
+Registre no `repositoryModule` do Koin.
+
+  </TabItem>
+  <TabItem value="ex3" label="Exercício 3 — Desafio">
+
+### Integre Repository + ViewModel + Navegação
+
+Refatore toda a cadeia usando Koin:
+1. `HomeViewModel` recebe `CourseRepository` via construtor (injetado pelo Koin)
+2. `CourseDetailViewModel` recebe `courseId` + `CourseRepository`
+3. Remove qualquer instanciação manual (`= CourseRepository()`)
+4. Teste navegando entre Home → Curso → Lições usando dados reais da API
+
+  </TabItem>
+</Tabs>

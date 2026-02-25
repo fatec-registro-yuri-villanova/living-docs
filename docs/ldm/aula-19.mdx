@@ -1,0 +1,54 @@
+---
+sidebar_position: 19
+title: "Aula 19: CI/CD com GitHub Actions"
+description: "Pipeline automatizado — build, test, deploy no Render via GitHub Actions."
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+# Aula 19: CI/CD com GitHub Actions
+:::info 🔀 Branch da Aula
+**`aula-19`** — `git checkout aula-19`
+:::
+:::caution 🚧 Conteúdo Prospectivo
+Esta branch ainda não possui código implementado.
+:::
+## 📖 Conceito
+CI/CD automatiza build, testes e deploy. Cada push na `main` dispara: build → testes → deploy no Render.
+## 💻 Código de Referência
+```yaml title=".github/workflows/deploy.yml"
+name: Deploy API
+on:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: 'temurin', java-version: '17' }
+      - run: ./gradlew :server:test
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy to Render
+        run: curl -X POST ${{ secrets.RENDER_DEPLOY_HOOK }}
+```
+## 💻 Mão na Massa
+
+<Tabs>
+  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
+Configure o webhook de deploy do Render e adicione como secret no GitHub.
+  </TabItem>
+  <TabItem value="ex2" label="Exercício 2 — Aplicação">
+Adicione step de lint com `ktlint` antes dos testes.
+  </TabItem>
+  <TabItem value="ex3" label="Exercício 3 — Desafio">
+Configure deploy automático do CMS Desktop como artifact do GitHub Actions.
+  </TabItem>
+</Tabs>

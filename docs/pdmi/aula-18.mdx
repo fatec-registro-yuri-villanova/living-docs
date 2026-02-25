@@ -1,0 +1,65 @@
+---
+sidebar_position: 18
+title: "Aula 18: Notificações Push"
+description: "Expo Notifications para push notifications, tokens e agendamento local."
+---
+
+# Aula 18: Notificações Push
+
+:::info 🔀 Branch da Aula
+Esta aula refere-se à branch: **`aula-18`**
+```bash
+git checkout aula-18
+```
+:::
+
+:::caution 🚧 Conteúdo Prospectivo
+Esta branch ainda não possui código implementado.
+:::
+
+## 📖 Conceito
+
+Notificações push mantêm o engajamento. Usamos **expo-notifications** para solicitar permissão, registrar o token no servidor e receber push notifications.
+
+## 💻 Código de Referência
+
+```tsx title="lib/notifications.ts"
+import * as Notifications from 'expo-notifications';
+import { Platform } from 'react-native';
+
+export async function registerForPushNotifications() {
+    const { status } = await Notifications.requestPermissionsAsync();
+    if (status !== 'granted') return null;
+
+    const token = (await Notifications.getExpoPushTokenAsync()).data;
+    // Envia para o backend
+    await apiClient.fetch('/users/me/push-token', {
+        method: 'PUT',
+        body: JSON.stringify({ token, platform: Platform.OS }),
+    });
+    return token;
+}
+```
+
+## 💻 Mão na Massa
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+<Tabs>
+  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
+
+Chame `registerForPushNotifications()` no AuthProvider após login bem-sucedido.
+
+  </TabItem>
+  <TabItem value="ex2" label="Exercício 2 — Aplicação">
+
+Agende uma notificação local diária lembrando o aluno de manter o streak.
+
+  </TabItem>
+  <TabItem value="ex3" label="Exercício 3 — Desafio">
+
+Receba push notifications com deep link — ao tocar, abra a tela do quiz correspondente.
+
+  </TabItem>
+</Tabs>

@@ -1,0 +1,122 @@
+---
+sidebar_position: 4
+title: "Aula 04: FlatList e Dados Remotos"
+description: "FlatList para listas performáticas, fetch de dados da API e renderização de cursos."
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+# Aula 04: FlatList e Dados Remotos
+
+:::info 🔀 Branch da Aula
+Esta aula refere-se à branch: **`aula-04`**
+```bash
+git checkout aula-04
+```
+:::
+
+## 📖 Conceito
+
+A **FlatList** é o componente de lista performático do React Native — renderiza apenas os itens visíveis na tela (equivalente ao `LazyColumn` do Compose ou `RecyclerView` do Android).
+
+### Arquivos novos nesta branch
+
+| Arquivo | Descrição |
+|---------|-----------|
+| `app/details.tsx` | Tela de detalhes do curso |
+
+## 💻 Código de Referência
+
+### FlatList com dados da API
+
+```tsx title="app/(tabs)/index.tsx (aula-08)"
+interface Course {
+    id: string;
+    title: string;
+    description: string;
+}
+
+export default function CoursesScreen() {
+    const [courses, setCourses] = useState<Course[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => { fetchCourses(); }, []);
+
+    async function fetchCourses() {
+        setLoading(true);
+        try {
+            const data = await apiClient.db.from('courses');
+            const result = await data.select();
+            if (result) setCourses(result);
+        } catch (error: any) {
+            console.error('Erro ao buscar cursos:', error.message);
+        } finally { setLoading(false); }
+    }
+
+    const renderItem = ({ item }: { item: Course }) => (
+        <View style={styles.card}>
+            <View style={styles.cardHeader}>
+                <Ionicons name="school-outline" size={24}
+                          color={Colors.colors.stitchGreen} />
+                <Text style={styles.cardTitle}>{item.title}</Text>
+            </View>
+            <Text style={styles.cardDesc}>{item.description}</Text>
+        </View>
+    );
+
+    return (
+        <SafeAreaView style={styles.safeArea}>
+            {loading ? (
+                <View style={styles.centered}>
+                    <ActivityIndicator size="large"
+                                       color={Colors.colors.stitchGreen} />
+                    <Text style={styles.loadingText}>Sincronizando trilhas...</Text>
+                </View>
+            ) : (
+                <FlatList
+                    data={courses}
+                    keyExtractor={(item) => item.id}
+                    renderItem={renderItem}
+                    contentContainerStyle={styles.list}
+                    ListEmptyComponent={
+                        <View style={styles.centered}>
+                            <Ionicons name="cloud-offline-outline"
+                                      size={64} color="#333" />
+                            <Text style={styles.emptyText}>
+                                Nenhuma trilha encontrada.
+                            </Text>
+                        </View>
+                    }
+                />
+            )}
+        </SafeAreaView>
+    );
+}
+```
+
+## 💻 Mão na Massa
+
+<Tabs>
+  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
+
+### Adicione `ListEmptyComponent`
+
+Quando a lista estiver vazia, exiba um ícone e texto informativo. Use `<Ionicons name="cloud-offline-outline" />`.
+
+  </TabItem>
+  <TabItem value="ex2" label="Exercício 2 — Aplicação">
+
+### Navegue ao clicar no card
+
+Wrappe o card com `TouchableOpacity` e navegue para `app/details.tsx` passando o `id` via `router.push("/course/" + item.id)`.
+
+  </TabItem>
+  <TabItem value="ex3" label="Exercício 3 — Desafio">
+
+### Pull-to-refresh
+
+Adicione `refreshing={refreshing}` e `onRefresh={fetchCourses}` à `FlatList` para permitir atualização ao puxar a lista.
+
+  </TabItem>
+</Tabs>

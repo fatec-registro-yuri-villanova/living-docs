@@ -1,0 +1,158 @@
+---
+sidebar_position: 11
+title: "Aula 11: Tela de Quiz e Questões"
+description: "Renderização dinâmica de perguntas, opções de resposta e blocos de código no quiz."
+---
+
+# Aula 11: Tela de Quiz e Questões
+
+:::info 🔀 Branch da Aula
+Esta aula refere-se à branch: **`aula-11`**
+```bash
+git checkout aula-11
+```
+:::
+
+## 📖 Conceito
+
+O coração do MergeSkills é o **Quiz**. Cada lição contém perguntas com opções de resposta e, frequentemente, blocos de código que o aluno precisa analisar.
+
+### Modelo de Questão
+
+```kotlin
+@Serializable
+data class QuestionDto(
+    val id: String,
+    val prompt: String,
+    @SerialName("code_block")
+    val codeBlock: String? = null,  // Pode ter código ou não
+    val options: List<OptionDto>
+)
+
+@Serializable
+data class OptionDto(
+    val id: String,
+    val text: String
+    // ⚠️ NÃO existe "isCorrect" no cliente! Segurança: validação é no servidor
+)
+```
+
+:::danger Regra de Segurança
+**Nunca exponha `correct_answer` no cliente.** O app envia apenas o `optionId` selecionado para o servidor via `POST /progress/submit`. O servidor retorna se está correto ou não.
+:::
+
+### Renderização de Código
+
+Para exibir blocos de código no quiz, use texto com fonte monospace:
+
+```kotlin
+@Composable
+fun CodeBlock(code: String, modifier: Modifier = Modifier) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        color = Color(0xFF1A1A2E)
+    ) {
+        Text(
+            text = code,
+            modifier = Modifier.padding(16.dp),
+            fontFamily = FontFamily.Monospace,
+            fontSize = 14.sp,
+            color = Color(0xFFE0E0E0),
+            lineHeight = 20.sp
+        )
+    }
+}
+```
+
+## 💻 Código de Referência
+
+```kotlin title="screens/QuizScreen.kt"
+@Composable
+fun QuizScreen(
+    lessonId: String,
+    viewModel: QuizViewModel = koinViewModel { parametersOf(lessonId) }
+) {
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val currentQuestion = uiState.currentQuestion
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp)
+    ) {
+        // Progresso
+        LinearProgressIndicator(
+            progress = { uiState.progress },
+            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(4.dp)),
+            color = MaterialTheme.colorScheme.primary
+        )
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        if (currentQuestion != null) {
+            // Pergunta
+            Text(
+                text = currentQuestion.prompt,
+                style = MaterialTheme.typography.titleMedium
+            )
+
+            // Bloco de código (se houver)
+            currentQuestion.codeBlock?.let { code ->
+                Spacer(modifier = Modifier.height(16.dp))
+                CodeBlock(code = code)
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // Opções de resposta
+            currentQuestion.options.forEach { option ->
+                OptionButton(
+                    text = option.text,
+                    isSelected = uiState.selectedOptionId == option.id,
+                    onClick = { viewModel.onAction(QuizAction.SelectOption(option.id)) }
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+        }
+
+        Spacer(modifier = Modifier.weight(1f))
+
+        // Botão de confirmar
+        StitchButton(
+            text = "Confirmar",
+            onClick = { viewModel.onAction(QuizAction.Submit) },
+            enabled = uiState.selectedOptionId != null
+        )
+    }
+}
+```
+
+## 💻 Mão na Massa
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+<Tabs>
+  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
+
+### Estilize o `OptionButton`
+
+Crie um `OptionButton` que mude de cor ao ser selecionado: **Não selecionado** → borda cinza, fundo transparente. **Selecionado** → borda `StitchGreen`, fundo com opacidade verde.
+
+  </TabItem>
+  <TabItem value="ex2" label="Exercício 2 — Aplicação">
+
+### Implemente o `QuizViewModel`
+
+Crie o ViewModel com `UiState` (questão atual, opção selecionada, progresso), `Actions` (`SelectOption(id)`, `Submit`, `NextQuestion`) e lógica de avançar para a próxima questão após submissão.
+
+  </TabItem>
+  <TabItem value="ex3" label="Exercício 3 — Desafio">
+
+### Quiz com submissão ao servidor
+
+Integre o `QuizViewModel` com o `ProgressRepository` (Aula 09). Ao confirmar, envie `POST /progress/submit` com `{ lessonId, questionId, optionId }`. Receba a resposta do servidor indicando se está correto. Mostre feedback visual (verde para acerto, vermelho para erro). Use o `CodeBlock` para questões que contêm código.
+
+  </TabItem>
+</Tabs>

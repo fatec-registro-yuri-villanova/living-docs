@@ -1,0 +1,77 @@
+---
+sidebar_position: 19
+title: "Aula 19: Testes e Qualidade"
+description: "Jest e React Native Testing Library — testes unitários e de componentes."
+---
+
+# Aula 19: Testes e Qualidade
+
+:::info 🔀 Branch da Aula
+Esta aula refere-se à branch: **`aula-19`**
+```bash
+git checkout aula-19
+```
+:::
+
+:::caution 🚧 Conteúdo Prospectivo
+Esta branch ainda não possui código implementado.
+:::
+
+## 📖 Conceito
+
+Testes garantem que o código funciona conforme esperado. Usamos **Jest** (test runner) e **React Native Testing Library** (render e queries para componentes).
+
+## 💻 Código de Referência
+
+```tsx title="__tests__/StitchButton.test.tsx"
+import { render, fireEvent } from '@testing-library/react-native';
+import StitchButton from '../components/StitchButton';
+
+describe('StitchButton', () => {
+    it('renders title correctly', () => {
+        const { getByText } = render(
+            <StitchButton title="Entrar" onPress={() => {}} />
+        );
+        expect(getByText('Entrar')).toBeTruthy();
+    });
+
+    it('calls onPress when pressed', () => {
+        const onPress = jest.fn();
+        const { getByText } = render(
+            <StitchButton title="Entrar" onPress={onPress} />
+        );
+        fireEvent.press(getByText('Entrar'));
+        expect(onPress).toHaveBeenCalledTimes(1);
+    });
+
+    it('shows ActivityIndicator when loading', () => {
+        const { queryByText, UNSAFE_getByType } = render(
+            <StitchButton title="Entrar" onPress={() => {}} loading />
+        );
+        expect(queryByText('Entrar')).toBeNull();
+    });
+});
+```
+
+## 💻 Mão na Massa
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+<Tabs>
+  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
+
+Execute `npx jest` e verifique que todos os testes passam.
+
+  </TabItem>
+  <TabItem value="ex2" label="Exercício 2 — Aplicação">
+
+Crie testes para o `QuizFeedbackModal`: teste que exibe "Correto!" quando `isCorrect=true` e "Incorreto" quando `false`.
+
+  </TabItem>
+  <TabItem value="ex3" label="Exercício 3 — Desafio">
+
+Teste a lógica do `apiClient.auth.signIn` mockando o `fetch` global. Verifique que o token é salvo no AsyncStorage.
+
+  </TabItem>
+</Tabs>

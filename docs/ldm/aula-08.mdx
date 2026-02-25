@@ -1,0 +1,67 @@
+---
+sidebar_position: 8
+title: "Aula 08: Streak e Gamificação Server"
+description: "Lógica de streak no servidor — cálculo de dias consecutivos, XP e badges."
+---
+
+# Aula 08: Streak e Gamificação Server
+
+:::info 🔀 Branch da Aula
+Esta aula refere-se à branch: **`aula-08`** — `git checkout aula-08`
+:::
+
+:::caution 🚧 Conteúdo Prospectivo
+Esta branch ainda não possui código implementado.
+:::
+
+## 📖 Conceito
+
+O streak (ofensiva) é calculado no server para evitar manipulação. Quando o aluno completa uma atividade, o server verifica a última atividade e incrementa ou reseta o streak.
+
+## 💻 Código de Referência
+
+```kotlin title="server/.../services/StreakService.kt"
+class StreakService(private val supabase: SupabaseClient) {
+    suspend fun updateStreak(userId: String): StreakResult {
+        val lastActivity = getLastActivity(userId)
+        val today = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date
+        val yesterday = today.minus(1, DateTimeUnit.DAY)
+
+        return when (lastActivity?.date) {
+            today -> StreakResult(maintained = true, count = lastActivity.streakCount)
+            yesterday -> {
+                val newCount = lastActivity.streakCount + 1
+                saveStreak(userId, today, newCount)
+                StreakResult(maintained = true, count = newCount)
+            }
+            else -> {
+                saveStreak(userId, today, 1)
+                StreakResult(maintained = false, count = 1)
+            }
+        }
+    }
+}
+```
+
+## 💻 Mão na Massa
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+<Tabs>
+  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
+
+Integre `StreakService.updateStreak()` no endpoint de submissão do quiz.
+
+  </TabItem>
+  <TabItem value="ex2" label="Exercício 2 — Aplicação">
+
+Crie endpoint `GET /api/users/me/stats` que retorne streak, XP total e badges.
+
+  </TabItem>
+  <TabItem value="ex3" label="Exercício 3 — Desafio">
+
+Implemente badges automáticos (3 dias = "Iniciante", 7 = "Dedicado", 30 = "Mestre") com insert no Supabase.
+
+  </TabItem>
+</Tabs>

@@ -1,0 +1,46 @@
+---
+sidebar_position: 16
+title: "Aula 16: CMS — Dashboard Analytics"
+description: "Dashboard com métricas — alunos ativos, quizzes completados, streaks, gráficos."
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+# Aula 16: CMS — Dashboard Analytics
+:::info 🔀 Branch da Aula
+**`aula-16`** — `git checkout aula-16`
+:::
+:::caution 🚧 Conteúdo Prospectivo
+Esta branch ainda não possui código implementado.
+:::
+## 📖 Conceito
+O Dashboard Analytics exibe métricas em tempo real: alunos ativos, taxa de conclusão, média de XP. Utiliza endpoints de stats do server.
+## 💻 Código de Referência
+```kotlin title="composeApp/.../screens/AnalyticsScreen.kt"
+@Composable
+fun AnalyticsScreen() {
+    var stats by remember { mutableStateOf<DashboardStats?>(null) }
+    LaunchedEffect(Unit) {
+        stats = httpClient.get("$apiUrl/api/admin/stats").body()
+    }
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        StatCard("Alunos Ativos", "${stats?.activeUsers ?: 0}", Colors.stitchGreen)
+        StatCard("Quizzes Feitos", "${stats?.quizCompleted ?: 0}", Colors.streakOrange)
+        StatCard("Streak Médio", "${stats?.avgStreak ?: 0} dias", Colors.xpGold)
+    }
+}
+```
+## 💻 Mão na Massa
+
+<Tabs>
+  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
+Crie o endpoint `GET /api/admin/stats` no server com dados reais do Supabase.
+  </TabItem>
+  <TabItem value="ex2" label="Exercício 2 — Aplicação">
+Adicione auto-refresh a cada 30 segundos nos cards de métricas.
+  </TabItem>
+  <TabItem value="ex3" label="Exercício 3 — Desafio">
+Implemente um gráfico de barras simples usando Canvas do Compose para mostrar quizzes/dia.
+  </TabItem>
+</Tabs>

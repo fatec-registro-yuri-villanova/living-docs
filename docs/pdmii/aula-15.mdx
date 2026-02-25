@@ -1,0 +1,120 @@
+---
+sidebar_position: 15
+title: "Aula 15: Gamificação (Streaks)"
+description: "Lógica de ofensiva baseada em datas, animação do ícone de fogo e UI de engajamento."
+---
+
+# Aula 15: Gamificação (Streaks)
+
+:::info 🔀 Branch da Aula
+Esta aula refere-se à branch: **`aula-15`**
+```bash
+git checkout aula-15
+```
+:::
+
+## 📖 Conceito
+
+As **Streaks (Ofensivas)** são o motor de retenção do MergeSkills. Cada dia que o aluno completa pelo menos uma lição, sua ofensiva aumenta.
+
+:::caution Regra da Spec
+A lógica de streak reside **inteiramente no servidor**. O `streak_count` é retornado pelo `POST /progress/submit`. Nunca calcule streak no cliente.
+:::
+
+### Exibição na Home
+
+```kotlin
+@Composable
+fun StreakBadge(streakCount: Int) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .background(
+                color = Color(0xFF4CDF20).copy(alpha = 0.1f),
+                shape = RoundedCornerShape(20.dp)
+            )
+            .padding(horizontal = 12.dp, vertical = 6.dp)
+    ) {
+        Text("🔥", fontSize = 18.sp)
+        Spacer(modifier = Modifier.width(4.dp))
+        Text(
+            text = "$streakCount",
+            fontWeight = FontWeight.Bold,
+            color = Color(0xFF4CDF20)
+        )
+    }
+}
+```
+
+## 💻 Código de Referência
+
+```kotlin title="components/StreakBadge.kt"
+@Composable
+fun StreakBadge(
+    streakCount: Int,
+    modifier: Modifier = Modifier
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "streak")
+    val scale by infiniteTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = 1.15f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(600, easing = EaseInOutCubic),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "streakPulse"
+    )
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier
+            .background(
+                Color(0xFF4CDF20).copy(alpha = 0.1f),
+                RoundedCornerShape(20.dp)
+            )
+            .padding(horizontal = 12.dp, vertical = 6.dp)
+    ) {
+        Text(
+            "🔥",
+            fontSize = 18.sp,
+            modifier = Modifier.graphicsLayer { scaleX = scale; scaleY = scale }
+        )
+        Spacer(modifier = Modifier.width(4.dp))
+        Text("$streakCount", fontWeight = FontWeight.Bold, color = Color(0xFF4CDF20))
+    }
+}
+```
+
+## 💻 Mão na Massa
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+<Tabs>
+  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
+
+### Adicione o StreakBadge ao header da Home
+
+Coloque o `StreakBadge` no canto direito do header da `HomeScreen`, ao lado do ícone de perfil.
+
+  </TabItem>
+  <TabItem value="ex2" label="Exercício 2 — Aplicação">
+
+### Atualize o streak após quiz
+
+Após uma resposta correta no quiz, atualize o `streakCount` exibido no `StreakBadge`. O valor vem da resposta do `POST /progress/submit`.
+
+  </TabItem>
+  <TabItem value="ex3" label="Exercício 3 — Desafio">
+
+### Tela de detalhes da ofensiva
+
+Crie uma tela acessível ao clicar no `StreakBadge` que exiba:
+- Calendário do mês com dias ativos marcados em verde
+- `streak_count`, `longest_streak`, `streak_freezes` (da Aula 14)
+- Botão para usar um congelamento
+
+Integre com navegação (Aula 06) e dados do perfil (Aula 14).
+
+  </TabItem>
+</Tabs>

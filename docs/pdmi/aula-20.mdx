@@ -1,0 +1,84 @@
+---
+sidebar_position: 20
+title: "Aula 20: Build, EAS e Publicação"
+description: "EAS Build para APK/IPA, configuração de eas.json, preview e publicação na loja."
+---
+
+# Aula 20: Build, EAS e Publicação
+
+:::info 🔀 Branch da Aula
+Esta aula refere-se à branch: **`aula-20`**
+```bash
+git checkout aula-20
+```
+:::
+
+:::caution 🚧 Conteúdo Prospectivo
+Esta branch ainda não possui código implementado.
+:::
+
+## 📖 Conceito
+
+**EAS Build** (Expo Application Services) gera builds nativos (APK para Android, IPA para iOS) na nuvem. Não é necessário Android Studio ou Xcode para gerar o build final.
+
+## 💻 Código de Referência
+
+```json title="eas.json"
+{
+  "build": {
+    "preview": {
+      "android": {
+        "buildType": "apk",
+        "distribution": "internal"
+      }
+    },
+    "production": {
+      "android": {
+        "buildType": "app-bundle"
+      },
+      "ios": {
+        "distribution": "store"
+      }
+    }
+  }
+}
+```
+
+### Comandos EAS
+
+```bash
+# Instalar EAS CLI
+npm install -g eas-cli
+
+# Login
+eas login
+
+# Build de preview (APK para teste)
+eas build --platform android --profile preview
+
+# Build de produção (AAB para Play Store)
+eas build --platform android --profile production
+```
+
+## 💻 Mão na Massa
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+<Tabs>
+  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
+
+Configure o `eas.json` e gere um APK de preview com `eas build --platform android --profile preview`.
+
+  </TabItem>
+  <TabItem value="ex2" label="Exercício 2 — Aplicação">
+
+Configure variáveis de ambiente com `eas.json` secrets para a `API_CONFIG.SUPABASE_KEY` (nunca comitar a key no código).
+
+  </TabItem>
+  <TabItem value="ex3" label="Exercício 3 — Desafio">
+
+Configure CI/CD com GitHub Actions que gera um build automaticamente a cada push na branch `main`.
+
+  </TabItem>
+</Tabs>

@@ -1,0 +1,136 @@
+---
+sidebar_position: 13
+title: "Aula 13: Auth com Supabase"
+description: "Fluxo de autenticação completo com Supabase: login, registro, persistência de token com DataStore."
+---
+
+# Aula 13: Auth com Supabase
+
+:::info 🔀 Branch da Aula
+Esta aula refere-se à branch: **`aula-13`**
+```bash
+git checkout aula-13
+```
+:::
+
+## 📖 Conceito
+
+A autenticação é a porta de entrada do MergeSkills. Usamos **Supabase Auth** para gerenciar login e registro, e **DataStore** para persistir o token localmente.
+
+### Fluxo de Autenticação
+
+```
+┌──────────┐     POST /auth/login     ┌──────────┐
+│  Login   │ ──────────────────────►  │  Server  │
+│  Screen  │ ◄──────────────────────  │ (Ktor)   │
+└──────────┘     { token, user }      └──────────┘
+      │
+      │  Salva token no DataStore
+      ▼
+┌──────────┐
+│   Home   │
+│  Screen  │
+└──────────┘
+```
+
+### DataStore para Token
+
+```kotlin
+class AuthDataStore(private val context: Context) {
+    private val dataStore = context.dataStore
+
+    val tokenFlow: Flow<String?> = dataStore.data.map { prefs ->
+        prefs[TOKEN_KEY]
+    }
+
+    suspend fun saveToken(token: String) {
+        dataStore.edit { prefs -> prefs[TOKEN_KEY] = token }
+    }
+
+    suspend fun clearToken() {
+        dataStore.edit { prefs -> prefs.remove(TOKEN_KEY) }
+    }
+
+    companion object {
+        private val TOKEN_KEY = stringPreferencesKey("auth_token")
+    }
+}
+```
+
+:::tip Regra da Spec
+O registro deve gerar o `username` automaticamente a partir do email. Ex: `yuri@fatec.edu` → `yuri`.
+:::
+
+## 💻 Código de Referência
+
+```kotlin title="repository/AuthRepository.kt"
+class AuthRepository(
+    private val client: HttpClient,
+    private val dataStore: AuthDataStore
+) {
+    suspend fun login(email: String, password: String): Result<User> {
+        return try {
+            val response: LoginResponse = client.post("/auth/login") {
+                setBody(LoginRequest(email, password))
+            }.body()
+
+            dataStore.saveToken(response.token)
+            Result.Success(response.user)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Erro ao fazer login")
+        }
+    }
+
+    suspend fun register(email: String, password: String): Result<User> {
+        val username = email.substringBefore("@") // Auto-generate
+        return try {
+            val response: LoginResponse = client.post("/auth/register") {
+                setBody(RegisterRequest(email, password, username))
+            }.body()
+
+            dataStore.saveToken(response.token)
+            Result.Success(response.user)
+        } catch (e: Exception) {
+            Result.Error(e.message ?: "Erro ao registrar")
+        }
+    }
+
+    suspend fun logout() {
+        dataStore.clearToken()
+    }
+
+    fun isLoggedIn(): Flow<Boolean> = dataStore.tokenFlow.map { it != null }
+}
+```
+
+## 💻 Mão na Massa
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+<Tabs>
+  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
+
+### Configure o DataStore
+
+Adicione a dependência do DataStore Preferences no `build.gradle.kts` e crie a extensão:
+```kotlin
+val Context.dataStore by preferencesDataStore(name = "merge_skills_prefs")
+```
+
+  </TabItem>
+  <TabItem value="ex2" label="Exercício 2 — Aplicação">
+
+### Crie as telas de Login e Registro
+
+Implemente `LoginScreen` e `RegisterScreen` com campos de email e senha (`StitchTextField` com shape `Medium 12.dp`), `StitchButton` para submissão, tratamento de estados (loading, erro, sucesso), e navegação entre login e registro.
+
+  </TabItem>
+  <TabItem value="ex3" label="Exercício 3 — Desafio">
+
+### Fluxo de auth completo com redirecionamento
+
+No `AppNavigation`, verifique se há token salvo no DataStore. Se logado → navegue para Home. Se não logado → navegue para Login. Após login bem-sucedido → redirecione para Home e limpe o back stack. Logout limpa o token e volta para Login. Integre com Koin (Aula 09) e o tema MergeSkills (Aula 04).
+
+  </TabItem>
+</Tabs>

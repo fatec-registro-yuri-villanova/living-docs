@@ -1,0 +1,44 @@
+---
+sidebar_position: 17
+title: "Aula 17: Testes no Server"
+description: "Testes unitários e de integração com Ktor testApplication e MockK."
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+# Aula 17: Testes no Server
+:::info 🔀 Branch da Aula
+**`aula-17`** — `git checkout aula-17`
+:::
+:::caution 🚧 Conteúdo Prospectivo
+Esta branch ainda não possui código implementado.
+:::
+## 📖 Conceito
+O Ktor fornece `testApplication` para testar endpoints sem subir o servidor. MockK permite mockar o Supabase para testes isolados.
+## 💻 Código de Referência
+```kotlin title="server/src/test/kotlin/.../HealthRouteTest.kt"
+class HealthRouteTest {
+    @Test
+    fun `GET health returns 200`() = testApplication {
+        application { module() }
+        val response = client.get("/api/health")
+        assertEquals(HttpStatusCode.OK, response.status)
+        val body = response.body<HealthResponse>()
+        assertEquals("Status UP", body.status)
+    }
+}
+```
+## 💻 Mão na Massa
+
+<Tabs>
+  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
+Crie teste para `GET /api/courses` com Supabase mockado.
+  </TabItem>
+  <TabItem value="ex2" label="Exercício 2 — Aplicação">
+Teste `POST /auth/login` com credenciais válidas e inválidas.
+  </TabItem>
+  <TabItem value="ex3" label="Exercício 3 — Desafio">
+Implemente testes para `StreakService` com datas mockadas (ontem, hoje, 3 dias atrás).
+  </TabItem>
+</Tabs>

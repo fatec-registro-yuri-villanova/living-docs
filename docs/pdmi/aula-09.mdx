@@ -1,0 +1,120 @@
+---
+sidebar_position: 9
+title: "Aula 09: Estado Global com Context API"
+description: "Context API para compartilhar estado entre telas — AuthContext, UserProvider e useAuth hook."
+---
+
+# Aula 09: Estado Global com Context API
+
+:::info 🔀 Branch da Aula
+Esta aula refere-se à branch: **`aula-09`**
+```bash
+git checkout aula-09
+```
+:::
+
+:::caution 🚧 Conteúdo Prospectivo
+Esta branch ainda não possui código implementado. O conteúdo abaixo é baseado no plano curricular e será atualizado quando o código for commitado.
+:::
+
+## 📖 Conceito
+
+A **Context API** do React permite compartilhar estado entre múltiplos componentes sem "prop drilling". No MergeSkills, criamos um `AuthContext` que armazena o usuário logado e disponibiliza `signIn`, `signOut` e `user` globalmente.
+
+### Estrutura proposta
+
+```
+lib/
+├── contexts/
+│   └── AuthContext.tsx    ← Provider + Hook
+```
+
+## 💻 Código de Referência
+
+### AuthContext com Provider
+
+```tsx title="lib/contexts/AuthContext.tsx"
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import { apiClient } from '../api';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+interface User {
+    id: number;
+    name: string;
+    email: string;
+    profilePicture?: string;
+}
+
+interface AuthContextData {
+    user: User | null;
+    loading: boolean;
+    signIn: (email: string, password: string) => Promise<void>;
+    signOut: () => Promise<void>;
+}
+
+const AuthContext = createContext<AuthContextData>({} as AuthContextData);
+
+export function AuthProvider({ children }: { children: React.ReactNode }) {
+    const [user, setUser] = useState<User | null>(null);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        loadStoredUser();
+    }, []);
+
+    async function loadStoredUser() {
+        const storedUser = await AsyncStorage.getItem('@user');
+        if (storedUser) setUser(JSON.parse(storedUser));
+        setLoading(false);
+    }
+
+    async function signIn(email: string, password: string) {
+        const response = await apiClient.auth.signIn(email, password);
+        setUser(response.user);
+        await AsyncStorage.setItem('@user', JSON.stringify(response.user));
+    }
+
+    async function signOut() {
+        await apiClient.auth.signOut();
+        setUser(null);
+        await AsyncStorage.removeItem('@user');
+    }
+
+    return (
+        <AuthContext.Provider value={{ user, loading, signIn, signOut }}>
+            {children}
+        </AuthContext.Provider>
+    );
+}
+
+export const useAuth = () => useContext(AuthContext);
+```
+
+## 💻 Mão na Massa
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+<Tabs>
+  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
+
+### Envolva o app com AuthProvider
+
+No `_layout.tsx`, envolva o `<Stack>` com `<AuthProvider>`. Na tela de perfil, substitua os dados hardcoded por `useAuth().user`.
+
+  </TabItem>
+  <TabItem value="ex2" label="Exercício 2 — Aplicação">
+
+### Proteja rotas
+
+Crie um componente `ProtectedRoute` que redireciona para `/login` se `user === null`.
+
+  </TabItem>
+  <TabItem value="ex3" label="Exercício 3 — Desafio">
+
+### Crie um CourseContext
+
+Implemente `CourseContext` que carrega e disponibiliza a lista de cursos globalmente, evitando re-fetch a cada navegação para a tab Home.
+
+  </TabItem>
+</Tabs>

@@ -1,0 +1,75 @@
+---
+sidebar_position: 14
+title: "Aula 14: Perfil Dinâmico e Avatar"
+description: "Tela de perfil com dados do servidor, upload de avatar e edição de nome."
+---
+
+# Aula 14: Perfil Dinâmico e Avatar
+
+:::info 🔀 Branch da Aula
+Esta aula refere-se à branch: **`aula-14`**
+```bash
+git checkout aula-14
+```
+:::
+
+:::caution 🚧 Conteúdo Prospectivo
+Esta branch ainda não possui código implementado.
+:::
+
+## 📖 Conceito
+
+O perfil exibe dados reais do servidor. O avatar pode ser atualizado via **Image Picker** do Expo.
+
+## 💻 Código de Referência
+
+```tsx title="app/(tabs)/profile.tsx (evolução)"
+import * as ImagePicker from 'expo-image-picker';
+
+async function pickAvatar() {
+    const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+    });
+
+    if (!result.canceled) {
+        // Upload para o servidor
+        const formData = new FormData();
+        formData.append('avatar', {
+            uri: result.assets[0].uri,
+            type: 'image/jpeg',
+            name: 'avatar.jpg',
+        } as any);
+        await apiClient.fetch('/users/me/avatar', {
+            method: 'PUT',
+            body: formData,
+            headers: { 'Content-Type': 'multipart/form-data' },
+        });
+    }
+}
+```
+
+## 💻 Mão na Massa
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+<Tabs>
+  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
+
+Substitua o `Ionicons` do avatar por uma `Image` real usando o `profilePicture` do usuário.
+
+  </TabItem>
+  <TabItem value="ex2" label="Exercício 2 — Aplicação">
+
+Adicione edição de nome com `TextInput` que salva via `PUT /users/me`.
+
+  </TabItem>
+  <TabItem value="ex3" label="Exercício 3 — Desafio">
+
+Implemente cache local do avatar com `expo-file-system` para exibição offline.
+
+  </TabItem>
+</Tabs>

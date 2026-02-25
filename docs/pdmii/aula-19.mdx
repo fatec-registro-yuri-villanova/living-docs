@@ -1,0 +1,120 @@
+---
+sidebar_position: 19
+title: "Aula 19: Performance e Estabilidade"
+description: "Debugging, profiling, correção de Memory Leaks e otimização de recomposições."
+---
+
+# Aula 19: Performance e Estabilidade
+
+:::info 🔀 Branch da Aula
+Esta aula refere-se à branch: **`aula-19`**
+```bash
+git checkout aula-19
+```
+:::
+
+## 📖 Conceito
+
+Um app que funciona não é suficiente — ele precisa funcionar **rápido**. L latência mata a experiência do usuário. Nesta aula, aprendemos a identificar e corrigir gargalos.
+
+### Recomposição desnecessária
+
+O maior problema de performance em Compose é a **recomposição excessiva**:
+
+```kotlin
+// ❌ RUIM: lambda recriada a cada recomposição
+LazyColumn {
+    items(courses) { course ->
+        CourseCard(onClick = { viewModel.select(course.id) }) // Nova referência!
+    }
+}
+
+// ✅ BOM: lambda estável com remember
+LazyColumn {
+    items(courses, key = { it.id }) { course ->
+        val onClick = remember(course.id) { { viewModel.select(course.id) } }
+        CourseCard(onClick = onClick)
+    }
+}
+```
+
+### Ferramentas de Debug
+
+| Ferramenta | Uso |
+|-----------|-----|
+| Layout Inspector | Visualizar árvore de Composables |
+| Profiler (CPU) | Identificar funções lentas |
+| Profiler (Memory) | Detectar memory leaks |
+| `@Stable` / `@Immutable` | Dicas para o compilador Compose |
+| StrictMode | Detectar operações no main thread |
+
+### derivedStateOf
+
+```kotlin
+// Evita recomposições quando o valor calculado não muda
+val showCompletionBanner by remember {
+    derivedStateOf { uiState.courses.all { it.isCompleted } }
+}
+```
+
+## 💻 Código de Referência
+
+```kotlin title="Otimização de LazyColumn"
+@Composable
+fun OptimizedCourseList(
+    courses: List<Course>,
+    onCourseClick: (String) -> Unit
+) {
+    LazyColumn(
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        items(
+            items = courses,
+            key = { it.id },          // Identidade estável
+            contentType = { "course" } // Otimiza pool de composables
+        ) { course ->
+            // remember evita realocação da lambda
+            val onClick = remember(course.id) { { onCourseClick(course.id) } }
+            StitchCard(
+                title = course.title,
+                subtitle = "${course.completedLessons}/${course.totalLessons}",
+                modifier = Modifier.clickable(onClick = onClick)
+            )
+        }
+    }
+}
+```
+
+## 💻 Mão na Massa
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+<Tabs>
+  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
+
+### Adicione `key` em todas as LazyColumns
+
+Revise o projeto e garanta que toda `LazyColumn` com `items()` usa o parâmetro `key` com um identificador estável.
+
+  </TabItem>
+  <TabItem value="ex2" label="Exercício 2 — Aplicação">
+
+### Use o Layout Inspector
+
+Abra o **Layout Inspector** no Android Studio e identifique pelo menos 2 Composables que recompõem desnecessariamente. Corrija-os usando `remember` ou `derivedStateOf`.
+
+  </TabItem>
+  <TabItem value="ex3" label="Exercício 3 — Desafio">
+
+### Profiling e Memory Leaks
+
+Use o **Memory Profiler** para:
+1. Navegar entre Home → Curso → Quiz → Home repetidamente
+2. Capturar um heap dump e verificar se há objetos retidos
+3. Corrigir qualquer leak encontrado (geralmente Coroutines não canceladas ou referências a Context)
+4. Documentar as correções feitas
+
+  </TabItem>
+</Tabs>

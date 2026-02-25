@@ -1,0 +1,52 @@
+---
+sidebar_position: 13
+title: "Aula 13: CMS Desktop — Setup"
+description: "Compose for Desktop como painel administrativo — estrutura de telas e navegação."
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+# Aula 13: CMS Desktop — Setup
+:::info 🔀 Branch da Aula
+**`aula-13`** — `git checkout aula-13`
+:::
+:::caution 🚧 Conteúdo Prospectivo
+Esta branch ainda não possui código implementado.
+:::
+## 📖 Conceito
+O **CMS (Content Management System)** é um app Desktop em Compose que permite gerenciar cursos, aulas e quizzes. Usa os mesmos modelos do `shared/`.
+## 💻 Código de Referência
+```kotlin title="composeApp/.../screens/DashboardScreen.kt"
+@Composable
+fun DashboardScreen(onNavigate: (Screen) -> Unit) {
+    Row(modifier = Modifier.fillMaxSize()) {
+        // Sidebar
+        NavigationRail {
+            NavigationRailItem(label = { Text("Cursos") },
+                selected = true, onClick = { onNavigate(Screen.Courses) },
+                icon = { Icon(Icons.Default.School, null) })
+            NavigationRailItem(label = { Text("Alunos") },
+                selected = false, onClick = { onNavigate(Screen.Students) },
+                icon = { Icon(Icons.Default.Person, null) })
+        }
+        // Content
+        Box(modifier = Modifier.fillMaxSize().padding(24.dp)) {
+            Text("Dashboard CMS", style = MaterialTheme.typography.headlineLarge)
+        }
+    }
+}
+```
+## 💻 Mão na Massa
+
+<Tabs>
+  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
+Execute o CMS com `./gradlew :composeApp:run` e verifique a NavigationRail.
+  </TabItem>
+  <TabItem value="ex2" label="Exercício 2 — Aplicação">
+Adicione uma terceira opção "Quizzes" ao NavigationRail com navegação funcional.
+  </TabItem>
+  <TabItem value="ex3" label="Exercício 3 — Desafio">
+Implemente login no CMS — só admins (role = "admin") podem acessar o Dashboard.
+  </TabItem>
+</Tabs>

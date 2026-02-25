@@ -1,0 +1,71 @@
+---
+sidebar_position: 17
+title: "Aula 17: Animações com Reanimated"
+description: "React Native Reanimated para animações fluidas — useSharedValue, withTiming, gestos."
+---
+
+# Aula 17: Animações com Reanimated
+
+:::info 🔀 Branch da Aula
+Esta aula refere-se à branch: **`aula-17`**
+```bash
+git checkout aula-17
+```
+:::
+
+:::caution 🚧 Conteúdo Prospectivo
+Esta branch ainda não possui código implementado.
+:::
+
+## 📖 Conceito
+
+**React Native Reanimated** executa animações na **UI thread** (60fps), diferente do `Animated` padrão que roda na bridge JS. Ideal para micro-animações, gestos e transições.
+
+## 💻 Código de Referência
+
+```tsx title="components/AnimatedCard.tsx"
+import Animated, { useSharedValue, useAnimatedStyle,
+    withTiming, withSpring } from 'react-native-reanimated';
+
+export default function AnimatedCard({ children }) {
+    const scale = useSharedValue(1);
+
+    const animatedStyle = useAnimatedStyle(() => ({
+        transform: [{ scale: scale.value }],
+    }));
+
+    function handlePressIn() { scale.value = withSpring(0.95); }
+    function handlePressOut() { scale.value = withSpring(1); }
+
+    return (
+        <Animated.View style={[styles.card, animatedStyle]}>
+            <Pressable onPressIn={handlePressIn} onPressOut={handlePressOut}>
+                {children}
+            </Pressable>
+        </Animated.View>
+    );
+}
+```
+
+## 💻 Mão na Massa
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+<Tabs>
+  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
+
+Aplique `AnimatedCard` nos cards da lista de cursos.
+
+  </TabItem>
+  <TabItem value="ex2" label="Exercício 2 — Aplicação">
+
+Anime a entrada dos itens na FlatList com `FadeInDown` do Reanimated Layout Animations.
+
+  </TabItem>
+  <TabItem value="ex3" label="Exercício 3 — Desafio">
+
+Crie um confetti animation na tela de resultado do quiz quando a pontuação for ≥ 80%.
+
+  </TabItem>
+</Tabs>

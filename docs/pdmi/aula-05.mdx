@@ -1,0 +1,91 @@
+---
+sidebar_position: 5
+title: "Aula 05: Design System & Colors"
+description: "Tokens de cor, tema escuro, Design System MergeSkills com Colors.ts."
+---
+
+# Aula 05: Design System & Colors
+
+:::info 🔀 Branch da Aula
+Esta aula refere-se à branch: **`aula-05`**
+```bash
+git checkout aula-05
+```
+:::
+
+## 📖 Conceito
+
+Um **Design System** garante consistência visual. Centralizamos todas as cores no arquivo `Colors.ts`, separando tokens de marca (stitchGreen) dos tokens de superfície (background, surface).
+
+## 💻 Código de Referência
+
+### Colors.ts — Tokens de Design (versão evoluída em aula-08)
+
+```ts title="constants/Colors.ts"
+const stitchGreen = '#4CDF20';
+const stitchDarkBackground = '#0F0F0F';
+const stitchDarkSurface = '#1C1C1E';
+
+export default {
+  light: {
+    text: '#000',
+    background: '#fff',
+    tint: stitchGreen,
+    tabIconDefault: '#ccc',
+    tabIconSelected: stitchGreen,
+    surface: '#F2F2F7',
+  },
+  dark: {
+    text: '#E5E5E5',
+    background: stitchDarkBackground,
+    tint: stitchGreen,
+    tabIconDefault: '#ccc',
+    tabIconSelected: stitchGreen,
+    surface: stitchDarkSurface,
+    nav: '#1F222A',
+  },
+  colors: {
+    stitchGreen,
+    stitchDarkBackground,
+    stitchDarkSurface,
+    stitchError: '#FF453A',
+    stitchGreenDark: '#36A015',
+    stitchGreenContainer: '#1B4D0B',
+  }
+};
+```
+
+:::tip Comparação com Android
+Esses tokens são **os mesmos** definidos no `Color.kt` do PDMII:
+- `StitchGreen = Color(0xFF4CDF20)` → `stitchGreen = '#4CDF20'`
+- `Background = Color(0xFF0F0F0F)` → `stitchDarkBackground = '#0F0F0F'`
+:::
+
+## 💻 Mão na Massa
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+<Tabs>
+  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
+
+### Use Colors na tela de login
+
+Substitua todas as cores hardcoded do `login.tsx` por referências a `Colors.dark.background`, `Colors.colors.stitchGreen`, etc.
+
+  </TabItem>
+  <TabItem value="ex2" label="Exercício 2 — Aplicação">
+
+### Adicione tokens de tipografia
+
+Crie `constants/Typography.ts` com escalas de fonte (title, body, caption) equivalentes ao Material 3 Type.kt do Android.
+
+  </TabItem>
+  <TabItem value="ex3" label="Exercício 3 — Desafio">
+
+### Modo Light/Dark automático
+
+Use `useColorScheme()` do React Native para detectar o tema do sistema e alternar entre `Colors.light` e `Colors.dark` automaticamente em toda a aplicação.
+
+  </TabItem>
+</Tabs>

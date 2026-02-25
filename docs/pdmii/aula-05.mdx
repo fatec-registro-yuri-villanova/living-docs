@@ -1,0 +1,203 @@
+---
+sidebar_position: 5
+title: "Aula 05: ViewModel e UDF (Unidirectional Data Flow)"
+description: "Padrão Action/UiState/ViewModel com MutableStateFlow, sealed interface e viewModelScope."
+---
+
+# Aula 05: ViewModel e UDF
+
+:::info 🔀 Branch da Aula
+Esta aula refere-se à branch: **`aula-05`**
+```bash
+git checkout aula-05
+```
+:::
+
+## 📖 Conceito
+
+O **ViewModel** sobrevive a rotações de tela e gerencia o estado da UI. Usamos o padrão **UDF (Unidirectional Data Flow)**: `Action → ViewModel → UiState → UI`.
+
+### Arquivos novos nesta branch
+
+| Arquivo | Descrição |
+|---------|-----------|
+| `ui/screens/aula05/Aula05Action.kt` | Sealed interface com ações do usuário |
+| `ui/screens/aula05/Aula05UiState.kt` | Data class do estado da UI |
+| `ui/screens/aula05/Aula05ViewModel.kt` | ViewModel com lógica de negócio |
+| `ui/screens/aula05/Aula05Screen.kt` | Tela Compose que consome o estado |
+
+### O Fluxo UDF
+
+```
+Usuário clica → Action (sealed interface)
+                      ↓
+               ViewModel (processa)
+                      ↓
+               UiState (data class)
+                      ↓
+               Compose (recompõe)
+```
+
+## 💻 Código de Referência
+
+### 1. Actions — O que o usuário pode fazer
+
+```kotlin title="ui/screens/aula05/Aula05Action.kt"
+sealed interface Aula05Action {
+    data class OnNameChanged(val name: String) : Aula05Action
+    object OnSubmitClicked : Aula05Action
+    object OnDismissMessage : Aula05Action
+}
+```
+
+### 2. UiState — O que a tela precisa exibir
+
+```kotlin title="ui/screens/aula05/Aula05UiState.kt"
+data class Aula05UiState(
+    val userName: String = "",
+    val isLoading: Boolean = false,
+    val successMessage: String? = null,
+    val errorMessage: String? = null
+)
+```
+
+### 3. ViewModel — Processa Actions e emite UiState
+
+```kotlin title="ui/screens/aula05/Aula05ViewModel.kt"
+class Aula05ViewModel : ViewModel() {
+    private val _uiState = MutableStateFlow(Aula05UiState())
+    val uiState: StateFlow<Aula05UiState> = _uiState.asStateFlow()
+
+    fun onAction(action: Aula05Action) {
+        when (action) {
+            is Aula05Action.OnNameChanged -> {
+                _uiState.update { it.copy(userName = action.name, errorMessage = null) }
+            }
+            is Aula05Action.OnSubmitClicked -> {
+                submitData()
+            }
+            is Aula05Action.OnDismissMessage -> {
+                _uiState.update { it.copy(successMessage = null, errorMessage = null) }
+            }
+        }
+    }
+
+    private fun submitData() {
+        val currentName = _uiState.value.userName
+        if (currentName.isBlank()) {
+            _uiState.update { it.copy(errorMessage = "O nome não pode ser vazio") }
+            return
+        }
+
+        // Simulando fluxo assíncrono básico sem rede real ainda
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, errorMessage = null) }
+            delay(1500) // Fake network delay
+            _uiState.update {
+                it.copy(
+                    isLoading = false,
+                    successMessage = "Usuário $currentName cadastrado com sucesso!"
+                )
+            }
+        }
+    }
+}
+```
+
+### 4. Screen — Consome o estado reativo
+
+```kotlin title="ui/screens/aula05/Aula05Screen.kt"
+@Composable
+fun Aula05Screen(
+    modifier: Modifier = Modifier,
+    viewModel: Aula05ViewModel = viewModel()
+) {
+    val uiState by viewModel.uiState.collectAsState()
+
+    Column(
+        modifier = modifier.fillMaxSize().padding(24.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            text = "MVVM Básico",
+            style = MaterialTheme.typography.headlineLarge,
+            color = MaterialTheme.colorScheme.primary
+        )
+
+        Spacer(modifier = Modifier.height(32.dp))
+
+        OutlinedTextField(
+            value = uiState.userName,
+            onValueChange = { viewModel.onAction(Aula05Action.OnNameChanged(it)) },
+            label = { Text("Nome do Aluno") },
+            modifier = Modifier.fillMaxWidth(),
+            isError = uiState.errorMessage != null
+        )
+
+        if (uiState.errorMessage != null) {
+            Text(
+                text = uiState.errorMessage!!,
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.labelSmall,
+                modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
+            )
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Button(
+            onClick = { viewModel.onAction(Aula05Action.OnSubmitClicked) },
+            modifier = Modifier.fillMaxWidth(),
+            enabled = !uiState.isLoading
+        ) {
+            if (uiState.isLoading) {
+                CircularProgressIndicator(
+                    modifier = Modifier.padding(2.dp),
+                    color = MaterialTheme.colorScheme.onPrimary
+                )
+            } else {
+                Text("Cadastrar")
+            }
+        }
+
+        if (uiState.successMessage != null) {
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(
+                text = uiState.successMessage!!,
+                color = MaterialTheme.colorScheme.primary,
+                style = MaterialTheme.typography.titleMedium
+            )
+        }
+    }
+}
+```
+
+## 💻 Mão na Massa
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+<Tabs>
+  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
+
+### Adicione uma nova Action
+
+Crie `Aula05Action.OnClearClicked` que limpe o campo de nome. Adicione um botão "Limpar" na tela que dispare essa action.
+
+  </TabItem>
+  <TabItem value="ex2" label="Exercício 2 — Aplicação">
+
+### Campo de email com validação
+
+Adicione um campo `email` ao `UiState` e uma action `OnEmailChanged`. Valide no `submitData()` se o email contém `@`. Exiba erro específico no campo se inválido.
+
+  </TabItem>
+  <TabItem value="ex3" label="Exercício 3 — Desafio">
+
+### Formulário completo com lista de registros
+
+Integre tudo: nome + email. Ao submeter com sucesso, adicione o registro a uma `List<UserProfile>` (da Aula 02) no UiState. Exiba a lista abaixo do formulário usando `Column`.
+
+  </TabItem>
+</Tabs>

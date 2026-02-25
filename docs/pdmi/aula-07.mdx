@@ -1,0 +1,141 @@
+---
+sidebar_position: 7
+title: "Aula 07: Splash Screen e Auth Flow"
+description: "SplashScreen com verificação de autenticação, AsyncStorage para persistência de token."
+---
+
+# Aula 07: Splash Screen e Auth Flow
+
+:::info 🔀 Branch da Aula
+Esta aula refere-se à branch: **`aula-07`**
+```bash
+git checkout aula-07
+```
+:::
+
+## 📖 Conceito
+
+A **SplashScreen** é o primeiro contato visual do usuário com o app. No MergeSkills, ela verifica se o usuário já está autenticado (token no AsyncStorage) e redireciona automaticamente.
+
+### Arquivos novos nesta branch
+
+| Arquivo | Descrição |
+|---------|-----------|
+| `lib/supabase.ts` | Configuração do Supabase (adicionada nesta branch) |
+
+## 💻 Código de Referência
+
+### SplashScreen com Auth Check
+
+```tsx title="app/index.tsx"
+import React, { useEffect } from 'react';
+import { View, Text, StyleSheet, StatusBar } from 'react-native';
+import { useRouter } from 'expo-router';
+import Colors from '../constants/Colors';
+import { apiClient } from '../lib/api';
+
+export default function SplashScreen() {
+    const router = useRouter();
+
+    useEffect(() => {
+        const checkAuth = async () => {
+            await new Promise(resolve => setTimeout(resolve, 2000));
+
+            try {
+                const authenticated = await apiClient.auth.isAuthenticated();
+                if (authenticated) {
+                    router.replace('/(tabs)');
+                } else {
+                    router.replace('/login');
+                }
+            } catch (error) {
+                console.error('Erro no checkAuth:', error);
+                router.replace('/login');
+            }
+        };
+
+        checkAuth();
+    }, []);
+
+    return (
+        <View style={styles.container}>
+            <StatusBar barStyle="light-content" />
+            <View style={styles.logoContainer}>
+                <View style={styles.logoSymbol}>
+                    <Text style={styles.logoText}>M</Text>
+                </View>
+                <Text style={styles.brandName}>Merge Skills</Text>
+            </View>
+        </View>
+    );
+}
+
+const styles = StyleSheet.create({
+    container: {
+        flex: 1,
+        backgroundColor: Colors.dark.background,
+        justifyContent: 'center',
+        alignItems: 'center'
+    },
+    logoSymbol: {
+        width: 80, height: 80,
+        backgroundColor: Colors.colors.stitchGreen,
+        borderRadius: 20,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginBottom: 16
+    },
+    logoText: {
+        fontSize: 57, fontWeight: 'bold',
+        color: Colors.dark.background
+    },
+    brandName: {
+        fontSize: 32, fontWeight: '600',
+        color: Colors.colors.stitchGreen,
+        letterSpacing: 1
+    }
+});
+```
+
+### isAuthenticated no api.ts
+
+```ts title="lib/api.ts (trecho)"
+auth: {
+    async isAuthenticated() {
+        const token = await AsyncStorage.getItem(API_CONFIG.TOKEN_KEY);
+        return !!token;
+    }
+}
+```
+
+## 💻 Mão na Massa
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+<Tabs>
+  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
+
+### Adicione animação ao logo
+
+Use `Animated.Value` para fazer o logo aparecer com fade-in durante os 2 segundos de splash.
+
+  </TabItem>
+  <TabItem value="ex2" label="Exercício 2 — Aplicação">
+
+### Token persistence no signIn
+
+Atualize `apiClient.auth.signIn` para salvar o `access_token` retornado pela API no `AsyncStorage`. Verifique que após login → fechar app → reabrir, o splash redireciona direto para `(tabs)`.
+
+  </TabItem>
+  <TabItem value="ex3" label="Exercício 3 — Desafio">
+
+### Logout com limpeza de token
+
+Na tela de perfil, adicione um botão "Sair" que:
+1. Chame `apiClient.auth.signOut()` (remove token do AsyncStorage)
+2. Navegue para `/login` com `router.replace()`
+3. Garanta que o back button não retorne à home
+
+  </TabItem>
+</Tabs>

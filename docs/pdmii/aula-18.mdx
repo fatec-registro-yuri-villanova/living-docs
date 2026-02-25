@@ -1,0 +1,129 @@
+---
+sidebar_position: 18
+title: "Aula 18: Animações em Compose"
+description: "AnimatedVisibility, animateAsState, transições de tela e micro-interações."
+---
+
+# Aula 18: Animações em Compose
+
+:::info 🔀 Branch da Aula
+Esta aula refere-se à branch: **`aula-18`**
+```bash
+git checkout aula-18
+```
+:::
+
+## 📖 Conceito
+
+Animações transformam uma interface funcional em uma experiência encantadora. O Compose oferece APIs de animação declarativas que são simples de usar mas poderosas.
+
+### Tipos de Animação
+
+| API | Uso | Complexidade |
+|-----|-----|-------------|
+| `animateXxxAsState` | Propriedade única (cor, tamanho, opacidade) | Simples |
+| `AnimatedVisibility` | Aparecer/desaparecer componentes | Simples |
+| `AnimatedContent` | Trocar um conteúdo por outro | Média |
+| `Animatable` | Controle total sobre animação | Avançado |
+| `InfiniteTransition` | Loops contínuos | Média |
+
+### Exemplos Práticos
+
+```kotlin
+// Cor animada no botão de opção
+val backgroundColor by animateColorAsState(
+    targetValue = if (isSelected)
+        Color(0xFF4CDF20).copy(alpha = 0.15f)
+    else
+        Color.Transparent,
+    animationSpec = tween(300),
+    label = "optionBg"
+)
+
+// Visibilidade com animação
+AnimatedVisibility(
+    visible = showBanner,
+    enter = slideInVertically() + fadeIn(),
+    exit = slideOutVertically() + fadeOut()
+) {
+    ErrorBanner(message = errorMessage)
+}
+```
+
+## 💻 Código de Referência
+
+```kotlin title="components/AnimatedOptionButton.kt"
+@Composable
+fun AnimatedOptionButton(
+    text: String,
+    isSelected: Boolean,
+    isCorrect: Boolean?,
+    onClick: () -> Unit
+) {
+    val borderColor by animateColorAsState(
+        targetValue = when {
+            isCorrect == true -> Color(0xFF4CDF20)
+            isCorrect == false -> Color(0xFFFF453A)
+            isSelected -> Color(0xFF4CDF20)
+            else -> Color(0xFF333333)
+        },
+        animationSpec = tween(300),
+        label = "border"
+    )
+
+    val scale by animateFloatAsState(
+        targetValue = if (isSelected) 1.02f else 1f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
+        label = "scale"
+    )
+
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .graphicsLayer { scaleX = scale; scaleY = scale }
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(12.dp),
+        border = BorderStroke(2.dp, borderColor),
+        color = borderColor.copy(alpha = 0.08f)
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(16.dp),
+            style = MaterialTheme.typography.bodyLarge
+        )
+    }
+}
+```
+
+## 💻 Mão na Massa
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+<Tabs>
+  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
+
+### Anime a barra de progresso do quiz
+
+Use `animateFloatAsState` para que a `LinearProgressIndicator` do quiz (Aula 11) transite suavemente entre valores.
+
+  </TabItem>
+  <TabItem value="ex2" label="Exercício 2 — Aplicação">
+
+### AnimatedContent para troca de questões
+
+Use `AnimatedContent` no `QuizScreen` para que a transição entre questões tenha um efeito de slide horizontal.
+
+  </TabItem>
+  <TabItem value="ex3" label="Exercício 3 — Desafio">
+
+### Micro-interações completas
+
+Adicione animações em todo o app:
+1. `AnimatedVisibility` no `ErrorBanner` (Aula 05)
+2. `animateColorAsState` nos `OptionButton` do quiz (Aula 11)
+3. Transição de `fadeIn` + `slideIn` no `FeedbackBottomSheet` (Aula 12)
+4. Pulse animation no `StreakBadge` (Aula 15)
+
+  </TabItem>
+</Tabs>
