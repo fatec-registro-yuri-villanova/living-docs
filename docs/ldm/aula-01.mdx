@@ -15,13 +15,30 @@ git checkout aula-01
 
 ## 📖 Conceito
 
-O **Kotlin Multiplatform (KMP)** permite compartilhar lógica entre Server, Desktop e Mobile. O projeto possui 3 módulos:
+O **Kotlin Multiplatform (KMP)** permite escrever código que funciona em diferentes plataformas, reduzindo tempo e esforço de desenvolvimento. Seu principal objetivo não é forçar uma interface única para tudo, mas sim compartilhar a **lógica de negócios comum** enquanto preserva a capacidade de interagir com APIs e bibliotecas nativas de cada sistema operacional.
 
-| Módulo | Função |
+### Como funcionam os Targets e Source Sets?
+
+No KMP, o código é agrupado em "Source Sets" (conjuntos de fontes) que são compilados para diferentes "Targets" (alvos como Android, iOS, JVM, etc).
+
+- **`commonMain`**: Onde o compartilhamento principal ocorre. O código escrito aqui é agnóstico à plataforma e compilado para todos os alvos do projeto. Aqui só entram dependências que também são "Multiplatform".
+- **Source Sets Específicos (ex: `androidMain`, `jvmMain`, `iosMain`)**: Eles "herdam" a lógica do `commonMain`, mas rodam em ambientes restritos. Dentro do `jvmMain`, por exemplo, você pode importar bibliotecas normais do ecossistema Java (JDK).
+
+Em nossa arquitetura de aula, estruturamos os módulos da seguinte forma:
+
+| Módulo | Função na Arquitetura |
 |--------|--------|
-| `shared/` | Lógica compartilhada (expect/actual, models) |
-| `server/` | Backend Ktor (API REST) |
-| `composeApp/` | CMS Desktop com Compose for Desktop |
+| `shared/` | Módulo tipicamente Multiplatform. Contém o `commonMain` e os source sets específicos de plataforma utilizados no ecossistema (Android/Desktop). |
+| `server/` | Aplicação Backend rodando sobre o Target JVM. Consume os Modelos de `shared`. |
+| `composeApp/` | CMS Frontend construído utilizando o Compose Multiplatform. Compilável para Desktop (JVM) e preparado para Android. |
+
+### Conectando Bibliotecas Nativas (Expect / Actual)
+
+Às vezes, a lógica compartilhada em `commonMain` precisa acessar funcionalidades específicas do dispositivo (como buscar o UUID do hardware, usar o sistema de arquivos local ou pegar a versão do Sistema Operacional).
+Como o `commonMain` não conhece pacotes como `android.*` ou a `Foundation` da Apple, o Kotlin fornece o mecanismo **`expect / actual`**.
+
+1.  **`expect` (no commonMain)**: Define-se um contrato (interface ou função). O Kotlin entenderá que a implementação existirá futuramente.
+2.  **`actual` (nos source sets específicos)**: É a realização nativa daquele contrato nas plataformas, permitindo _conectar bibliotecas plataforma-específicas_ diretamente ao código KMP de maneira segura. Se você esquecer de prover uma versão `actual` para algum target ativado na `build.gradle`, o compilador nem sequer gerará o binário.
 
 ## 💻 Código de Referência
 
