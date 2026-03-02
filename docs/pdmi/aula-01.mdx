@@ -44,7 +44,29 @@ let count = 0;
 count = 1; // Permitido
 ```
 
-### 2. Tipagem e Null Safety
+### 2. Tipagem Forte e Tipos Primitivos
+
+```typescript
+// Tipos Primitivos Básicos
+const nome: string = "Yuri";
+const idade: number = 28;
+const isDeveloper: boolean = true;
+
+// Inferência vs Tipagem Explícita
+let cidade = "São Paulo"; // TS infere que é string
+// cidade = 10; // ERRO: O TS não permite mudar o tipo associado
+
+// Union Types (Permite mais de um tipo, muito usado com null)
+let telefone: string | null = null;
+telefone = "11999999999";
+
+// O perigo do 'any' (Foge da verificação do TS - EVITE!)
+let variavelDinamica: any = "Texto";
+variavelDinamica = 100;
+variavelDinamica.metodoInexistente(); // O TS não avisa o erro aqui!
+```
+
+### 3. Null Safety
 
 ```typescript
 // Tipagem explícita
@@ -60,7 +82,7 @@ const bio = usuario.profile?.bio; // Não quebra se bio for undefined
 const github = user.github ?? "Não Cadastrado";
 ```
 
-### 3. Arrow Functions e Parâmetros
+### 4. Arrow Functions e Parâmetros
 
 ```typescript
 // Função tradicional
@@ -75,7 +97,7 @@ const somar = (a: number, b: number) => a + b;
 const saudar = (nome: string, msg: string = "Olá") => `${msg}, ${nome}`;
 ```
 
-### 4. Arrays e Map/Filter
+### 5. Arrays e Map/Filter
 
 ```typescript
 // Arrays robustos
@@ -88,7 +110,7 @@ tecnologias
     .forEach(tech => console.log(tech));
 ```
 
-### 5. Interfaces e Types (OOP Moderno)
+### 6. Interfaces e Types (OOP Moderno)
 
 ```typescript
 // Define o contrato de um objeto
@@ -107,7 +129,7 @@ const meuPerfil: User = {
 };
 ```
 
-### 6. Destructuring e Spread
+### 7. Destructuring e Spread
 
 ```typescript
 // Destruturação de objetos
@@ -118,7 +140,7 @@ const novoPerfil = { ...meuPerfil, name: "Novo Nome" };
 const listaCompleta = [...tecnologias, "Next.js"];
 ```
 
-### 7. Classes
+### 8. Classes
 
 ```typescript
 class Aluno {
@@ -130,7 +152,7 @@ class Aluno {
 }
 ```
 
-### 8. Import e Export
+### 9. Import e Export
 
 ```typescript
 // Exportando um componente ou utilitário
