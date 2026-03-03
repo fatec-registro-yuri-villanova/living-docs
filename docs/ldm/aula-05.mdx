@@ -1,10 +1,10 @@
 ---
 sidebar_position: 5
-title: "Aula 05: Auth no Server"
-description: "Autenticação com Supabase Auth — registro, login, JWT validation no Ktor."
+title: "Aula 05: Ktor Server Architecture"
+description: "Configuração modular de Plugins e Roteamento no Ktor Server."
 ---
 
-# Aula 05: Auth no Server
+# Aula 05: Ktor Server Architecture
 
 :::info 🔀 Branch da Aula
 Esta aula refere-se à branch: **`aula-05`**
@@ -13,32 +13,66 @@ git checkout aula-05
 ```
 :::
 
-:::caution 🚧 Conteúdo Prospectivo
-Esta branch ainda não possui código implementado.
-:::
-
 ## 📖 Conceito
 
-O server valida tokens JWT recebidos do client. O Supabase Auth é usado para registro/login, e o Ktor valida o JWT em cada requisição protegida.
+À medida que nossa API cresce, configurar tudo diretamente dentro do `Application.kt` torna o código ilegível. O **Ktor** suporta a abstração por **Plugins**. Nesta aula, extraímos responsabilidades cruciais (como CORS, Tratamento de Erros, JSON Parsing e Roteamento) para funções extensórias dedicadas alojadas na pasta `plugins/`.
 
 ## 💻 Código de Referência
 
-```kotlin title="server/.../plugins/AuthPlugin.kt"
-fun Application.configureAuth(supabase: SupabaseClient) {
-    install(Authentication) {
-        bearer("supabase-jwt") {
-            authenticate { credential ->
-                // Valida o JWT contra o Supabase
-                val token = credential.token
-                try {
-                    val user = supabase.auth.retrieveUser(token)
-                    UserIdPrincipal(user.id)
-                } catch (e: Exception) {
-                    null // Token inválido
-                }
-            }
+Abaixo estão os exemplos de plugins construídos:
+
+### 1. Serialization Plugin
+
+```kotlin title="server/src/main/kotlin/com/fatec/merge_skills_kmp/plugins/Serialization.kt"
+package com.fatec.merge_skills_kmp.plugins
+
+import io.ktor.serialization.kotlinx.json.*
+import io.ktor.server.application.*
+import io.ktor.server.plugins.contentnegotiation.*
+import kotlinx.serialization.json.Json
+
+fun Application.configureSerialization() {
+    install(ContentNegotiation) {
+        json(Json {
+            prettyPrint = true
+            isLenient = true
+            ignoreUnknownKeys = true
+        })
+    }
+}
+```
+
+### 2. StatusPages Plugin
+
+```kotlin title="server/src/main/kotlin/com/fatec/merge_skills_kmp/plugins/StatusPages.kt"
+package com.fatec.merge_skills_kmp.plugins
+
+import io.ktor.http.*
+import io.ktor.server.application.*
+import io.ktor.server.plugins.statuspages.*
+import io.ktor.server.response.*
+
+fun Application.configureStatusPages() {
+    install(StatusPages) {
+        exception<Throwable> { call, cause ->
+            call.respondText(text = "500: $cause", status = HttpStatusCode.InternalServerError)
         }
     }
+}
+```
+
+### 3. Ajustando o Ponto de Entrada
+
+Com os plugins isolados, nosso arquivo principal de servidor simplifica imensamente sua inicialização:
+
+```kotlin title="server/src/main/kotlin/com/fatec/merge_skills_kmp/Application.kt"
+fun Application.module() {
+    // Configurações do Supabase...
+    // Pipeline configuration via Modular Plugins (Aula 05)
+    configureSerialization()
+    configureCORS()
+    configureStatusPages()
+    configureRouting()
 }
 ```
 
@@ -48,19 +82,15 @@ import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
 <Tabs>
-  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
+  <TabItem value="ex1" label="Exercício 1 — Extração" default>
 
-Crie endpoints `POST /auth/login` e `POST /auth/register` usando `supabase.auth`.
-
+Crie o diretório `server/src/main/kotlin/com/fatec/merge_skills_kmp/plugins/` e extraia a configuração do `val routing = routing {}` existente no `Application.kt` para criar o seu próprio plugin `Routing.kt`.
+    
   </TabItem>
-  <TabItem value="ex2" label="Exercício 2 — Aplicação">
+  <TabItem value="ex2" label="Exercício 2 — CORS">
 
-Proteja os endpoints de `courses` com `authenticate("supabase-jwt")`.
-
-  </TabItem>
-  <TabItem value="ex3" label="Exercício 3 — Desafio">
-
-Implemente refresh token — quando o access token expira, o client envia o refresh token e recebe um novo par.
+Adicione um arquivo `CORS.kt` na pasta de plugins. Libere os cabeçalhos (`allowHeader`) como `Authorization`, `ContentType` e os métodos de `HttpMethod` `Options`, `Put`, `Delete` e `Patch`.
+Para a API aceitar as origens perfeitamente em dev defina o uso do `anyHost()`. Lembre-se que você precisará incluir a dependência `implementation(libs.ktor.server.cors)` no `server/build.gradle.kts`.
 
   </TabItem>
 </Tabs>
