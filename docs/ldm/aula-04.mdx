@@ -20,7 +20,43 @@ Anotamos as classes do Kotlin com `@Serializable` no módulo `shared/commonMain`
 
 ## 💻 Código de Referência
 
-```kotlin title="shared/.../models/ContentDTOs.kt"
+Abaixo estão as implementações feitas na branch `aula-04`:
+
+### 1. Auth DTOs
+
+```kotlin title="shared/src/commonMain/kotlin/com/fatec/merge_skills_kmp/domain/models/AuthDTOs.kt"
+package com.fatec.merge_skills_kmp.domain.models
+
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+
+@Serializable
+data class LoginRequest(
+    val email: String,
+    val password: String
+)
+
+@Serializable
+data class RegisterRequest(
+    val username: String,
+    val email: String,
+    val password: String
+)
+
+@Serializable
+data class AuthResponse(
+    val user: User,
+    val token: String,
+    @SerialName("refresh_token")
+    val refreshToken: String? = null
+)
+```
+
+### 2. Content DTOs
+
+```kotlin title="shared/src/commonMain/kotlin/com/fatec/merge_skills_kmp/domain/models/ContentDTOs.kt"
+package com.fatec.merge_skills_kmp.domain.models
+
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -31,12 +67,63 @@ data class CourseResponse(
 )
 
 @Serializable
+data class LessonResponse(
+    val lesson: Lesson,
+    val questions: List<Question>? = null
+)
+
+@Serializable
 data class QuestionAttemptRequest(
     @SerialName("question_id")
     val questionId: Int,
     @SerialName("selected_option")
     val selectedOption: Int
 )
+
+@Serializable
+data class QuestionAttemptResponse(
+    @SerialName("is_correct")
+    val isCorrect: Boolean,
+    @SerialName("correct_answer")
+    val correctAnswer: Int,
+    val attempt: QuestionAttempt
+)
+```
+
+### 3. Repository Interfaces
+
+Os repositórios definem os contratos da nossa API:
+
+```kotlin title="shared/src/commonMain/kotlin/com/fatec/merge_skills_kmp/domain/repository/UserRepository.kt"
+package com.fatec.merge_skills_kmp.domain.repository
+
+import com.fatec.merge_skills_kmp.domain.models.AuthResponse
+import com.fatec.merge_skills_kmp.domain.models.LoginRequest
+import com.fatec.merge_skills_kmp.domain.models.RegisterRequest
+import com.fatec.merge_skills_kmp.domain.models.User
+
+interface UserRepository {
+    suspend fun login(request: LoginRequest): Result<AuthResponse>
+    suspend fun register(request: RegisterRequest): Result<AuthResponse>
+    suspend fun getUserProfile(userId: String): Result<User>
+    suspend fun updateStreak(userId: String): Result<User>
+}
+```
+
+```kotlin title="shared/src/commonMain/kotlin/com/fatec/merge_skills_kmp/domain/repository/CourseRepository.kt"
+package com.fatec.merge_skills_kmp.domain.repository
+
+import com.fatec.merge_skills_kmp.domain.models.CourseResponse
+import com.fatec.merge_skills_kmp.domain.models.LessonResponse
+import com.fatec.merge_skills_kmp.domain.models.QuestionAttemptRequest
+import com.fatec.merge_skills_kmp.domain.models.QuestionAttemptResponse
+
+interface CourseRepository {
+    suspend fun getCourses(): Result<List<CourseResponse>>
+    suspend fun getCourseDetails(courseId: Int): Result<CourseResponse>
+    suspend fun getLessonDetails(lessonId: Int): Result<LessonResponse>
+    suspend fun submitQuestionAttempt(userId: String, request: QuestionAttemptRequest): Result<QuestionAttemptResponse>
+}
 ```
 
 ## 💻 Mão na Massa
@@ -45,14 +132,14 @@ import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
 <Tabs>
-  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
+  <TabItem value="ex1" label="Exercício 1 — DTOs" default>
 
-Implemente os DTOs de `AuthDTOs.kt` para `LoginRequest` e `RegisterRequest`.
+Crie os arquivos `AuthDTOs.kt` e `ContentDTOs.kt` dentro de `shared/src/commonMain/kotlin/com/fatec/merge_skills_kmp/domain/models/` com todas as anotações `@Serializable` correspondentes. Lembre-se de checar o comportamento da anotação `@SerialName`.
 
   </TabItem>
-  <TabItem value="ex2" label="Exercício 2 — Aplicação">
+  <TabItem value="ex2" label="Exercício 2 — Repositórios">
 
-Crie a abstração `CourseRepository` declarando os métodos que a API e o Cliente Ktor deverão implementar.
+Organize as abstrações dos repositórios `CourseRepository` e `UserRepository` que definirão as chamadas do cliente e a implementação no lado do servidor nas próximas aulas.
 
   </TabItem>
 </Tabs>
