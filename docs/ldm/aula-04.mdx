@@ -1,10 +1,10 @@
 ---
 sidebar_position: 4
-title: "Aula 04: CRUD Endpoints"
-description: "Endpoints REST completos para Courses — GET, POST, PUT, DELETE com Ktor Routing."
+title: "Aula 04: Modelagem de Dados e DTOs"
+description: "Criação de DTOs (Data Transfer Objects) e Serialização compartilhada no commonMain."
 ---
 
-# Aula 04: CRUD Endpoints
+# Aula 04: Modelagem de Dados e DTOs
 
 :::info 🔀 Branch da Aula
 Esta aula refere-se à branch: **`aula-04`**
@@ -13,41 +13,30 @@ git checkout aula-04
 ```
 :::
 
-:::caution 🚧 Conteúdo Prospectivo
-Esta branch ainda não possui código implementado.
-:::
-
 ## 📖 Conceito
 
-CRUD (Create, Read, Update, Delete) é o padrão base de qualquer API REST. Cada endpoint mapeia para uma operação no Supabase via Postgrest.
+Para garantir um tráfego eficiente e seguro de informações entre o Servidor (Backend) e o Cliente Desktop, utilizamos **DTOs (Data Transfer Objects)**. 
+Anotamos as classes do Kotlin com `@Serializable` no módulo `shared/commonMain` para que tanto as APIs do Ktor quanto o front-end Desktop do Compose consigam falar a mesma linguagem, transcrevendo o JSON perfeitamente.
 
 ## 💻 Código de Referência
 
-```kotlin title="server/.../routes/CourseRoutes.kt"
-fun Route.courseRoutes(supabase: SupabaseClient) {
-    route("/api/courses") {
-        get {
-            val courses = supabase.postgrest.from("courses").select()
-            call.respond(courses.decodeList<Course>())
-        }
-        get("/{id}") {
-            val id = call.parameters["id"]!!
-            val course = supabase.postgrest.from("courses")
-                .select { filter { eq("id", id) } }
-            call.respond(course.decodeSingle<Course>())
-        }
-        post {
-            val body = call.receive<CreateCourseRequest>()
-            supabase.postgrest.from("courses").insert(body)
-            call.respond(HttpStatusCode.Created)
-        }
-        delete("/{id}") {
-            val id = call.parameters["id"]!!
-            supabase.postgrest.from("courses").delete { filter { eq("id", id) } }
-            call.respond(HttpStatusCode.NoContent)
-        }
-    }
-}
+```kotlin title="shared/.../models/ContentDTOs.kt"
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+
+@Serializable
+data class CourseResponse(
+    val course: Course,
+    val lessons: List<Lesson>? = null
+)
+
+@Serializable
+data class QuestionAttemptRequest(
+    @SerialName("question_id")
+    val questionId: Int,
+    @SerialName("selected_option")
+    val selectedOption: Int
+)
 ```
 
 ## 💻 Mão na Massa
@@ -58,17 +47,12 @@ import TabItem from '@theme/TabItem';
 <Tabs>
   <TabItem value="ex1" label="Exercício 1 — Fixação" default>
 
-Implemente o endpoint `PUT /api/courses/{id}` para atualização parcial.
+Implemente os DTOs de `AuthDTOs.kt` para `LoginRequest` e `RegisterRequest`.
 
   </TabItem>
   <TabItem value="ex2" label="Exercício 2 — Aplicação">
 
-Adicione paginação com `?page=1&limit=10` usando `range()` do Postgrest.
-
-  </TabItem>
-  <TabItem value="ex3" label="Exercício 3 — Desafio">
-
-Crie rotas para `Lessons` (aulas dentro de um curso) com relação `course_id` e busca aninhada.
+Crie a abstração `CourseRepository` declarando os métodos que a API e o Cliente Ktor deverão implementar.
 
   </TabItem>
 </Tabs>
