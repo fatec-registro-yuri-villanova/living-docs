@@ -182,7 +182,7 @@ Crie um endpoint `GET /api/courses` que use o Supabase para buscar dados da tabe
 ```kotlin
 get("/api/courses") {
     val courses = supabase?.postgrest?.from("courses")?.select()
-    call.respondText(courses?.body?.toString() ?: "[]")
+    call.respondText(courses?.data ?: "[]")
 }
 ```
 
