@@ -1,7 +1,7 @@
 ---
 sidebar_position: 2
 title: "Aula 02: Supabase Client Compartilhado"
-description: "Configuração do SupabaseClient no módulo shared — Auth, Postgrest e Storage."
+description: "Configuração do SupabaseClient no módulo shared — Auth, Postgrest e Storage para reuso cross-platform."
 ---
 
 # Aula 02: Supabase Client Compartilhado
@@ -15,27 +15,41 @@ git checkout aula-02
 
 ## 📖 Conceito
 
-O **Supabase Client** é configurado no módulo `shared/` para ser reutilizado em todas as plataformas (Server, Desktop, Mobile). Instala plugins de Auth, Postgrest (banco) e Storage (arquivos).
+Na aula anterior, montamos a estrutura KMP com um servidor Ktor puro. Agora vamos dar o próximo passo: **conectar o projeto ao Supabase** — o banco de dados que alimentará nosso ecossistema MergeSkills.
 
-### Arquivo novo nesta branch
+O segredo está no módulo `shared/`. Como ele é compilado para múltiplas plataformas (JVM, Android, Desktop), qualquer código escrito lá fica disponível automaticamente para todos os módulos. Isso significa que vamos criar **uma única configuração** do Supabase e reutilizá-la em:
 
-| Arquivo | Descrição |
-|---------|-----------|
-| `shared/.../SupabaseClient.kt` | Factory function do SupabaseClient compartilhado |
+- 🖥️ **Server** (Ktor) — para endpoints da API
+- 💻 **Desktop** (Compose for Desktop) — para o CMS administrativo
+- 📱 **Android** (futuro) — para o app mobile
+
+### O que muda nesta branch (vs aula-01)
+
+| Arquivo | O que foi adicionado | Módulo |
+|---------|---------------------|--------|
+| `SupabaseClient.kt` | Factory function para criar o client | `shared/` |
+| `Constants.kt` | Porta padrão do server | `shared/` |
+| `shared/build.gradle.kts` | Dependências Supabase SDK | `shared/` |
+| `server/build.gradle.kts` | Dependências Supabase + Database | `server/` |
+| `Application.kt` | Inicialização do SupabaseClient | `server/` |
+
+### Supabase SDK — O que são os Plugins?
+
+O Supabase SDK para Kotlin é modular. Cada funcionalidade é um **plugin** que você instala separadamente:
+
+| Plugin | Função | Quando usar |
+|--------|--------|-------------|
+| `Postgrest` | Acesso ao banco de dados (CRUD) | Sempre — é o core |
+| `Auth` | Autenticação de usuários | Login, Register, JWT |
+| `Storage` | Upload/download de arquivos | Fotos de perfil, imagens |
 
 ## 💻 Código de Referência
 
-### SupabaseClient — Factory Function
+### SupabaseClient.kt — Factory Function no Shared
+
+A função `createAppSupabaseClient` vive no `commonMain`, o que significa que **qualquer módulo** pode chamá-la com suas próprias credenciais:
 
 ```kotlin title="shared/src/commonMain/kotlin/.../SupabaseClient.kt"
-import io.github.jan.supabase.SupabaseClient
-import io.github.jan.supabase.createSupabaseClient
-import io.github.jan.supabase.gotrue.Auth
-import io.github.jan.supabase.postgrest.Postgrest
-import io.github.jan.supabase.serializer.KotlinXSerializer
-import io.github.jan.supabase.storage.Storage
-import kotlinx.serialization.json.Json
-
 fun createAppSupabaseClient(
     supabaseUrl: String,
     supabaseKey: String
@@ -44,21 +58,83 @@ fun createAppSupabaseClient(
         supabaseUrl = supabaseUrl,
         supabaseKey = supabaseKey
     ) {
-        install(Postgrest)
-        install(Auth)
-        install(Storage)
+        install(Postgrest)   // Acesso ao banco (queries, inserts, etc.)
+        install(Auth)        // Autenticação (login, register, JWT)
+        install(Storage)     // Armazenamento de arquivos (fotos, docs)
 
         defaultSerializer = KotlinXSerializer(Json {
-            ignoreUnknownKeys = true
-            prettyPrint = true
-            isLenient = true
+            ignoreUnknownKeys = true  // Ignora campos extra do JSON
+            prettyPrint = true        // JSON formatado nos logs
+            isLenient = true          // Aceita JSON "relaxado"
         })
     }
 }
 ```
 
-:::tip Shared = Reutilizado
-Essa função vive no `commonMain` — qualquer módulo (server, desktop, mobile) pode chamá-la com suas credenciais específicas. O server usa `System.getProperty()`, o mobile usa `BuildConfig`.
+:::tip Factory Pattern
+Uma **factory function** é uma função que cria e retorna um objeto pronto para uso. Em vez de chamar `createSupabaseClient(...)` espalhado pelo código, centralizamos a configuração em um lugar só. Se amanhã quisermos adicionar um plugin novo, alteramos apenas este arquivo.
+:::
+
+### Application.kt — Server consome o Shared
+
+O servidor lê as credenciais via `System.getProperty()` (JVM args definidos no `build.gradle.kts`) e usa a factory do shared:
+
+```kotlin title="server/src/main/kotlin/.../Application.kt"
+fun Application.module() {
+    // Credenciais vêm do build.gradle.kts → local.properties
+    val supabaseUrl = System.getProperty("SUPABASE_URL")
+    val supabaseKey = System.getProperty("SUPABASE_KEY")
+
+    var supabase: SupabaseClient? = null
+
+    if (supabaseUrl != null && supabaseKey != null) {
+        // Reutiliza a factory do módulo shared!
+        supabase = createAppSupabaseClient(supabaseUrl, supabaseKey)
+    }
+
+    install(ContentNegotiation) {
+        json(Json {
+            prettyPrint = true
+            isLenient = true
+            ignoreUnknownKeys = true
+        })
+    }
+
+    routing {
+        get("/") {
+            call.respondText("API LDDM/PDM (mergeskillskmp). Tente acessar /api/health")
+        }
+
+        get("/api/health") {
+            call.respond(
+                HealthResponse(
+                    status = "Status UP",
+                    timestamp = System.currentTimeMillis()
+                )
+            )
+        }
+    }
+}
+```
+
+### Dependências — O que foi adicionado no Gradle
+
+No `shared/build.gradle.kts`, três novas dependências com `api()` (visíveis para quem depende do shared):
+
+```kotlin title="shared/build.gradle.kts (diff vs aula-01)"
+commonMain.dependencies {
+    // ... (existentes da aula-01)
+    api(libs.supabase.postgrest)  // NOVO: Database
+    api(libs.supabase.gotrue)     // NOVO: Auth
+    api(libs.supabase.storage)    // NOVO: Storage
+}
+```
+
+:::tip `api()` vs `implementation()`
+- **`api()`**: A dependência fica visível para quem depende deste módulo (o server "enxerga" o Supabase automaticamente).
+- **`implementation()`**: A dependência fica privada — só o shared a conhece.
+
+Como queremos que o server use o SupabaseClient diretamente, usamos `api()`.
 :::
 
 ## 💻 Mão na Massa
@@ -69,17 +145,48 @@ import TabItem from '@theme/TabItem';
 <Tabs>
   <TabItem value="ex1" label="Exercício 1 — Fixação" default>
 
-Configure variáveis de ambiente `SUPABASE_URL` e `SUPABASE_KEY` no `build.gradle.kts` do server e instancie o client.
+### Configure o local.properties
+
+Crie (ou edite) o arquivo `local.properties` na raiz do projeto com suas credenciais do Supabase:
+
+```properties
+SUPABASE_URL=https://SEU-PROJETO.supabase.co
+SUPABASE_KEY=sua-anon-key-aqui
+```
+
+Execute o servidor com `./gradlew :server:run` e verifique no log que não há erros de conexão.
 
   </TabItem>
   <TabItem value="ex2" label="Exercício 2 — Aplicação">
 
-No servidor, crie um endpoint `GET /api/courses` que use `supabase.postgrest.from("courses").select()` para buscar dados reais.
+### Endpoint de status do Supabase
+
+Modifique o endpoint `/api/health` para retornar se o Supabase está conectado ou não:
+
+```kotlin
+get("/api/health") {
+    call.respond(HealthResponse(
+        status = if (supabase != null) "UP (Supabase OK)" else "DEGRADED (sem Supabase)",
+        timestamp = System.currentTimeMillis()
+    ))
+}
+```
 
   </TabItem>
   <TabItem value="ex3" label="Exercício 3 — Desafio">
 
-Crie uma data class `Course` no `shared/` com `@Serializable` e use-a tanto no endpoint do server quanto na UI do ComposeApp para listar cursos.
+### Primeira query real
+
+Crie um endpoint `GET /api/courses` que use o Supabase para buscar dados da tabela `courses`:
+
+```kotlin
+get("/api/courses") {
+    val courses = supabase?.postgrest?.from("courses")?.select()
+    call.respondText(courses?.body?.toString() ?: "[]")
+}
+```
+
+Se a tabela ainda não existir, o Supabase retornará um erro 404 — e tudo bem, na próxima aula criaremos o schema!
 
   </TabItem>
 </Tabs>

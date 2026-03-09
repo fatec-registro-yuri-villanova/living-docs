@@ -1,10 +1,10 @@
 ---
 sidebar_position: 3
-title: "Aula 03: Supabase no Server e Compose Desktop"
-description: "Integração do SupabaseClient no Ktor Server e primeiro Compose for Desktop app."
+title: "Aula 03: Banco de Dados e Schema SQL"
+description: "Modelagem do banco de dados relacional com SQL para suportar gamificação e conteúdo acadêmico."
 ---
 
-# Aula 03: Supabase no Server e Compose Desktop
+# Aula 03: Banco de Dados e Schema SQL
 
 :::info 🔀 Branch da Aula
 Esta aula refere-se à branch: **`aula-03`**
@@ -15,70 +15,93 @@ git checkout aula-03
 
 ## 📖 Conceito
 
-Nesta aula, o server instancia o `SupabaseClient` compartilhado e o ComposeApp é reestruturado para `commonMain` (preparação para multiplataforma).
+Na aula passada, testamos a conexão base usando Ktor e Supabase Client. Mas um projeto real não armazena apenas `status = UP`. Nesta semana, nossa arquitetura mergulha no **PostgreSQL** hospedado pelo Supabase.
+
+O objetivo da aula é estruturar um esquema relacional que atenda à Spec Técnica do MergeSkills, conectando tabelas de trilhas de conhecimento e perfis gamificados (Streak).
+
+### Por que SQL e não NoSQL?
+O "MergeSkills" precisa manter rigorosa integridade (ex: uma pergunta não pode existir sem uma lição que não existe sem um curso). O PostgreSQL oferece as *constraints* (restrições) que garantem isso (chaves estrangeiras, deletes em cascata).
 
 ## 💻 Código de Referência
 
-### Server com Supabase
+### O Arquivo initial_schema.sql
 
-```kotlin title="server/src/main/kotlin/.../Application.kt"
-fun Application.module() {
-    val supabaseUrl = System.getProperty("SUPABASE_URL")
-    val supabaseKey = System.getProperty("SUPABASE_KEY")
+Este documento centraliza toda a inteligência do nosso banco. Nós o executamos na seção **SQL Editor** do painel do Supabase.
 
-    var supabase: SupabaseClient? = null
+Acompanhe as 6 tabelas estruturais:
 
-    if (supabaseUrl != null && supabaseKey != null) {
-        supabase = createAppSupabaseClient(supabaseUrl, supabaseKey)
-    }
+```sql title="initial_schema.sql"
+-- 1. Users (Auth Profile & Gamification)
+CREATE TABLE IF NOT EXISTS users (
+    id UUID PRIMARY KEY,
+    username TEXT UNIQUE NOT NULL,
+    email TEXT UNIQUE NOT NULL,
+    password TEXT,
+    streak_count INT DEFAULT 0,      -- Dias consecutivos de estudo
+    streak_freezes INT DEFAULT 0,    -- "Passes" para não perder a ofensiva
+    last_activity_at TIMESTAMPTZ,    -- Última atividade
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
 
-    install(ContentNegotiation) {
-        json(Json { prettyPrint = true; isLenient = true; ignoreUnknownKeys = true })
-    }
+-- 2. Courses (Learning Tracks)
+CREATE TABLE IF NOT EXISTS courses (
+    id SERIAL PRIMARY KEY,
+    title TEXT NOT NULL,
+    description TEXT,
+    icon TEXT,          -- Nome do ícone (ex: "kotlin")
+    color TEXT,         -- Cor hex (ex: "#4CDF20")
+    total_lessons INT DEFAULT 0,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
 
-    routing {
-        get("/api/health") {
-            call.respond(HealthResponse(
-                status = "Status UP",
-                timestamp = System.currentTimeMillis()
-            ))
-        }
-    }
-}
+-- 3. Lessons (Modules)
+CREATE TABLE IF NOT EXISTS lessons (
+    id SERIAL PRIMARY KEY,
+    course_id INT REFERENCES courses(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    description TEXT,
+    "order" INT DEFAULT 0,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 4. Questions (Quiz/Simulados)
+CREATE TABLE IF NOT EXISTS questions (
+    id SERIAL PRIMARY KEY,
+    lesson_id INT REFERENCES lessons(id) ON DELETE CASCADE,
+    question TEXT NOT NULL,
+    code TEXT,                -- Opcional para programação
+    options JSONB NOT NULL,   -- Array: ["A", "B", "C", "D"]
+    correct_answer INT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 5. Lesson Progress
+CREATE TABLE IF NOT EXISTS lesson_progress (
+    id SERIAL PRIMARY KEY,
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    lesson_id INT REFERENCES lessons(id) ON DELETE CASCADE,
+    is_completed BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 6. Question Attempts (Histórico)
+CREATE TABLE IF NOT EXISTS question_attempts (
+    id SERIAL PRIMARY KEY,
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    question_id INT REFERENCES questions(id) ON DELETE CASCADE,
+    is_correct BOOLEAN NOT NULL,
+    selected_option INT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW()
+);
 ```
 
-### Compose for Desktop App
-
-```kotlin title="composeApp/src/commonMain/kotlin/.../App.kt"
-@Composable
-@Preview
-fun App() {
-    MaterialTheme {
-        var showContent by remember { mutableStateOf(false) }
-        Column(
-            modifier = Modifier
-                .background(androidx.compose.ui.graphics.Color(0xFF0F0F0F))
-                .safeContentPadding()
-                .fillMaxSize(),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Button(onClick = { showContent = !showContent }) {
-                Text("Click me!", color = androidx.compose.ui.graphics.Color(0xFFE5E5E5))
-            }
-            AnimatedVisibility(showContent) {
-                val greeting = remember { Greeting().greet() }
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    Image(painterResource(Res.drawable.compose_multiplatform), null)
-                    Text("Compose: $greeting", color = androidx.compose.ui.graphics.Color(0xFFE5E5E5))
-                }
-            }
-        }
-    }
-}
-```
+:::tip Técnicas Avançadas Aplicadas
+- **`SERIAL`**: Auto-incrementa os `id`s int. O Postgres cria automaticamente uma *sequence* rodando em plano de fundo.
+- **`UUID`**: Chave unicamente randômica (`users`). Extremamente seguro para o acoplamento do sistema de Auth do Supabase!
+- **`JSONB`**: No campo `options` da tabela `questions`, podemos armazenar vetores customizados livremente (as alternativas não precisam ser registros em outra tabela enorme, economizando *joins*).
+- **`ON DELETE CASCADE`**: Garante higiene de dados. Se eu deletar o usuário `yuri`, todos os `lesson_progress` dele somem também, prevenindo dados órfãos.
+:::
 
 ## 💻 Mão na Massa
 
@@ -88,17 +111,25 @@ import TabItem from '@theme/TabItem';
 <Tabs>
   <TabItem value="ex1" label="Exercício 1 — Fixação" default>
 
-Execute o Desktop App com `./gradlew :composeApp:run` e verifique que o botão exibe o greeting.
+Acesse o **SQL Editor** no painel do Supabase apontado pelo `local.properties` (veja aula passada) e execute todo o comando do arquivo `initial_schema.sql`.
+
+Em seguida vá até "Table Editor" e garanta visualmente que as 6 tabelas existem.
 
   </TabItem>
-  <TabItem value="ex2" label="Exercício 2 — Aplicação">
+  <TabItem value="ex2" label="Exercício 2 — Injeção Direta">
 
-No servidor, adicione validação: se `SUPABASE_URL` estiver ausente, o health endpoint deve retornar `status = "DEGRADED"`.
+Ainda pelo editor SQL, realize um "Seed" na base. Ou seja, injete um dado cru simulado na tabela de Cursos para que na próxima aula a API possa retornar algo da Web:
+
+```sql
+INSERT INTO courses (title, description, icon, color, total_lessons) 
+VALUES 
+('Desenvolvimento Kotlin Multiplatform', 'Base teórica de commonMain', 'kotlin', '#4CDF20', 10);
+```
 
   </TabItem>
-  <TabItem value="ex3" label="Exercício 3 — Desafio">
+  <TabItem value="ex3" label="Exercício 3 — Constraint Challenge">
 
-Crie um endpoint `GET /api/courses` que busque cursos do Supabase e uma tela no ComposeApp que exiba os mesmos cursos, ambos usando a mesma `data class Course` do `shared/`.
+Apenas visualmente pelo SQL Editor: Como você criaria uma View nova (`CREATE VIEW`) no Supabase juntando `courses` com `lessons` para montar a grade horária num só resultado, sabendo que as tabelas possuem a chave condicional `course_id REFERENCES courses(id)`? Pense neste exercício teórico para entender o poder relacional do Postgres.
 
   </TabItem>
 </Tabs>

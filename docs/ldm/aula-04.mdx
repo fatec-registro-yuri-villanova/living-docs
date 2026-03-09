@@ -1,7 +1,7 @@
 ---
 sidebar_position: 4
-title: "Aula 04: Modelagem de Dados e DTOs"
-description: "Criação de DTOs (Data Transfer Objects) e Serialização compartilhada no commonMain."
+title: "Aula 04: Modelagem de Dados e DTOs (Data Transfer Objects)"
+description: "Tradução do Schema SQL para Kotlin @Serializable DTOs e elaboração de Padrão Repository."
 ---
 
 # Aula 04: Modelagem de Dados e DTOs
@@ -15,116 +15,61 @@ git checkout aula-04
 
 ## 📖 Conceito
 
-Para garantir um tráfego eficiente e seguro de informações entre o Servidor (Backend) e o Cliente Desktop, utilizamos **DTOs (Data Transfer Objects)**. 
-Anotamos as classes do Kotlin com `@Serializable` no módulo `shared/commonMain` para que tanto as APIs do Ktor quanto o front-end Desktop do Compose consigam falar a mesma linguagem, transcrevendo o JSON perfeitamente.
+Na branch anterior, deixamos o Supabase moldado com o nosso "plano das 6 tabelas" (Schema SQL). Mas para que nosso Ktor Server (e o CMS Desktop) consigam pedir que a classe Kotlin entenda que `streak_freezes` corresponde à uma variável do Back-end... entra a orquestração via **Data Transfer Objects** (DTOs).
+
+Com as facilidades Kotlin Multiplatform (KMP), escrevemos esses modelos no diretório _Shared_ (`shared/.../domain/models`), permitindo que a aplicação Server, o App mobile do PDM, e o CMS de Desktop possam usar a Mesma Coleção de Classes. Se um campo mudar, a correção acontece de uma vez para os três.
 
 ## 💻 Código de Referência
 
-Abaixo estão as implementações feitas na branch `aula-04`:
+### @Serializable e Mapeamento de @SerialName
 
-### 1. Auth DTOs
+As classes do projeto utilizam a tag mágica `@Serializable` provida pelo pacote `kotlinx.serialization` (que já linkamos na Aula 02 no Gradle).
 
-```kotlin title="shared/src/commonMain/kotlin/com/fatec/merge_skills_kmp/domain/models/AuthDTOs.kt"
-package com.fatec.merge_skills_kmp.domain.models
+Um grande desafio de engenharia cross-stack é o nome das variáveis:
+* Postgres (e o JSON trafegado na web) usa tradicionalmente o modelo `snake_case`. (Ex: `created_at`).
+* Kotlin defensores de código legível usam o formato `camelCase`. (Ex: `createdAt`).
 
-import kotlinx.serialization.SerialName
-import kotlinx.serialization.Serializable
+Em vez de renomear os campos Kotlin de maneira agressiva, o `@SerialName` traduz de volta para a infraestrutura sem expor feiúra e sem poluir a sintaxe legível:
 
+```kotlin title="shared/.../domain/models/Models.kt"
 @Serializable
-data class LoginRequest(
-    val email: String,
-    val password: String
-)
-
-@Serializable
-data class RegisterRequest(
+data class User(
+    val id: String,
     val username: String,
     val email: String,
-    val password: String
-)
-
-@Serializable
-data class AuthResponse(
-    val user: User,
-    val token: String,
-    @SerialName("refresh_token")
-    val refreshToken: String? = null
-)
-```
-
-### 2. Content DTOs
-
-```kotlin title="shared/src/commonMain/kotlin/com/fatec/merge_skills_kmp/domain/models/ContentDTOs.kt"
-package com.fatec.merge_skills_kmp.domain.models
-
-import kotlinx.serialization.SerialName
-import kotlinx.serialization.Serializable
-
-@Serializable
-data class CourseResponse(
-    val course: Course,
-    val lessons: List<Lesson>? = null
-)
-
-@Serializable
-data class LessonResponse(
-    val lesson: Lesson,
-    val questions: List<Question>? = null
-)
-
-@Serializable
-data class QuestionAttemptRequest(
-    @SerialName("question_id")
-    val questionId: Int,
-    @SerialName("selected_option")
-    val selectedOption: Int
-)
-
-@Serializable
-data class QuestionAttemptResponse(
-    @SerialName("is_correct")
-    val isCorrect: Boolean,
-    @SerialName("correct_answer")
-    val correctAnswer: Int,
-    val attempt: QuestionAttempt
+    @SerialName("streak_count")
+    val streakCount: Int = 0,
+    @SerialName("streak_freezes")
+    val streakFreezes: Int = 0,
+    @SerialName("last_activity_at")
+    val lastActivityAt: String? = null,
+    @SerialName("created_at")
+    val createdAt: String? = null,
+    @SerialName("updated_at")
+    val updatedAt: String? = null
 )
 ```
 
-### 3. Repository Interfaces
+Nesta branch, possuímos classes isoladas que refletem completamente o banco em pastas granulares:
 
-Os repositórios definem os contratos da nossa API:
+* `AuthDTOs.kt` → Lidando com payloads (LoginRequest, LoginResponse).
+* `ContentDTOs.kt` → Coleção específica das Aulas interligadas a um Curso (Module/Trail).
+* `Models.kt` → Core business logic com as classes bases (Course, User, Lesson, etc).
 
-```kotlin title="shared/src/commonMain/kotlin/com/fatec/merge_skills_kmp/domain/repository/UserRepository.kt"
-package com.fatec.merge_skills_kmp.domain.repository
+### Repository Pattern no KMP
 
-import com.fatec.merge_skills_kmp.domain.models.AuthResponse
-import com.fatec.merge_skills_kmp.domain.models.LoginRequest
-import com.fatec.merge_skills_kmp.domain.models.RegisterRequest
-import com.fatec.merge_skills_kmp.domain.models.User
+E onde usamos isso? Pelo princípio SOLID de Responsabilidade Única, a lógica que pede ativamente os Cursos no banco ou que adiciona novos perfis... **não deve morar nos Routers HTTP nem nas Views dos Apps.** Ela mora em Contratos de Interface chamados "Repository".
 
-interface UserRepository {
-    suspend fun login(request: LoginRequest): Result<AuthResponse>
-    suspend fun register(request: RegisterRequest): Result<AuthResponse>
-    suspend fun getUserProfile(userId: String): Result<User>
-    suspend fun updateStreak(userId: String): Result<User>
-}
-```
+Nas instâncias mais elementares da Aula-04 criamos as interfaces com assinaturas que retornam a estrutura KMP construída nas APIs.
 
-```kotlin title="shared/src/commonMain/kotlin/com/fatec/merge_skills_kmp/domain/repository/CourseRepository.kt"
-package com.fatec.merge_skills_kmp.domain.repository
-
-import com.fatec.merge_skills_kmp.domain.models.CourseResponse
-import com.fatec.merge_skills_kmp.domain.models.LessonResponse
-import com.fatec.merge_skills_kmp.domain.models.QuestionAttemptRequest
-import com.fatec.merge_skills_kmp.domain.models.QuestionAttemptResponse
-
+```kotlin title="shared/.../domain/repository/CourseRepository.kt"
 interface CourseRepository {
-    suspend fun getCourses(): Result<List<CourseResponse>>
-    suspend fun getCourseDetails(courseId: Int): Result<CourseResponse>
-    suspend fun getLessonDetails(lessonId: Int): Result<LessonResponse>
-    suspend fun submitQuestionAttempt(userId: String, request: QuestionAttemptRequest): Result<QuestionAttemptResponse>
+    suspend fun getAllCourses(): List<Course>
+    suspend fun getCourseById(id: Int): Course?
+    suspend fun createCourse(course: Course): Course
 }
 ```
+*A palavra-chave coroutine `suspend` no Kotlin garante que nossa requisição de rede irá para *background thread* em vez de congelar a interface (especialmente para quando chegar a vez do Compose).*
 
 ## 💻 Mão na Massa
 
@@ -132,14 +77,29 @@ import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
 <Tabs>
-  <TabItem value="ex1" label="Exercício 1 — DTOs" default>
+  <TabItem value="ex1" label="Exercício 1 — Check de Mapeamento" default>
 
-Crie os arquivos `AuthDTOs.kt` e `ContentDTOs.kt` dentro de `shared/src/commonMain/kotlin/com/fatec/merge_skills_kmp/domain/models/` com todas as anotações `@Serializable` correspondentes. Lembre-se de checar o comportamento da anotação `@SerialName`.
+Abra seu projeto Kotlin e seu Painel Supabase simultaneamente. 
+Tente ler a constraint `lesson_id` na sua tabela SQL de `questions` e depois procure esse campo específico no arquivo `Models.kt`.
+Como ele foi convertido pelo Kotlin com `@SerialName`? Refletir sobre esse binding (vínculo) é vital.
 
   </TabItem>
-  <TabItem value="ex2" label="Exercício 2 — Repositórios">
+  <TabItem value="ex2" label="Exercício 2 — Novo Model Progress">
 
-Organize as abstrações dos repositórios `CourseRepository` e `UserRepository` que definirão as chamadas do cliente e a implementação no lado do servidor nas próximas aulas.
+Nosso arquivo `Models.kt` contém dados base, construa uma interface em `shared/.../domain/repository/LessonProgressRepository.kt` com a assinatura assíncrona para buscar uma `List<LessonProgress>`.
+
+```kotlin
+interface LessonProgressRepository {
+    suspend fun fetchMyProgress(userId: String) : List<LessonProgress>
+}
+```
+
+  </TabItem>
+  <TabItem value="ex3" label="Exercício 3 — Injeção Opcional (Desafio)">
+
+Tente injetar artificialmente o Objeto Data Class "Course" puro que criamos agora na Resposta base de Ktor na porta `Application.kt` apenas para testes (Serializando na unha com `call.respond`). 
+
+Note como o `ContentNegotiation` do Ktor pega a Data Class Kotlin e transforma automaticamente num formato JSON cru na URL porque sua Model possui a Tag `@Serializable` no topo! Magia! 😉
 
   </TabItem>
 </Tabs>
