@@ -67,12 +67,28 @@ Com os plugins isolados, nosso arquivo principal de servidor simplifica imensame
 
 ```kotlin title="server/src/main/kotlin/com/fatec/merge_skills_kmp/Application.kt"
 fun Application.module() {
-    // Configurações do Supabase...
+    // Configurações do Supabase (tentativa 1: JVM args / Fallback: local.properties)
+    var supabaseUrl = System.getProperty("SUPABASE_URL") ?: System.getenv("SUPABASE_URL")
+    var supabaseKey = System.getProperty("SUPABASE_KEY") ?: System.getenv("SUPABASE_KEY")
+
+    if (supabaseUrl == null || supabaseKey == null) {
+        val properties = java.util.Properties()
+        val file = java.io.File("local.properties") // Busca recursiva omitida para brevidade
+        if (file.exists()) {
+            properties.load(java.io.FileInputStream(file))
+            supabaseUrl = properties.getProperty("SUPABASE_URL")
+            supabaseKey = properties.getProperty("SUPABASE_KEY")
+        }
+    }
+    
+    val supabase = if (supabaseUrl != null && supabaseKey != null) 
+        createAppSupabaseClient(supabaseUrl, supabaseKey) else null
+
     // Pipeline configuration via Modular Plugins (Aula 05)
     configureSerialization()
     configureCORS()
     configureStatusPages()
-    configureRouting()
+    configureRouting(supabase)
 }
 ```
 
