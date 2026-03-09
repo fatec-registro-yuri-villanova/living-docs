@@ -186,6 +186,13 @@ get("/api/courses") {
 }
 ```
 
+:::tip Cuidado ao rodar o Servidor Local!
+Se você clicar no "Play" verde direto no arquivo `Application.kt` via Android Studio/IntelliJ, a sua IDE **não lerá** o arquivo `local.properties` e o Ktor subirá sem as credenciais do Supabase (retornando `[]` vazio na API).
+
+**Sempre rode o servidor via Gradle:**  
+No terminal digite `./gradlew server:run` (ou rode a task Ktor diretamente pela aba do Gradle no canto direito). Assim, o `build.gradle.kts` irá injetar os `systemProperties` e a API conseguirá pegar as listas de Cursos do Supabase!
+:::
+
 Se a tabela ainda não existir, o Supabase retornará um erro 404 — e tudo bem, na próxima aula criaremos o schema!
 
   </TabItem>
