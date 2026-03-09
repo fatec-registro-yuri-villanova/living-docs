@@ -15,42 +15,51 @@ git checkout aula-04
 
 ## 📖 Conceito
 
-Na branch anterior, deixamos o Supabase moldado com o nosso "plano das 6 tabelas" (Schema SQL). Mas para que nosso Ktor Server (e o CMS Desktop) consigam pedir que a classe Kotlin entenda que `streak_freezes` corresponde à uma variável do Back-end... entra a orquestração via **Data Transfer Objects** (DTOs).
+Na branch anterior, deixamos o Supabase moldado com o nosso Schema SQL de 6 tabelas (IDs baseados em `serial` inteiros, e relacionamentos definidos). Para que o Kotlin entenda que o campo SQL `streak_freezes` corresponde à uma propriedade legível no App... entra a orquestração via **Data Transfer Objects** (DTOs).
 
-Com as facilidades Kotlin Multiplatform (KMP), escrevemos esses modelos no diretório _Shared_ (`shared/.../domain/models`), permitindo que a aplicação Server, o App mobile do PDM, e o CMS de Desktop possam usar a Mesma Coleção de Classes. Se um campo mudar, a correção acontece de uma vez para os três.
+Com as facilidades do Kotlin Multiplatform (KMP), escrevemos esses modelos no diretório _Shared_ (`shared/.../domain/models`), permitindo que a aplicação Server, o App mobile do PDM, e o CMS de Desktop (PDMII) possam usar a **mesma coleção de classes**. 
 
 ## 💻 Código de Referência
 
 ### @Serializable e Mapeamento de @SerialName
 
-As classes do projeto utilizam a tag mágica `@Serializable` provida pelo pacote `kotlinx.serialization` (que já linkamos na Aula 02 no Gradle).
+As classes do projeto utilizam a anotação mágica `@Serializable` provida pelo pacote `kotlinx.serialization`.
 
-Um grande desafio de engenharia cross-stack é o nome das variáveis:
-* Postgres (e o JSON trafegado na web) usa tradicionalmente o modelo `snake_case`. (Ex: `created_at`).
-* Kotlin defensores de código legível usam o formato `camelCase`. (Ex: `createdAt`).
+Um grande detalhe do mapeamento de Objetos Relacionais:
+* O Postgres usa o padrão `snake_case`. (Ex: `created_at`).
+* Kotlin defende código no formato `camelCase`. (Ex: `createdAt`).
 
-Em vez de renomear os campos Kotlin de maneira agressiva, o `@SerialName` traduz de volta para a infraestrutura sem expor feiúra e sem poluir a sintaxe legível:
+Em vez de quebrar a legibilidade e forçar o Kotlin a usar sublinhados nativamente nas propriedades, o `@SerialName` traduz de volta para a infraestrutura por baixo dos panos:
 
 ```kotlin title="shared/.../domain/models/Models.kt"
 @Serializable
 data class User(
-    val id: String,
+    val id: Int,
     val username: String,
-    val email: String,
+    val email: String? = null,
+    val name: String? = null,
+    val password: String? = null,
+    @SerialName("profile_picture")
+    val profilePicture: String? = null,
     @SerialName("streak_count")
     val streakCount: Int = 0,
-    @SerialName("streak_freezes")
-    val streakFreezes: Int = 0,
     @SerialName("last_activity_at")
     val lastActivityAt: String? = null,
+    @SerialName("streak_freezes")
+    val streakFreezes: Int = 0,
+    @SerialName("longest_streak")
+    val longestStreak: Int = 0,
+    val role: String = "user",
     @SerialName("created_at")
-    val createdAt: String? = null,
-    @SerialName("updated_at")
-    val updatedAt: String? = null
+    val createdAt: String? = null
 )
 ```
 
-Nesta branch, possuímos classes isoladas que refletem completamente o banco em pastas granulares:
+:::tip Tipos Nativos Primitivos
+Ao ler nosso `initial_schema.sql`, notamos que as Primary Keys (`id`) são `serial`, um auto-incremento numérico. Portanto, no Kotlin, nossos campos de `id` são todos mapeados para a tipagem primária `Int`. Identificadores relacionais (foreign keys) também acompanham essa formatação via `Int?`.
+:::
+
+Nesta branch, possuímos classes isoladas que refletem o banco em pastas granulares:
 
 * `AuthDTOs.kt` → Lidando com payloads (LoginRequest, LoginResponse).
 * `ContentDTOs.kt` → Coleção específica das Aulas interligadas a um Curso (Module/Trail).
@@ -58,18 +67,19 @@ Nesta branch, possuímos classes isoladas que refletem completamente o banco em 
 
 ### Repository Pattern no KMP
 
-E onde usamos isso? Pelo princípio SOLID de Responsabilidade Única, a lógica que pede ativamente os Cursos no banco ou que adiciona novos perfis... **não deve morar nos Routers HTTP nem nas Views dos Apps.** Ela mora em Contratos de Interface chamados "Repository".
+Pelo princípio SOLID de Responsabilidade Única, a lógica de pedir ativamente os Cursos no banco ou adicionar novos perfis... **não deve morar nos Routers HTTP nem nas Views dos Apps.** Ela mora em Contratos de Interface chamados "Repository".
 
-Nas instâncias mais elementares da Aula-04 criamos as interfaces com assinaturas que retornam a estrutura KMP construída nas APIs.
+Nas instâncias mais elementares da Aula-04 criamos as interfaces com assinaturas que retornam a estrutura base das Entidades construídas:
 
-```kotlin title="shared/.../domain/repository/CourseRepository.kt"
-interface CourseRepository {
-    suspend fun getAllCourses(): List<Course>
-    suspend fun getCourseById(id: Int): Course?
-    suspend fun createCourse(course: Course): Course
+```kotlin title="shared/.../domain/repository/UserRepository.kt"
+interface UserRepository {
+    suspend fun login(request: LoginRequest): Result<AuthResponse>
+    suspend fun register(request: RegisterRequest): Result<AuthResponse>
+    suspend fun getUserProfile(userId: Int): Result<User>
+    suspend fun updateStreak(userId: Int): Result<User>
 }
 ```
-*A palavra-chave coroutine `suspend` no Kotlin garante que nossa requisição de rede irá para *background thread* em vez de congelar a interface (especialmente para quando chegar a vez do Compose).*
+*A palavra-chave coroutine `suspend` no Kotlin garante que nossa requisição de rede irá para *background thread* em vez de congelar a interface (especialmente para quando chegar a vez do Compose no Desktop ou Mobile).*
 
 ## 💻 Mão na Massa
 
@@ -80,26 +90,26 @@ import TabItem from '@theme/TabItem';
   <TabItem value="ex1" label="Exercício 1 — Check de Mapeamento" default>
 
 Abra seu projeto Kotlin e seu Painel Supabase simultaneamente. 
-Tente ler a constraint `lesson_id` na sua tabela SQL de `questions` e depois procure esse campo específico no arquivo `Models.kt`.
-Como ele foi convertido pelo Kotlin com `@SerialName`? Refletir sobre esse binding (vínculo) é vital.
+Tente ler o formato de constraint `lesson_id` (que é um Integer de FK) na sua tabela SQL de `questions` e depois procure esse campo específico no arquivo `Models.kt`.
+Reflita sobre como ele foi convertido pelo Kotlin com `@SerialName` e mantido na tipagem `Int?`.
 
   </TabItem>
   <TabItem value="ex2" label="Exercício 2 — Novo Model Progress">
 
-Nosso arquivo `Models.kt` contém dados base, construa uma interface em `shared/.../domain/repository/LessonProgressRepository.kt` com a assinatura assíncrona para buscar uma `List<LessonProgress>`.
+Nosso arquivo `Models.kt` já atende à tabela Progress. Agora, construa ativamente a interface de domínio em `shared/.../domain/repository/LessonProgressRepository.kt` com a assinatura assíncrona para buscar uma `List<LessonProgress>` passando a referência Inteira de um usuário:
 
 ```kotlin
 interface LessonProgressRepository {
-    suspend fun fetchMyProgress(userId: String) : List<LessonProgress>
+    suspend fun fetchMyProgress(userId: Int) : List<LessonProgress>
 }
 ```
 
   </TabItem>
   <TabItem value="ex3" label="Exercício 3 — Injeção Opcional (Desafio)">
 
-Tente injetar artificialmente o Objeto Data Class "Course" puro que criamos agora na Resposta base de Ktor na porta `Application.kt` apenas para testes (Serializando na unha com `call.respond`). 
+Tente injetar artificialmente o Objeto Data Class "Course" puro que exploramos no modelo JSON dentro de uma Resposta base de Ktor na porta `Application.kt` apenas para testes local do server (Serializando na unha com `call.respond`). 
 
-Note como o `ContentNegotiation` do Ktor pega a Data Class Kotlin e transforma automaticamente num formato JSON cru na URL porque sua Model possui a Tag `@Serializable` no topo! Magia! 😉
+Note como o `ContentNegotiation` do Ktor pega a Data Class Kotlin e transforma automaticamente num formato JSON cru na URL porque sua Model possui a Tag `@Serializable` no topo.
 
   </TabItem>
 </Tabs>

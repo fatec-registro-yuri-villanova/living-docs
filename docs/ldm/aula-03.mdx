@@ -20,7 +20,7 @@ Na aula passada, testamos a conexão base usando Ktor e Supabase Client. Mas um 
 O objetivo da aula é estruturar um esquema relacional que atenda à Spec Técnica do MergeSkills, conectando tabelas de trilhas de conhecimento e perfis gamificados (Streak).
 
 ### Por que SQL e não NoSQL?
-O "MergeSkills" precisa manter rigorosa integridade (ex: uma pergunta não pode existir sem uma lição que não existe sem um curso). O PostgreSQL oferece as *constraints* (restrições) que garantem isso (chaves estrangeiras, deletes em cascata).
+O "MergeSkills" precisa manter rigorosa integridade (ex: uma pergunta não pode existir sem uma lição que não existe sem um curso). O PostgreSQL oferece as *constraints* (restrições) que garantem isso através de chaves estrangeiras.
 
 ## 💻 Código de Referência
 
@@ -28,79 +28,82 @@ O "MergeSkills" precisa manter rigorosa integridade (ex: uma pergunta não pode 
 
 Este documento centraliza toda a inteligência do nosso banco. Nós o executamos na seção **SQL Editor** do painel do Supabase.
 
-Acompanhe as 6 tabelas estruturais:
+Acompanhe as tabelas estruturais:
 
 ```sql title="initial_schema.sql"
--- 1. Users (Auth Profile & Gamification)
-CREATE TABLE IF NOT EXISTS users (
-    id UUID PRIMARY KEY,
-    username TEXT UNIQUE NOT NULL,
-    email TEXT UNIQUE NOT NULL,
-    password TEXT,
-    streak_count INT DEFAULT 0,      -- Dias consecutivos de estudo
-    streak_freezes INT DEFAULT 0,    -- "Passes" para não perder a ofensiva
-    last_activity_at TIMESTAMPTZ,    -- Última atividade
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
+-- initial_schema.sql
+-- Auto-generated from existing remote database
+
+CREATE TABLE public.courses (
+    id serial PRIMARY KEY,
+    title text NOT NULL,
+    description text,
+    icon text,
+    color text,
+    total_lessons integer DEFAULT 0,
+    created_at timestamp with time zone DEFAULT now()
 );
 
--- 2. Courses (Learning Tracks)
-CREATE TABLE IF NOT EXISTS courses (
-    id SERIAL PRIMARY KEY,
-    title TEXT NOT NULL,
-    description TEXT,
-    icon TEXT,          -- Nome do ícone (ex: "kotlin")
-    color TEXT,         -- Cor hex (ex: "#4CDF20")
-    total_lessons INT DEFAULT 0,
-    created_at TIMESTAMPTZ DEFAULT NOW()
+CREATE TABLE public.users (
+    id serial PRIMARY KEY,
+    username text NOT NULL,
+    email text,
+    name text,
+    password text,
+    profile_picture text,
+    streak_count integer DEFAULT 0,
+    last_activity_at timestamp with time zone,
+    streak_freezes integer DEFAULT 0,
+    longest_streak integer DEFAULT 0,
+    role text DEFAULT 'user'::text NOT NULL,
+    created_at timestamp with time zone DEFAULT now()
 );
 
--- 3. Lessons (Modules)
-CREATE TABLE IF NOT EXISTS lessons (
-    id SERIAL PRIMARY KEY,
-    course_id INT REFERENCES courses(id) ON DELETE CASCADE,
-    title TEXT NOT NULL,
-    description TEXT,
-    "order" INT DEFAULT 0,
-    created_at TIMESTAMPTZ DEFAULT NOW()
+CREATE TABLE public.lessons (
+    id serial PRIMARY KEY,
+    course_id integer REFERENCES public.courses(id),
+    title text NOT NULL,
+    description text,
+    "order" integer,
+    created_at timestamp with time zone DEFAULT now()
 );
 
--- 4. Questions (Quiz/Simulados)
-CREATE TABLE IF NOT EXISTS questions (
-    id SERIAL PRIMARY KEY,
-    lesson_id INT REFERENCES lessons(id) ON DELETE CASCADE,
-    question TEXT NOT NULL,
-    code TEXT,                -- Opcional para programação
-    options JSONB NOT NULL,   -- Array: ["A", "B", "C", "D"]
-    correct_answer INT NOT NULL,
-    created_at TIMESTAMPTZ DEFAULT NOW()
+CREATE TABLE public.questions (
+    id serial PRIMARY KEY,
+    lesson_id integer REFERENCES public.lessons(id),
+    question text NOT NULL,
+    code text,
+    options jsonb DEFAULT '[]'::jsonb,
+    correct_answer integer,
+    "order" integer,
+    created_at timestamp with time zone DEFAULT now()
 );
 
--- 5. Lesson Progress
-CREATE TABLE IF NOT EXISTS lesson_progress (
-    id SERIAL PRIMARY KEY,
-    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-    lesson_id INT REFERENCES lessons(id) ON DELETE CASCADE,
-    is_completed BOOLEAN DEFAULT FALSE,
-    created_at TIMESTAMPTZ DEFAULT NOW()
+CREATE TABLE public.lesson_progress (
+    id serial PRIMARY KEY,
+    user_id integer REFERENCES public.users(id),
+    lesson_id integer REFERENCES public.lessons(id),
+    is_completed boolean DEFAULT false,
+    completed_at timestamp with time zone DEFAULT now(),
+    UNIQUE(user_id, lesson_id)
 );
 
--- 6. Question Attempts (Histórico)
-CREATE TABLE IF NOT EXISTS question_attempts (
-    id SERIAL PRIMARY KEY,
-    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-    question_id INT REFERENCES questions(id) ON DELETE CASCADE,
-    is_correct BOOLEAN NOT NULL,
-    selected_option INT NOT NULL,
-    created_at TIMESTAMPTZ DEFAULT NOW()
+CREATE TABLE public.question_attempts (
+    id serial PRIMARY KEY,
+    user_id integer REFERENCES public.users(id),
+    question_id integer REFERENCES public.questions(id),
+    selected_option integer,
+    is_correct boolean DEFAULT false,
+    timestamp timestamp with time zone DEFAULT now(),
+    UNIQUE(user_id, question_id)
 );
 ```
 
 :::tip Técnicas Avançadas Aplicadas
-- **`SERIAL`**: Auto-incrementa os `id`s int. O Postgres cria automaticamente uma *sequence* rodando em plano de fundo.
-- **`UUID`**: Chave unicamente randômica (`users`). Extremamente seguro para o acoplamento do sistema de Auth do Supabase!
-- **`JSONB`**: No campo `options` da tabela `questions`, podemos armazenar vetores customizados livremente (as alternativas não precisam ser registros em outra tabela enorme, economizando *joins*).
-- **`ON DELETE CASCADE`**: Garante higiene de dados. Se eu deletar o usuário `yuri`, todos os `lesson_progress` dele somem também, prevenindo dados órfãos.
+- **`SERIAL`**: Auto-incrementa os `id`s em inteiros. O Postgres cria automaticamente uma *sequence* rodando em plano de fundo.
+- **`TIMESTAMP WITH TIME ZONE`**: Armazena a exata linha do tempo (ideal para cálculo seguro da Ofensiva/Streak diária do aluno).
+- **`JSONB`**: No campo `options` da tabela `questions`, podemos armazenar vetores customizados livremente.
+- **`UNIQUE(col1, col2)`**: Impede redundância dupla de dados. Um mesmo usuário não pode ter mais de um `lesson_progress` atrelado exato à mesma `lesson`.
 :::
 
 ## 💻 Mão na Massa
