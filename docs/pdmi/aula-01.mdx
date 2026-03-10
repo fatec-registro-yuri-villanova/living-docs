@@ -1,7 +1,7 @@
 ---
 sidebar_position: 1
 title: "Aula 01: Setup Expo e Fundamentos TS"
-description: "Criação do projeto com Expo, componentes básicos (View, Text, TextInput) e fundamentos de TypeScript."
+description: "Criação do projeto com Expo, fundamentos de TypeScript, componentes básicos, estilização, useEffect e useState."
 ---
 
 # Aula 01: Setup Expo e Fundamentos TS
@@ -21,12 +21,14 @@ O React Native permite criar apps móveis nativos com JavaScript/TypeScript. O *
 
 | Arquivo | Descrição |
 |---------|-----------|
-| `app/index.tsx` | Tela inicial (Splash) |
-| `app/login.tsx` | Tela de login com formulário |
-| `app/register.tsx` | Tela de registro |
-| `app/_layout.tsx` | Layout raiz com Stack navigator |
+| `basics/FundamentosTS.ts` | 9 tópicos de TypeScript |
+| `app/hello.tsx` | Primeiro componente (View, Text, Estilos) |
+| `app/index.tsx` | Splash Screen (`useEffect`) |
+| `app/login.tsx` | Tela de login (`useState`) |
+| `app/register.tsx` | Tela de registro (reforço) |
+| `app/_layout.tsx` | Navegação com Stack |
 | `constants/Colors.ts` | Tokens de cor (light/dark) |
-| `basics/FundamentosTS.ts` | 130 linhas — 8 tópicos fundamentais |
+| `lib/api.ts` | Cliente API REST |
 
 ## 💻 Fundamentos de TypeScript
 
@@ -35,109 +37,69 @@ O TypeScript é a base do desenvolvimento seguro em React Native. Aqui estão os
 ### 1. Const e Let — Variáveis e Constantes
 
 ```typescript
-// const: variável IMUTÁVEL (equivalente ao val)
-const pi = 3.14;
-const nomeDoCurso = "Merge Skills: React Native"; // Inferência de tipo
-
-// let: variável MUTÁVEL (equivalente ao var)
-let count = 0;
-count = 1; // Permitido
+const pi = 3.14;           // IMUTÁVEL (equivalente ao val)
+let count = 0;             // MUTÁVEL (equivalente ao var)
+count = 1;                 // Permitido
 ```
 
 ### 2. Tipagem Forte e Tipos Primitivos
 
 ```typescript
-// Tipos Primitivos Básicos
 const nome: string = "Yuri";
 const idade: number = 28;
-const isDeveloper: boolean = true;
+const isDev: boolean = true;
 
-// Inferência vs Tipagem Explícita
-let cidade = "São Paulo"; // TS infere que é string
-// cidade = 10; // ERRO: O TS não permite mudar o tipo associado
+// Inferência: TS deduz o tipo automaticamente
+let cidade = "São Paulo"; // TS sabe que é string
 
-// Union Types (Permite mais de um tipo, muito usado com null)
+// Union Types
 let telefone: string | null = null;
-telefone = "11999999999";
 
-// O perigo do 'any' (Foge da verificação do TS - EVITE!)
-let variavelDinamica: any = "Texto";
-variavelDinamica = 100;
-variavelDinamica.metodoInexistente(); // O TS não avisa o erro aqui!
+// ⚠️ EVITE 'any' — desativa a verificação do TS
+let dinamica: any = "Texto";
+dinamica = 100; // O TS não avisa o erro!
 ```
 
 ### 3. Null Safety
 
 ```typescript
-// Tipagem explícita
-let nome: string = "João";
-let idade: number = 25;
-let autênticado: boolean = true;
-
-// Opcional Chaining `?.` (Safe Call)
-const usuario = { profile: { name: "Yuri" } };
-const bio = usuario.profile?.bio; // Não quebra se bio for undefined
-
-// Nullish Coalescing `??` (Elvis Operator)
-const github = user.github ?? "Não Cadastrado";
+const bio = usuario.profile?.bio;           // Optional Chaining
+const github = user.github ?? "Não Cadastrado"; // Nullish Coalescing
 ```
 
-### 4. Arrow Functions e Parâmetros
+### 4. Arrow Functions
 
 ```typescript
-// Função tradicional
-function saudacao(nome: string) {
-    return `Olá, ${nome}`;
-}
-
-// Arrow Function (Single-expression)
 const somar = (a: number, b: number) => a + b;
-
-// Parâmetro com valor padrão
 const saudar = (nome: string, msg: string = "Olá") => `${msg}, ${nome}`;
 ```
 
-### 5. Arrays e Map/Filter
+### 5. Arrays e Pipeline Funcional
 
 ```typescript
-// Arrays robustos
-const tecnologias: string[] = ["React Native", "Expo", "TypeScript"];
-
-// Pipeline funcional
-tecnologias
-    .filter(tech => tech.length > 4)
-    .map(tech => tech.toUpperCase())
-    .forEach(tech => console.log(tech));
+const techs: string[] = ["React Native", "Expo", "TypeScript"];
+techs
+    .filter(t => t.length > 4)
+    .map(t => t.toUpperCase())
+    .forEach(t => console.log(t));
 ```
 
-### 6. Interfaces e Types (OOP Moderno)
+### 6. Interfaces
 
 ```typescript
-// Define o contrato de um objeto
 interface User {
     id: string;
     name: string;
     email: string;
     bio?: string; // Opcional
 }
-
-// Implementação do contrato
-const meuPerfil: User = {
-    id: "1",
-    name: "Estudante",
-    email: "contato@merge.com"
-};
 ```
 
 ### 7. Destructuring e Spread
 
 ```typescript
-// Destruturação de objetos
 const { name, email } = meuPerfil;
-
-// Spread operator (Cópia e merge)
-const novoPerfil = { ...meuPerfil, name: "Novo Nome" };
-const listaCompleta = [...tecnologias, "Next.js"];
+const novo = { ...meuPerfil, name: "Outro" };
 ```
 
 ### 8. Classes
@@ -145,25 +107,20 @@ const listaCompleta = [...tecnologias, "Next.js"];
 ```typescript
 class Aluno {
     constructor(public nome: string, public nota: number) {}
-
-    apresentar() {
-        console.log(`Olá, meu nome é ${this.nome}`);
-    }
+    apresentar() { console.log(`Olá, sou ${this.nome}`); }
 }
 ```
 
 ### 9. Import e Export
 
 ```typescript
-// Exportando um componente ou utilitário
 export const API_URL = "https://api.merge.com";
-
-// Importando
 import { API_URL } from "./config";
 ```
 
+---
 
-### Componentes Básicos
+## 📦 Componentes Básicos
 
 | React Native | Web (equivalente) |
 |:-------------|:-------------------|
@@ -173,125 +130,176 @@ import { API_URL } from "./config";
 | `<TouchableOpacity>` | `<button>` |
 | `<StyleSheet>` | CSS-in-JS |
 
+---
+
+## 🎨 Seu Primeiro Componente
+
+```tsx title="app/hello.tsx"
+import React from 'react';
+import { View, Text, StyleSheet } from 'react-native';
+
+export default function HelloScreen() {
+    return (
+        <View style={styles.container}>
+            <Text style={styles.titulo}>Olá, React Native! 👋</Text>
+            <Text style={styles.subtitulo}>Meu primeiro componente</Text>
+        </View>
+    );
+}
+
+const styles = StyleSheet.create({
+    container: {
+        flex: 1,
+        backgroundColor: '#F8F9FA',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    titulo: {
+        fontSize: 28,
+        fontWeight: 'bold',
+        color: '#2D3436',
+    },
+    subtitulo: {
+        fontSize: 16,
+        color: '#636E72',
+    },
+});
+```
+
+---
+
+## 🎨 Estilização e Customização
+
+### StyleSheet.create
+Sempre use `StyleSheet.create({})` ao invés de objetos inline — é mais performático e o editor sugere propriedades.
+
+### Flexbox no React Native
+
+```tsx
+// Direção padrão: column (vertical)
+<View style={{ flexDirection: 'row' }}>  {/* Muda para horizontal */}
+    <View style={{ flex: 1 }} />  {/* Ocupa 50% */}
+    <View style={{ flex: 1 }} />  {/* Ocupa 50% */}
+</View>
+```
+
+| Propriedade | O que faz |
+|:------------|:----------|
+| `flex: 1` | Ocupa todo o espaço disponível |
+| `flexDirection` | `'column'` (vertical) ou `'row'` (horizontal) |
+| `alignItems` | Alinha no eixo cruzado (`center`, `flex-start`, `flex-end`) |
+| `justifyContent` | Alinha no eixo principal (`center`, `space-between`) |
+| `gap` | Espaçamento entre itens |
+
+### Composição de Estilos
+
+```tsx
+{/* Combina dois objetos de estilo usando array */}
+<View style={[styles.card, styles.cardDestaque]} />
+
+{/* Estilo condicional */}
+<TouchableOpacity style={[styles.button, loading && styles.buttonDisabled]} />
+```
+
+### Sombras
+```tsx
+const styles = StyleSheet.create({
+    card: {
+        // iOS
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
+        // Android
+        elevation: 4,
+    },
+});
+```
+
+---
+
+## ⚡ useEffect — Efeitos Colaterais
+
+```tsx title="app/index.tsx"
+import { useEffect } from 'react';
+
+useEffect(() => {
+    // Este código roda APÓS o componente montar na tela
+    const timer = setTimeout(() => {
+        router.replace('/login');
+    }, 2000);
+
+    // Cleanup: roda quando o componente DESMONTA
+    return () => clearTimeout(timer);
+}, []); // [] = roda apenas 1 vez
+```
+
+| Array de Dependências | Comportamento |
+|:----------------------|:-------------|
+| `[]` (vazio) | Roda **1 vez** ao montar |
+| `[variavel]` | Roda quando `variavel` muda |
+| sem array | Roda a **cada re-render** (⚠️ cuidado!) |
+
+---
+
+## 🧠 useState — Gerenciamento de Estado
+
+```tsx title="app/login.tsx"
+import { useState } from 'react';
+
+const [email, setEmail] = useState('');       // Começa vazio
+const [loading, setLoading] = useState(false); // Começa false
+```
+
+| Conceito | Exemplo |
+|:---------|:--------|
+| Ler o valor | `email` |
+| Atualizar o valor | `setEmail('novo@email.com')` |
+| Nunca faça isso | ~~`email = 'novo@email.com'`~~ |
+
+### TextInput com useState
+
+```tsx
+<TextInput
+    value={email}                    // Exibe o valor atual
+    onChangeText={setEmail}          // Atualiza a cada tecla
+    keyboardType="email-address"     // Teclado de email
+    secureTextEntry                  // Esconde o texto (senhas)
+/>
+```
+
+---
+
 ## 💻 Código de Referência
 
 ### Login com Formulário e Estado
 
 ```tsx title="app/login.tsx"
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity,
-         Alert, ActivityIndicator } from 'react-native';
-import { useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
-import { apiClient } from '../lib/api';
-
-export default function LoginScreen() {
-    const [email, setEmail] = useState('');
-    const [password, setPassword] = useState('');
-    const [loading, setLoading] = useState(false);
-    const router = useRouter();
-
-    async function handleLogin() {
-        setLoading(true);
-        try {
-            await apiClient.auth.signIn(email, password);
-            router.replace('/courses');
-        } catch (error: any) {
-            Alert.alert('Erro ao entrar',
-                error.message || 'Verifique suas credenciais');
-        } finally {
-            setLoading(false);
-        }
+async function handleLogin() {
+    setLoading(true);
+    try {
+        await apiClient.auth.signIn(email, password);
+        router.replace('/register');
+    } catch (error: any) {
+        Alert.alert('Erro', error.message);
+    } finally {
+        setLoading(false); // Roda SEMPRE
     }
-
-    return (
-        <View style={styles.container}>
-            <Text style={styles.header}>Merge Skills</Text>
-
-            <View style={styles.inputContainer}>
-                <Ionicons name="mail-outline" size={20}
-                          color="#666" style={styles.icon} />
-                <TextInput
-                    style={styles.input}
-                    placeholder="E-mail"
-                    value={email}
-                    onChangeText={setEmail}
-                    keyboardType="email-address"
-                    autoCapitalize="none"
-                />
-            </View>
-
-            <View style={styles.inputContainer}>
-                <Ionicons name="lock-closed-outline" size={20}
-                          color="#666" style={styles.icon} />
-                <TextInput
-                    style={styles.input}
-                    placeholder="Senha"
-                    value={password}
-                    onChangeText={setPassword}
-                    secureTextEntry
-                />
-            </View>
-
-            <TouchableOpacity
-                style={styles.button}
-                onPress={handleLogin}
-                disabled={loading}>
-                {loading
-                    ? <ActivityIndicator color="#fff" />
-                    : <Text style={styles.buttonText}>Entrar</Text>}
-            </TouchableOpacity>
-
-            <TouchableOpacity onPress={() => router.push('/register')}>
-                <Text style={styles.linkText}>Criar nova conta</Text>
-            </TouchableOpacity>
-        </View>
-    );
 }
 ```
 
 ### Cliente API — api.ts
 
 ```ts title="lib/api.ts"
-export const API_CONFIG = {
-    BASE_URL: 'https://lddm-api-inicial-1.onrender.com',
-    SUPABASE_KEY: 'eyJhbGciOiJIUzI1NiIsInR5c...',
-};
-
 export const apiClient = {
     async fetch(endpoint: string, options: RequestInit = {}) {
-        const url = endpoint.startsWith('http')
-            ? endpoint
-            : `${API_CONFIG.BASE_URL}${endpoint}`;
-
-        const headers = {
-            'Content-Type': 'application/json',
-            'apikey': API_CONFIG.SUPABASE_KEY,
-            'Authorization': `Bearer ${API_CONFIG.SUPABASE_KEY}`,
-            ...options.headers,
-        };
-
         const response = await fetch(url, { ...options, headers });
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.message || `Erro HTTP: ${response.status}`);
-        }
+        if (!response.ok) throw new Error(`Erro HTTP: ${response.status}`);
         return await response.json();
     },
-
     auth: {
-        async signIn(email: string, pass: string) {
-            return apiClient.fetch('/auth/login', {
-                method: 'POST',
-                body: JSON.stringify({ email, password: pass }),
-            });
-        },
-        async signUp(name: string, email: string, pass: string) {
-            return apiClient.fetch('/auth/register', {
-                method: 'POST',
-                body: JSON.stringify({ name, email, password: pass }),
-            });
-        }
+        async signIn(email: string, pass: string) { /* POST /auth/login */ },
+        async signUp(name: string, email: string, pass: string) { /* POST /auth/register */ },
     },
 };
 ```
@@ -302,28 +310,31 @@ import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
 <Tabs>
-  <TabItem value="ex1" label="Exercício 1 — TypeScript">
+  <TabItem value="ex1" label="Exercício 1 — Componentes" default>
 
-### Praticando TS
+### Modifique o hello.tsx
 
-No arquivo `app/index.tsx`, antes do export, crie:
-1. Uma interface `Professor` com `nome` e `materia`.
-2. Um array de professores.
-3. Use `map` para renderizar apenas os nomes no console.
-
-  </TabItem>
-  <TabItem value="ex2" label="Exercício 2 — Aplicação">
-
-### Estilize com o tema escuro
-
-Mude o `backgroundColor` do container de `'#fff'` para `'#0F0F0F'` e os textos para cores claras. Compare o resultado visual com a versão original.
+1. Adicione mais 2 boxes coloridos na `row`.
+2. Crie um segundo card abaixo do primeiro com informações sobre você.
+3. Experimente mudar `flexDirection` do container para `'row'`.
 
   </TabItem>
-  <TabItem value="ex3" label="Exercício 3 — Desafio">
+  <TabItem value="ex2" label="Exercício 2 — Estilos">
 
-### Crie a tela de Registro
+### Customize a Tela de Login
 
-Crie `app/register.tsx` com os campos Nome, Email e Senha. Ao submeter, chame `apiClient.auth.signUp(name, email, password)`. Use `router.back()` para voltar ao login após sucesso.
+1. Mude a cor do botão de `#FF6B6B` para outra cor.
+2. Aumente o `borderRadius` dos inputs para `24` (pill shape).
+3. Adicione `elevation: 2` nos `inputContainer` para criar sombra.
+
+  </TabItem>
+  <TabItem value="ex3" label="Exercício 3 — Estado">
+
+### Adicione Validação ao Login
+
+1. Crie um estado `const [erro, setErro] = useState('')`.
+2. Antes de chamar `handleLogin`, verifique se email e senha não estão vazios.
+3. Se estiverem vazios, faça `setErro('Preencha todos os campos')` e exiba com `<Text>`.
 
   </TabItem>
 </Tabs>
