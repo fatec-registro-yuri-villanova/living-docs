@@ -17,27 +17,72 @@ git checkout aula-05
 
 À medida que nossa API cresce, configurar tudo diretamente dentro do `Application.kt` torna o código ilegível. O **Ktor** suporta a abstração por **Plugins**. Nesta aula, extraímos responsabilidades cruciais (como CORS, Tratamento de Erros, JSON Parsing e Roteamento) para funções extensórias dedicadas alojadas na pasta `plugins/`.
 
-## 💻 Código de Referência e Propósito dos Plugins
+## 💻 Referência Didática: Propósito e Código dos Plugins
 
-O ecossistema do Ktor incentiva fortemente a separação de interesses. Abaixo estão os quatro plugins cruciais que implementamos, junto com uma explicação de suas finalidades na arquitetura da nossa API:
+O ecossistema do Ktor incentiva fortemente a separação de interesses. Abaixo estão os quatro plugins cruciais que implementamos, onde a explicação de sua finalidade é imediatamente seguida pelo trecho de código correspondente na arquitetura da nossa API:
 
-### 1. Routing Plugin (`Routing.kt`)
+### 1. Routing Plugin
 **Finalidade:** Responsável por organizar todos os _endpoints_ da aplicação (como `GET /api/courses` ou `POST /auth/login`). Extrair o roteamento impede que o `Application.kt` se torne um arquivo gigante e monolítico, facilitando a manutenção e delegação de caminhos da URL.
 
-### 2. CORS Plugin (`CORS.kt`)
+```kotlin title="server/src/main/kotlin/com/fatec/merge_skills_kmp/plugins/Routing.kt"
+package com.fatec.merge_skills_kmp.plugins
+
+import io.github.jan.supabase.SupabaseClient
+import io.github.jan.supabase.postgrest.postgrest
+import io.ktor.server.application.*
+import io.ktor.server.response.*
+import io.ktor.server.routing.*
+
+fun Application.configureRouting(supabase: SupabaseClient?) {
+    routing {
+        get("/") {
+            call.respondText("MergeSkills API is running!")
+        }
+        
+        get("/api/health") {
+            call.respondText("""{"status":"ok"}""", io.ktor.http.ContentType.Application.Json)
+        }
+
+        get("/api/courses") {
+            try {
+                val supabaseClient = supabase ?: throw IllegalStateException("SupabaseClient is null.")
+                val courses = supabaseClient.postgrest["courses"].select()
+                call.respondText(courses.data)
+            } catch (e: Exception) {
+                e.printStackTrace()
+                call.respondText("{\"error\": \"${e.message}\"}", status = io.ktor.http.HttpStatusCode.InternalServerError)
+            }
+        }
+    }
+}
+```
+
+### 2. CORS Plugin
 **Finalidade:** O _Cross-Origin Resource Sharing_ (CORS) é um mecanismo de segurança presente nos navegadores web. Ele impede que sites maliciosos façam requisições para a nossa API em nome do usuário. Configuramos este plugin para declarar explicitamente quais origens (como nosso futuro App Web rodando em `localhost:3000`), métodos (GET, POST, etc.) e cabeçalhos têm permissão de acessar nossos dados.
 
-### 3. Serialization Plugin (`Serialization.kt`)
+```kotlin title="server/src/main/kotlin/com/fatec/merge_skills_kmp/plugins/CORS.kt"
+package com.fatec.merge_skills_kmp.plugins
+
+import io.ktor.http.*
+import io.ktor.server.application.*
+import io.ktor.server.plugins.cors.routing.*
+
+fun Application.configureCORS() {
+    install(CORS) {
+        allowMethod(HttpMethod.Options)
+        allowMethod(HttpMethod.Put)
+        allowMethod(HttpMethod.Delete)
+        allowMethod(HttpMethod.Patch)
+        allowHeader(HttpHeaders.Authorization)
+        allowHeader(HttpHeaders.ContentType)
+        allowHeader(HttpHeaders.AccessControlAllowOrigin)
+        anyHost() // Ideal trocar para origens específicas em PRD
+    }
+}
+```
+
+### 3. Serialization Plugin
 **Finalidade:** A tradução automática de dados. Quando enviamos nossas Kotlin Data Classes (`User`, `Course`), este plugin automaticamente as converte para formato textual estruturado (`JSON`) para trafegar na rede. Da mesma forma, quando recebemos dados do cliente, ele converte o `JSON` de volta para objetos Kotlin sem exigirmos parsing manual.
-
-### 4. StatusPages Plugin (`StatusPages.kt`)
-**Finalidade:** Lidando com exceções de maneira graciosa e global. Sem este plugin, se um erro imprevisto (como falha no banco de dados) ocorrer num endpoint, o servidor crasha, ou o cliente não recebe um formato válido de erro. O StatusPages intercepta qualquer `Throwable` (exceção) "não-tratada" e devolve proativamente um código HTTP 500 informando dignamente a falha, evitando paralisação da máquina.
-
----
-
-Abaixo estão os códigos de referência para os dois plugins básicos já implementados como modelo:
-
-### 1. Serialization Plugin
 
 ```kotlin title="server/src/main/kotlin/com/fatec/merge_skills_kmp/plugins/Serialization.kt"
 package com.fatec.merge_skills_kmp.plugins
@@ -58,7 +103,8 @@ fun Application.configureSerialization() {
 }
 ```
 
-### 2. StatusPages Plugin
+### 4. StatusPages Plugin
+**Finalidade:** Lidando com exceções de maneira graciosa e global. Sem este plugin, se um erro imprevisto (como falha no banco de dados) ocorrer num endpoint, o servidor crasha, ou o cliente não recebe um formato válido de erro. O StatusPages intercepta qualquer `Throwable` (exceção) "não-tratada" e devolve proativamente um código HTTP 500 informando dignamente a falha, evitando paralisação da máquina.
 
 ```kotlin title="server/src/main/kotlin/com/fatec/merge_skills_kmp/plugins/StatusPages.kt"
 package com.fatec.merge_skills_kmp.plugins
