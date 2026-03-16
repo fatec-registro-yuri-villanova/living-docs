@@ -1,0 +1,208 @@
+---
+sidebar_position: 4.1
+title: "Aula 4.1: Referência de DTOs e Seeding SQL"
+description: "Dicionário de dados Kotlin e Scripts SQL para população fictícia do Banco de Dados."
+---
+
+# Aula 4.1: Referência de DTOs e Seeding SQL
+
+:::info 📝 Documento Suplementar
+Este documento é uma extensão da **Aula 04**, focado exclusivamente em fornecer uma referência centralizada de todos os **Data Transfer Objects (DTOs)** do projeto e como populá-los no banco de dados Supabase via scripts SQL.
+:::
+
+## 📋 Dicionário de DTOs e Mapeamento SQL
+
+Abaixo, cada classe Kotlin `@Serializable` é apresentada junto ao seu respectivo comando `INSERT` para gerar dados de teste.
+
+### 1. Usuário (`User`)
+
+Representa o perfil do estudante no sistema.
+
+```kotlin title="shared/.../domain/models/Models.kt"
+@Serializable
+data class User(
+    val id: Int,
+    val username: String,
+    val email: String? = null,
+    val name: String? = null,
+    val password: String? = null,
+    @SerialName("profile_picture")
+    val profilePicture: String? = null,
+    @SerialName("streak_count")
+    val streakCount: Int = 0,
+    @SerialName("last_activity_at")
+    val lastActivityAt: String? = null,
+    @SerialName("streak_freezes")
+    val streakFreezes: Int = 0,
+    @SerialName("longest_streak")
+    val longestStreak: Int = 0,
+    val role: String = "user",
+    @SerialName("created_at")
+    val createdAt: String? = null
+)
+```
+
+**Seeding SQL:**
+```sql
+INSERT INTO public.users (username, email, name, password, role) 
+VALUES ('dev_junior', 'junior@exemplo.com', 'João Dev', 'senha123', 'user');
+```
+
+---
+
+### 2. Cursos (`Course`)
+
+```kotlin
+@Serializable
+data class Course(
+    val id: Int,
+    val title: String,
+    val description: String? = null,
+    val icon: String? = null,
+    val color: String? = null,
+    @SerialName("total_lessons")
+    val totalLessons: Int = 0,
+    @SerialName("created_at")
+    val createdAt: String? = null
+)
+```
+
+**Seeding SQL:**
+```sql
+INSERT INTO public.courses (title, description, icon, color, total_lessons) 
+VALUES ('Kotlin Fundamentals', 'Aprenda o básico de Kotlin para KMP', 'kotlin_icon', '#7F52FF', 2);
+```
+
+---
+
+### 3. Aulas (`Lesson`)
+
+```kotlin
+@Serializable
+data class Lesson(
+    val id: Int,
+    @SerialName("course_id")
+    val courseId: Int? = null,
+    val title: String,
+    val description: String? = null,
+    val order: Int? = null,
+    @SerialName("created_at")
+    val createdAt: String? = null
+)
+```
+
+**Seeding SQL:**
+```sql
+-- Assumindo que o Course ID seja 1
+INSERT INTO public.lessons (course_id, title, description, "order") 
+VALUES (1, 'Variáveis e Tipos', 'Entendendo val e var', 1);
+
+INSERT INTO public.lessons (course_id, title, description, "order") 
+VALUES (1, 'Funções', 'Estrutura de funções em Kotlin', 2);
+```
+
+---
+
+### 4. Questões (`Question`)
+
+```kotlin
+@Serializable
+data class Question(
+    val id: Int,
+    @SerialName("lesson_id")
+    val lessonId: Int? = null,
+    val question: String,
+    val code: String? = null,
+    val options: List<String>? = emptyList(),
+    @SerialName("correct_answer")
+    val correctAnswer: Int? = null,
+    val order: Int? = null,
+    @SerialName("created_at")
+    val createdAt: String? = null
+)
+```
+
+**Seeding SQL:**
+```sql
+-- Assumindo que o Lesson ID seja 1
+INSERT INTO public.questions (lesson_id, question, code, options, correct_answer, "order") 
+VALUES (1, 'Qual palavra-chave define uma variável imutável?', 'val x = 10', '["var", "val", "const", "immutable"]', 1, 1);
+```
+
+---
+
+### 5. Progresso e Tentativas (`LessonProgress` / `QuestionAttempt`)
+
+```kotlin
+@Serializable
+data class LessonProgress(
+    val id: Int,
+    @SerialName("user_id")
+    val userId: Int? = null,
+    @SerialName("lesson_id")
+    val lessonId: Int? = null,
+    @SerialName("is_completed")
+    val isCompleted: Boolean? = false,
+    @SerialName("completed_at")
+    val completedAt: String? = null
+)
+
+@Serializable
+data class QuestionAttempt(
+    val id: Int,
+    @SerialName("user_id")
+    val userId: Int? = null,
+    @SerialName("question_id")
+    val questionId: Int? = null,
+    @SerialName("selected_option")
+    val selectedOption: Int? = null,
+    @SerialName("is_correct")
+    val isCorrect: Boolean? = false,
+    val timestamp: String? = null
+)
+```
+
+**Seeding SQL:**
+```sql
+-- Progresso: Usuário 1 completou Aula 1
+INSERT INTO public.lesson_progress (user_id, lesson_id, is_completed) 
+VALUES (1, 1, true);
+
+-- Tentativa: Usuário 1 acertou Questão 1
+INSERT INTO public.question_attempts (user_id, question_id, selected_option, is_correct) 
+VALUES (1, 1, 1, true);
+```
+
+---
+
+## 🔐 DTOs de Autenticação (Payload Only)
+
+Estes DTOs não possuem tabelas diretas no banco (são usados apenas para tráfego via API Auth).
+
+### Login e Registro
+
+```kotlin
+@Serializable
+data class LoginRequest(
+    val email: String,
+    val password: String? = null
+)
+
+@Serializable
+data class RegisterRequest(
+    val email: String,
+    val username: String? = null,
+    val password: String? = null
+)
+
+@Serializable
+data class AuthResponse(
+    @SerialName("access_token")
+    val accessToken: String,
+    val user: User? = null
+)
+```
+
+:::tip Como usar os SQLs?
+Você pode copiar e colar os scripts acima diretamente no **SQL Editor** do seu Dashboard no Supabase para criar sua primeira massa de dados de teste rapidamente.
+:::
