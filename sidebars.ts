@@ -114,7 +114,7 @@ const sidebars: SidebarsConfig = {
             type: "category",
             label: "Módulo 1 — Shared Architecture",
             collapsed: false,
-            items: ["ldm/aula-01", "ldm/aula-02", "ldm/aula-03", "ldm/aula-04"],
+            items: ["ldm/aula-01", "ldm/aula-02", "ldm/aula-03", "ldm/aula-04", "ldm/aula-04-1"],
         },
         {
             type: "category",
