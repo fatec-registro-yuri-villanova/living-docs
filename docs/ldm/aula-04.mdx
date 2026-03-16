@@ -59,11 +59,9 @@ data class User(
 Ao ler nosso `initial_schema.sql`, notamos que as Primary Keys (`id`) são `serial`, um auto-incremento numérico. Portanto, no Kotlin, nossos campos de `id` são todos mapeados para a tipagem primária `Int`. Identificadores relacionais (foreign keys) também acompanham essa formatação via `Int?`.
 :::
 
-Nesta branch, possuímos classes isoladas que refletem o banco em pastas granulares:
+Nesta branch, centralizamos nossas classes de representação de dados em um único arquivo de domínio principal:
 
-* `AuthDTOs.kt` → Lidando com payloads (LoginRequest, LoginResponse).
-* `ContentDTOs.kt` → Coleção específica das Aulas interligadas a um Curso (Module/Trail).
-* `Models.kt` → Core business logic com as classes bases (Course, User, Lesson, etc).
+* `Models.kt` → Contém tanto a Core Business Logic (Course, User, Lesson) quanto os Payloads DTOs de Autenticação (LoginRequest, AuthResponse).
 
 ### Repository Pattern no KMP
 
