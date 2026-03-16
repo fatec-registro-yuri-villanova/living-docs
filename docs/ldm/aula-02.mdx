@@ -77,16 +77,35 @@ Uma **factory function** é uma função que cria e retorna um objeto pronto par
 
 ### Application.kt — Server consome o Shared
 
-O servidor lê as credenciais via `System.getProperty()` (JVM args definidos no `build.gradle.kts`) e usa a factory do shared:
+O servidor lê as credenciais buscando por `System.getProperty()` (JVM args definidos no `build.gradle.kts`) ou Variáveis de Ambiente. Caso não encontre, ele implementa um fallback absoluto, lendo diretamente o arquivo `local.properties` na raiz do projeto, permitindo executar o servidor diretamente pelo botão Play (🟢) do IntelliJ:
 
 ```kotlin title="server/src/main/kotlin/.../Application.kt"
+import io.github.jan.supabase.SupabaseClient
+import io.github.jan.supabase.postgrest.postgrest
+
 fun Application.module() {
-    // Credenciais vêm do build.gradle.kts → local.properties
-    val supabaseUrl = System.getProperty("SUPABASE_URL")
-    val supabaseKey = System.getProperty("SUPABASE_KEY")
+    // Configurações do Supabase (tentativa 1: JVM args/Env Vars)
+    var supabaseUrl = System.getProperty("SUPABASE_URL") ?: System.getenv("SUPABASE_URL")
+    var supabaseKey = System.getProperty("SUPABASE_KEY") ?: System.getenv("SUPABASE_KEY")
 
+    // Fallback absoluto: Ler o arquivo local.properties diretamente (para IntelliJ direto no botão de Play)
+    if (supabaseUrl == null || supabaseKey == null) {
+        val properties = java.util.Properties()
+        val localPropFiles = listOf(
+            java.io.File("local.properties"),
+            java.io.File("../local.properties"),
+            java.io.File("../../local.properties")
+        )
+        val file = localPropFiles.firstOrNull { it.exists() }
+        if (file != null) {
+            properties.load(java.io.FileInputStream(file))
+            supabaseUrl = properties.getProperty("SUPABASE_URL")
+            supabaseKey = properties.getProperty("SUPABASE_KEY")
+        }
+    }
+    
     var supabase: SupabaseClient? = null
-
+    
     if (supabaseUrl != null && supabaseKey != null) {
         // Reutiliza a factory do módulo shared!
         supabase = createAppSupabaseClient(supabaseUrl, supabaseKey)
@@ -177,20 +196,23 @@ get("/api/health") {
 
 ### Primeira query real
 
-Crie um endpoint `GET /api/courses` que use o Supabase para buscar dados da tabela `courses`:
+Crie um endpoint `GET /api/courses` que use o Supabase para buscar dados da tabela `courses`. Note a estruturação usando `try-catch` para isolar erros durante a delegação e o acesso nativo do plugin usando `.postgrest["tabela"]`:
 
 ```kotlin
 get("/api/courses") {
-    val courses = supabase?.postgrest?.from("courses")?.select()
-    call.respondText(courses?.data ?: "[]")
+    try {
+        val supabaseClient = supabase ?: throw IllegalStateException("SupabaseClient is null. Check Environment Variables.")
+        val courses = supabaseClient.postgrest["courses"].select()
+        call.respondText(courses.data)
+    } catch (e: Exception) {
+        e.printStackTrace()
+        call.respondText("{\"error\": \"${e.message}\"}", status = io.ktor.http.HttpStatusCode.InternalServerError)
+    }
 }
 ```
 
-:::tip Cuidado ao rodar o Servidor Local!
-Se você clicar no "Play" verde direto no arquivo `Application.kt` via Android Studio/IntelliJ, a sua IDE **não lerá** o arquivo `local.properties` e o Ktor subirá sem as credenciais do Supabase (retornando `[]` vazio na API).
-
-**Sempre rode o servidor via Gradle:**  
-No terminal digite `./gradlew server:run` (ou rode a task Ktor diretamente pela aba do Gradle no canto direito). Assim, o `build.gradle.kts` irá injetar os `systemProperties` e a API conseguirá pegar as listas de Cursos do Supabase!
+:::tip Executando o Servidor Localmente
+Graças ao nosso *fallback absoluto* implementado na função `Application.module()`, agora você pode rodar o servidor apertando no "Play" (🟢) direto no arquivo `Application.kt` do Android Studio/IntelliJ! O servidor irá retroagir pastas até encontrar seu arquivo `local.properties` e carregar o `SUPABASE_KEY` e a `SUPABASE_URL`.
 :::
 
 Se a tabela ainda não existir, o Supabase retornará um erro 404 — e tudo bem, na próxima aula criaremos o schema!
