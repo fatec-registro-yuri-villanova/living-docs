@@ -28,33 +28,44 @@ No Jetpack Compose, a UI é **reativa**: ela muda quando o estado muda.
 ### 1. Estado Interno (Stateful)
 Usamos `remember { mutableStateOf(...) }` para que o Compose "lembre" de um valor durante a recomposição. Um componente que gerencia seu próprio estado é chamado de **Stateful**.
 
-### 2. Elevação de Estado (State Hoisting)
+### 2. Estado Salvo (rememberSaveable)
+O `remember` mantém o estado apenas durante a recomposição. Se a tela for destruída (ex: rotacionar o celular), o estado é perdido. Para persistir dados nessas situações, usamos o **`rememberSaveable`**. Ele salva o estado no `Bundle` do Android automaticamente para tipos primitivos ou objetos que implementam `Parcelable`.
+
+### 3. Elevação de Estado (State Hoisting)
 Para tornar componentes mais reutilizáveis e fáceis de testar, "elevamos" o estado para o componente pai. O componente filho torna-se **Stateless** (não possui estado interno), recebendo os dados via parâmetro e notificando mudanças via eventos (lambdas).
+
+### 4. Sobrevivendo a Mudanças (rememberSaveable)
+O `remember` mantém o estado apenas durante a recomposição. Se a tela for destruída (ex: rotacionar o celular), o estado é perdido. Para persistir dados nessas situações, usamos o **`rememberSaveable`**.
+
+:::info Kotlin Parcelize
+Para usar o `rememberSaveable` com objetos customizados, a classe deve implementar `Parcelable`. Ativamos o plugin `id("kotlin-parcelize")` no `build.gradle.kts` para gerar esse código automaticamente com a anotação `@Parcelize`.
+:::
 
 ## 💻 Código de Referência
 
-### Data Class com Nullable
+### Data Class Parcelável
 
 ```kotlin title="ui/screens/aula02/Aula02Screen.kt"
-// Data class para representar o perfil do usuário
+import android.os.Parcelable
+import kotlinx.parcelize.Parcelize
+
+@Parcelize
 data class UserProfile(
     val name: String,
-    val role: String? // Nullable para demonstrar SafeCall ?.
-)
+    val role: String?
+) : Parcelable
 ```
 
-### State Hoisting na Prática
+### State Hoisting com rememberSaveable
 
 ```kotlin title="ui/screens/aula02/Aula02Screen.kt"
 @Composable
 fun Aula02Screen(modifier: Modifier = Modifier) {
-    // 1. ESTADO INTERNO (Stateful)
-    // O estado é gerenciado aqui e "elevado" para o filho
-    var activeProfile by remember {
+    // ESTADO SALVO: O 'rememberSaveable' sobrevive à rotação de tela
+    var activeProfile by rememberSaveable {
         mutableStateOf(UserProfile("Aluno MergeSkills", "Developer"))
     }
 
-    // Chamada do filho passando dados e o evento de mudança
     UserProfileContent(
         profile = activeProfile,
         onProfileChange = { newProfile -> activeProfile = newProfile },
@@ -68,8 +79,7 @@ fun UserProfileContent(
     onProfileChange: (UserProfile) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    // 2. STATELESS COMPOSABLE
-    // Apenas exibe o que recebe e avisa quando algo acontece
+    // Componente Stateless (Não gerencia estado)
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -87,6 +97,7 @@ fun UserProfileContent(
     }
 }
 ```
+
 
 :::tip Vantagem do Hoisting
 Componentes **Stateless** (como o `UserProfileContent`) são muito mais fáceis de pré-visualizar no Android Studio e de testar, pois não dependem de uma lógica interna complexa de estado.
@@ -119,5 +130,15 @@ Crie uma nova variável de estado `isOnline: Boolean` na `Aula02Screen` e passe-
 Modifique o `UserProfileContent` para receber uma `List<UserProfile>` e renderize-as usando um loop `forEach`. O estado da lista ainda deve ser gerenciado pela `Aula02Screen`.
 
   </TabItem>
+  <TabItem value="ex4" label="Exercício 4 — Persistência">
+
+### Teste de Rotação
+
+Gire o emulador/dispositivo (`Ctrl + F11`) após alterar o perfil para "Visitante". 
+1. Mude para `remember` e veja o estado resetar.
+2. Volte para `rememberSaveable` e veja o estado ser mantido. Explique o porquê.
+
+  </TabItem>
 </Tabs>
+
 
