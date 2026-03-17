@@ -11,17 +11,25 @@ Esta aula refere-se à branch: **`aula-02`**
 ```bash
 git checkout aula-02
 ```
-:::
+:## 📖 Conceito
 
-## 📖 Conceito
-
-Nesta aula, unimos conceitos Kotlin (`data class`, `?.` SafeCall, lambdas) com os três **layouts fundamentais** do Jetpack Compose: `Column`, `Row` e `Box`. A tela constrói um perfil de usuário interativo onde o estado muda ao toque.
+Nesta aula, unimos conceitos Kotlin (`data class`, `?.` SafeCall, lambdas) com os três **layouts fundamentais** do Jetpack Compose: `Column`, `Row` e `Box`. Além disso, introduzimos o **Gerenciamento de Estado**, diferenciando estados internos de componentes que utilizam *State Hoisting*.
 
 ### Arquivos novos nesta branch
 
 | Arquivo | Descrição |
 |---------|-----------|
-| `ui/screens/aula02/Aula02Screen.kt` | Tela com UserProfile, layouts e SafeCall |
+| `ui/screens/aula02/Aula02Screen.kt` | Tela com UserProfile, layouts, SafeCall e State Hoisting |
+
+## 🧩 Gerenciamento de Estado
+
+No Jetpack Compose, a UI é **reativa**: ela muda quando o estado muda.
+
+### 1. Estado Interno (Stateful)
+Usamos `remember { mutableStateOf(...) }` para que o Compose "lembre" de um valor durante a recomposição. Um componente que gerencia seu próprio estado é chamado de **Stateful**.
+
+### 2. Elevação de Estado (State Hoisting)
+Para tornar componentes mais reutilizáveis e fáceis de testar, "elevamos" o estado para o componente pai. O componente filho torna-se **Stateless** (não possui estado interno), recebendo os dados via parâmetro e notificando mudanças via eventos (lambdas).
 
 ## 💻 Código de Referência
 
@@ -35,102 +43,53 @@ data class UserProfile(
 )
 ```
 
-### Tela Completa — Row, Column, Box
+### State Hoisting na Prática
 
 ```kotlin title="ui/screens/aula02/Aula02Screen.kt"
 @Composable
 fun Aula02Screen(modifier: Modifier = Modifier) {
-    // Estado mutável para simular troca de perfil
+    // 1. ESTADO INTERNO (Stateful)
+    // O estado é gerenciado aqui e "elevado" para o filho
     var activeProfile by remember {
         mutableStateOf(UserProfile("Aluno MergeSkills", "Developer"))
     }
 
+    // Chamada do filho passando dados e o evento de mudança
+    UserProfileContent(
+        profile = activeProfile,
+        onProfileChange = { newProfile -> activeProfile = newProfile },
+        modifier = modifier
+    )
+}
+
+@Composable
+fun UserProfileContent(
+    profile: UserProfile,
+    onProfileChange: (UserProfile) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    // 2. STATELESS COMPOSABLE
+    // Apenas exibe o que recebe e avisa quando algo acontece
     Column(
         modifier = modifier
             .fillMaxSize()
             .padding(24.dp)
     ) {
-        Text(
-            text = "Prática Aula 02",
-            style = MaterialTheme.typography.headlineLarge,
-            color = MaterialTheme.colorScheme.primary
-        )
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Row + Box para layout de avatar + informações
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Box circular para um "Avatar" improvisado
-            Box(
-                modifier = Modifier
-                    .size(64.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.primary),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = activeProfile.name.take(1).uppercase(),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onPrimary
-                )
-            }
-
-            Spacer(modifier = Modifier.width(16.dp))
-
-            Column {
-                Text(
-                    text = activeProfile.name,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onBackground
-                )
-                // Usando SafeCall e Elvis para renderizar o subtítulo
-                Text(
-                    text = activeProfile.role?.uppercase() ?: "SEM CARGO",
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(32.dp))
-
-        // Botão demonstra Lambda + mudança de estado para nullable
+        // ... (Layout da tela)
+        
         Button(
             onClick = {
-                activeProfile = UserProfile("Visitante", null)  // role null!
-            },
-            modifier = Modifier.fillMaxWidth(),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                contentColor = MaterialTheme.colorScheme.onSurface
-            )
+                onProfileChange(UserProfile("Visitante", null))
+            }
         ) {
             Text("Simular Nullable (SafeCall)")
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        Button(
-            onClick = {
-                activeProfile = UserProfile("Aluno Vip", "Senior Android Dev")
-            },
-            modifier = Modifier.fillMaxWidth(),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary
-            )
-        ) {
-            Text("Restaurar Dev")
         }
     }
 }
 ```
 
-:::tip Observe
-Quando o botão "Simular Nullable" é pressionado, o `role` vira `null`. O `?.uppercase()` retorna `null` e o Elvis `?:` exibe **"SEM CARGO"**. Esse é o **SafeCall** do Kotlin em ação.
+:::tip Vantagem do Hoisting
+Componentes **Stateless** (como o `UserProfileContent`) são muito mais fáceis de pré-visualizar no Android Studio e de testar, pois não dependem de uma lógica interna complexa de estado.
 :::
 
 ## 💻 Mão na Massa
@@ -143,21 +102,25 @@ import TabItem from '@theme/TabItem';
 
 ### Adicione um terceiro botão
 
-Crie um botão "Modo Instrutor" que defina `activeProfile = UserProfile("Prof. Yuri", "Instrutor Fatec")` com cores diferentes.
+Crie um botão "Modo Instrutor" que chame o `onProfileChange` com `UserProfile("Prof. Yuri", "Instrutor Fatec")`. Como o estado está "hoistado", basta disparar o evento!
 
   </TabItem>
   <TabItem value="ex2" label="Exercício 2 — Aplicação">
 
-### Melhore o Avatar
+### Elevação de Estado Extra
 
-Substitua a `Box` circular por um componente que exiba as **duas primeiras letras** do nome. Use `activeProfile.name.split(" ")` para pegar as iniciais de nome e sobrenome.
+Crie uma nova variável de estado `isOnline: Boolean` na `Aula02Screen` e passe-a para o `UserProfileContent`. Exiba um pequeno círculo verde se estiver online e cinza se estiver offline.
 
   </TabItem>
   <TabItem value="ex3" label="Exercício 3 — Desafio">
 
-### Lista de Perfis
+### Refatoração para Lista
 
-Crie uma `List<UserProfile>` com 5 perfis diferentes (incluindo alguns com `role = null`). Use `Column` para renderizar todos como cards, mostrando o tratamento adequado do nullable para cada um.
+Modifique o `UserProfileContent` para receber uma `List<UserProfile>` e renderize-as usando um loop `forEach`. O estado da lista ainda deve ser gerenciado pela `Aula02Screen`.
+
+  </TabItem>
+</Tabs>
+do do nullable para cada um.
 
   </TabItem>
 </Tabs>
