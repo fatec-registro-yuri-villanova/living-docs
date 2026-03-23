@@ -29,6 +29,7 @@ Vamos criar as rotas para listar todos os cursos e adicionar um novo curso. O ro
 package com.fatec.merge_skills_kmp.routes
 
 import com.fatec.merge_skills_kmp.domain.models.Course
+import com.fatec.merge_skills_kmp.domain.models.CourseInsert
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.postgrest.postgrest
 import io.ktor.http.HttpStatusCode
@@ -55,9 +56,11 @@ fun Route.courseRoutes(supabase: SupabaseClient) {
 
         post {
             try {
-                // Recebendo o Body JSON como objeto Course
-                val course = call.receive<Course>()
-                val result = supabase.postgrest["courses"].insert(course).decodeSingle<Course>()
+                // Usamos o DTO CourseInsert para evitar a exigência do campo 'id' na criação
+                val course = call.receive<CourseInsert>()
+                val result = supabase.postgrest["courses"].insert(course) {
+                    select() // Força o banco a retornar o JSON da linha recém-inserida
+                }.decodeSingle<Course>()
                 call.respond(HttpStatusCode.Created, result)
             } catch (e: Exception) {
                 call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Falha ao criar curso: ${e.message}"))
@@ -107,7 +110,7 @@ Crie o arquivo `CourseRoutes.kt` no pacote `routes` dentro do servidor Ktor. Mov
   </TabItem>
   <TabItem value="ex2" label="Exercício 2 — Rota de Criação (POST)">
 
-Adicione o método de `post { }` dentro da sua nova rota. Utilize a função auxiliar `call.receive<Course>()` para deserializar magicamente o JSON recebido na requisição em seu modelo/DTO. Finalize retornando `call.respond(HttpStatusCode.Created, ...)`.
+Adicione o método de `post { }` dentro da sua nova rota. Crie um DTO no módulo `shared` chamado `CourseInsert` que não possua o campo `id`. Utilize a função auxiliar `call.receive<CourseInsert>()` para deserializar o JSON recebido e, ao chamar o recurso de `insert`, anexe o bloco modificador `{ select() }` para forçar o banco a retornar os valores criados, prevenindo erros de resposta vazia. Finalize com `call.respond(HttpStatusCode.Created, ...)`.
 
   </TabItem>
   <TabItem value="ex3" label="Exercício 3 — Rotas de Lições (Desafio)">
