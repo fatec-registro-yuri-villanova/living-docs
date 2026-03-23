@@ -1,10 +1,10 @@
 ---
 sidebar_position: 6
-title: "Aula 06: Modelos Shared e DTOs"
-description: "Data classes compartilhadas entre server e client — Course, User, Quiz models."
+title: "Aula 06: Endpoints de Conteúdo (Cursos e Lições)"
+description: "Implementação das rotas CRUD para trilhas de aprendizado."
 ---
 
-# Aula 06: Modelos Shared e DTOs
+# Aula 06: Endpoints de Conteúdo (Cursos e Lições)
 
 :::info 🔀 Branch da Aula
 Esta aula refere-se à branch: **`aula-06`**
@@ -13,33 +13,85 @@ git checkout aula-06
 ```
 :::
 
-:::caution 🚧 Conteúdo Prospectivo — Esta branch ainda não possui código implementado.
-:::
-
 ## 📖 Conceito
 
-O maior poder do KMP: **modelos definidos uma vez no shared**, usados tanto no server quanto no client. Inclui `@Serializable` para JSON automático.
+Após estruturarmos a arquitetura do nosso servidor Ktor com os plugins essenciais na aula 5, é hora de expor as operações de **CRUD** (Create, Read, Update, Delete) referentes ao conteúdo principal do MergeSkills: **Cursos** e **Lições**.
+No desenvolvimento Backend, essas rotas são essenciais para que tanto o nosso futuro App Mobile (Android/iOS) quanto o CMS Desktop possam interagir formalmente com a base de dados do Supabase.
 
 ## 💻 Código de Referência
 
-```kotlin title="shared/.../models/Course.kt"
-@Serializable
-data class Course(
-    val id: String,
-    val title: String,
-    val description: String,
-    @SerialName("created_at") val createdAt: String? = null,
-    @SerialName("lesson_count") val lessonCount: Int = 0
-)
+O Ktor permite organizar nossas rotas através de funções de extensão no `Route`. 
 
-@Serializable
-data class Lesson(
-    val id: String,
-    @SerialName("course_id") val courseId: String,
-    val title: String,
-    val content: String,
-    @SerialName("order_index") val orderIndex: Int
-)
+### Course Routes
+Vamos criar as rotas para listar todos os cursos e adicionar um novo curso. O roteamento modular fica agrupado em um pacote próprio.
+
+```kotlin title="server/src/main/kotlin/com/fatec/merge_skills_kmp/routes/CourseRoutes.kt"
+package com.fatec.merge_skills_kmp.routes
+
+import com.fatec.merge_skills_kmp.domain.models.Course
+import io.github.jan.supabase.SupabaseClient
+import io.github.jan.supabase.postgrest.postgrest
+import io.ktor.http.HttpStatusCode
+import io.ktor.server.application.call
+import io.ktor.server.request.receive
+import io.ktor.server.response.respond
+import io.ktor.server.routing.Route
+import io.ktor.server.routing.get
+import io.ktor.server.routing.post
+import io.ktor.server.routing.route
+
+fun Route.courseRoutes(supabase: SupabaseClient) {
+    route("/api/courses") {
+        
+        get {
+            try {
+                // A deserialização JSON -> List<Course> ocorre automaticamente
+                val courses = supabase.postgrest["courses"].select().decodeList<Course>()
+                call.respond(courses)
+            } catch (e: Exception) {
+                call.respond(HttpStatusCode.InternalServerError, mapOf("error" to e.message))
+            }
+        }
+
+        post {
+            try {
+                // Recebendo o Body JSON como objeto Course
+                val course = call.receive<Course>()
+                val result = supabase.postgrest["courses"].insert(course).decodeSingle<Course>()
+                call.respond(HttpStatusCode.Created, result)
+            } catch (e: Exception) {
+                call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Falha ao criar curso: ${e.message}"))
+            }
+        }
+    }
+}
+```
+
+### Acoplando Rotas (Routing Principal)
+
+Modificaremos nosso `Routing.kt` para não precisar mais aglomerar todas as rotas no mesmo pacote. Ele deve delegar isso para as rotas modulares:
+
+```kotlin title="server/src/main/kotlin/com/fatec/merge_skills_kmp/plugins/Routing.kt"
+package com.fatec.merge_skills_kmp.plugins
+
+import com.fatec.merge_skills_kmp.routes.courseRoutes
+import io.github.jan.supabase.SupabaseClient
+import io.ktor.server.application.*
+import io.ktor.server.response.*
+import io.ktor.server.routing.*
+
+fun Application.configureRouting(supabase: SupabaseClient?) {
+    routing {
+        get("/api/health") {
+            call.respondText("""{"status":"ok"}""", io.ktor.http.ContentType.Application.Json)
+        }
+
+        // Delegação de Rotas Modulares
+        if (supabase != null) {
+            courseRoutes(supabase)
+        }
+    }
+}
 ```
 
 ## 💻 Mão na Massa
@@ -48,19 +100,20 @@ import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
 <Tabs>
-  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
+  <TabItem value="ex1" label="Exercício 1 — Extrair Rotas" default>
 
-Crie `QuizQuestion` e `QuizAnswer` no shared com `@Serializable`.
-
-  </TabItem>
-  <TabItem value="ex2" label="Exercício 2 — Aplicação">
-
-Use essas models no endpoint `GET /api/courses` do server E na tela de cursos do ComposeApp.
+Crie o arquivo `CourseRoutes.kt` no pacote `routes` dentro do servidor Ktor. Mova a lógica principal de `GET /api/courses` que estava em `Routing.kt` para a nova função correspondente, garantindo a conversão para lista tipada via `.decodeList<Course>()`.
 
   </TabItem>
-  <TabItem value="ex3" label="Exercício 3 — Desafio">
+  <TabItem value="ex2" label="Exercício 2 — Rota de Criação (POST)">
 
-Crie um `UserProfile` shared que inclua `streakCount` e `totalXp`. Use no perfil do Desktop e como response do endpoint `/users/me`.
+Adicione o método de `post { }` dentro da sua nova rota. Utilize a função auxiliar `call.receive<Course>()` para deserializar magicamente o JSON recebido na requisição em seu modelo/DTO. Finalize retornando `call.respond(HttpStatusCode.Created, ...)`.
+
+  </TabItem>
+  <TabItem value="ex3" label="Exercício 3 — Rotas de Lições (Desafio)">
+
+Crie um arquivo extra `LessonRoutes.kt` com a rota `GET /api/courses/{id}/lessons` para trazer todas as lições relacionadas primariamente a um curso.
+_Dica essencial: Você acessa variáveis de URL na rota do Ktor recuperando a string com `call.parameters["id"]`._
 
   </TabItem>
 </Tabs>
