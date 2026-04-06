@@ -1,46 +1,64 @@
 ---
 sidebar_position: 8
 title: "Aula 08: Streak e Gamificação Server"
-description: "Lógica de streak no servidor — cálculo de dias consecutivos, XP e badges."
+description: "Lógica de streak no servidor — cálculo de dias consecutivos baseados em Timezone da API."
 ---
 
-# Aula 08: Streak e Gamificação Server
+# Aula 08: Lógica de Submissão de Quiz (Endpoint de validação de respostas)
 
 :::info 🔀 Branch da Aula
 Esta aula refere-se à branch: **`aula-08`** — `git checkout aula-08`
 :::
 
-:::caution 🚧 Conteúdo Prospectivo
-Esta branch ainda não possui código implementado.
-:::
+Nesta aula, concluímos o módulo do Server da nossa API. Construiremos a lógica principal da aplicação de gamificação, validando os "Streaks" (Ofensivas Diárias) cada vez que as lições são completadas. O mais importante foi garantir a modelagem KMP em que os Clientes e Server possam usar o mesmo payload via DTOs em `[commonMain]`.
 
-## 📖 Conceito
+## 📖 DTOs Modelados em `ProgressDTOs.kt`
 
-O streak (ofensiva) é calculado no server para evitar manipulação. Quando o aluno completa uma atividade, o server verifica a última atividade e incrementa ou reseta o streak.
+Nossa comunicação flui entre o app e servidor padronizada, ex:
 
-## 💻 Código de Referência
+```kotlin
+@Serializable
+data class SubmitAnswerRequest(
+    @SerialName("userId") val userId: Int,
+    @SerialName("questionId") val questionId: Int,
+    @SerialName("selectedOption") val selectedOption: Int
+)
 
-```kotlin title="server/.../services/StreakService.kt"
-class StreakService(private val supabase: SupabaseClient) {
-    suspend fun updateStreak(userId: String): StreakResult {
-        val lastActivity = getLastActivity(userId)
-        val today = Clock.System.now().toLocalDateTime(TimeZone.currentSystemDefault()).date
-        val yesterday = today.minus(1, DateTimeUnit.DAY)
+@Serializable
+data class SubmitAnswerResponse(
+    @SerialName("isCorrect") val isCorrect: Boolean,
+    @SerialName("correctAnswer") val correctAnswer: Int?,
+    val message: String,
+    val newStreak: Int? = null,
+    val streakFreezes: Int? = null
+)
+```
 
-        return when (lastActivity?.date) {
-            today -> StreakResult(maintained = true, count = lastActivity.streakCount)
-            yesterday -> {
-                val newCount = lastActivity.streakCount + 1
-                saveStreak(userId, today, newCount)
-                StreakResult(maintained = true, count = newCount)
-            }
-            else -> {
-                saveStreak(userId, today, 1)
-                StreakResult(maintained = false, count = 1)
+## 💻 Código de Referência (O Serviço)
+
+A injeção ocorre direto nas rotas de progress (`ProgressRoutes.kt`) garantindo flexibilidade usando Supabase Ktor.
+
+```kotlin title="server/.../routes/ProgressRoutes.kt"
+fun Route.progressRoutes(supabase: SupabaseClient) {
+    route("/progress") {
+        post("/submit") {
+            try {
+                val request = call.receive<SubmitAnswerRequest>()
+                // ... lógica de verificação
+                call.respond(SubmitAnswerResponse(...))
+            } catch (e: Exception) {
+               // Erro interno
             }
         }
     }
 }
+```
+
+O principal fator arquitetural para a matriz do _streak_ temporal é gerenciar o **Timezone** reportado e os pulos de congelamento (_Freezes_). Ele avalia o rolamento das datas de hoje:
+
+```kotlin
+val zoneId = try { ZoneId.of(timezoneId) } catch (e: Exception) { ZoneId.of("UTC") }
+val today = ZonedDateTime.now(zoneId).toLocalDate()
 ```
 
 ## 💻 Mão na Massa
@@ -49,19 +67,14 @@ import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
 <Tabs>
-  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
+  <TabItem value="ex1" label="Exploração da Rota" default>
 
-Integre `StreakService.updateStreak()` no endpoint de submissão do quiz.
-
-  </TabItem>
-  <TabItem value="ex2" label="Exercício 2 — Aplicação">
-
-Crie endpoint `GET /api/users/me/stats` que retorne streak, XP total e badges.
+Envie uma requisição HTTP para o backend para visualizar a reposta, ex: `POST /progress/submit`. Use Postman ou cURL. Verifique o _body_ devolvendo `newStreak`.
 
   </TabItem>
-  <TabItem value="ex3" label="Exercício 3 — Desafio">
+  <TabItem value="ex2" label="Validação de Timezone">
 
-Implemente badges automáticos (3 dias = "Iniciante", 7 = "Dedicado", 30 = "Mestre") com insert no Supabase.
+Repita a submissão alterando o header `"X-Timezone": "Asia/Tokyo"` e compare como o _LastActivityAt_ reflete o avanço para as fuso realocada de amanhã.
 
   </TabItem>
 </Tabs>
