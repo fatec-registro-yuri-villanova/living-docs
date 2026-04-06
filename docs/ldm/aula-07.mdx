@@ -1,44 +1,41 @@
 ---
 sidebar_position: 7
-title: "Aula 07: Quiz API"
-description: "Endpoints de quiz — buscar questões, submeter respostas, validar server-side."
+title: "Aula 07: Autenticação via Servidor"
+description: "Endpoints de Autenticação — Login, Register, Profile e By-pass via Postgres puro."
 ---
 
-# Aula 07: Quiz API
+# Aula 07: Autenticação via Servidor
 
 :::info 🔀 Branch da Aula
 Esta aula refere-se à branch: **`aula-07`** — `git checkout aula-07`
 :::
 
-:::caution 🚧 Conteúdo Prospectivo
-Esta branch ainda não possui código implementado.
-:::
-
 ## 📖 Conceito
 
-O quiz é validado no server — o client nunca recebe `correctIndex`. Ao submeter, o server compara e retorna o resultado.
+Diferente do fluxo focado exclusivamente no JWT pelo Ktor Plugin, exploraremos como criar rotas manuais e construir um serviço de autenticação onde validamos as credenciais (e-mail e senha) diretamente contra a tabela `users` do nosso provedor, devolvendo o modelo de _User_ com as DTOs de `AuthResponse`.
 
 ## 💻 Código de Referência
 
-```kotlin title="server/.../routes/QuizRoutes.kt"
-fun Route.quizRoutes(supabase: SupabaseClient) {
-    route("/api/quiz/{lessonId}") {
-        get("/questions") {
-            val lessonId = call.parameters["lessonId"]!!
-            val questions = supabase.postgrest.from("quiz_questions")
-                .select { filter { eq("lesson_id", lessonId) } }
-                .decodeList<QuizQuestionPublic>() // Sem correctIndex!
-            call.respond(questions)
-        }
-        post("/submit") {
-            val lessonId = call.parameters["lessonId"]!!
-            val submission = call.receive<QuizSubmission>()
-            // Busca as respostas corretas do banco
-            val correct = supabase.postgrest.from("quiz_questions")
-                .select { filter { eq("lesson_id", lessonId) } }
-                .decodeList<QuizQuestionFull>()
-            val score = calculateScore(submission.answers, correct)
-            call.respond(QuizResult(score = score, total = correct.size))
+```kotlin title="server/.../routes/AuthRoutes.kt"
+fun Route.authRoutes(supabase: SupabaseClient) {
+    route("/auth") {
+        post("/login") {
+            val request = call.receive<LoginRequest>()
+            val users = supabase.from("users").select {
+                filter {
+                    eq("email", request.email)
+                    eq("password", request.password ?: "")
+                }
+            }.decodeList<User>()
+
+            if (users.isNotEmpty()) {
+                call.respond(AuthResponse(accessToken = "", user = users.first()))
+            } else {
+                call.respond(
+                    HttpStatusCode.Unauthorized,
+                    ApiError(code = "INVALID_CREDENTIALS", message = "E-mail ou senha incorretos")
+                )
+            }
         }
     }
 }
@@ -52,17 +49,21 @@ import TabItem from '@theme/TabItem';
 <Tabs>
   <TabItem value="ex1" label="Exercício 1 — Fixação" default>
 
-Implemente `calculateScore()` que compara respostas e retorna acertos.
+Implemente os DTOs `LoginRequest`, `RegisterRequest`, e `AuthResponse` e certifique-se de que o KotlinX Serialization consegue resolver a anotação `@Serializable`.
+
+:::tip Atenção aos Atributos
+Relembre que o `RegisterRequest` herdado nativamente pode estar incompleto. É mandatório que ele contemple os mesmos parâmetros da API anterior (como o `name` e a anotação `@SerialName("profile_picture") val profilePictureUrl: String?`).
+:::
 
   </TabItem>
   <TabItem value="ex2" label="Exercício 2 — Aplicação">
 
-Adicione XP ao usuário baseado no score: `score * 10` XP por acerto.
+Crie a rota `/register` convertendo a `RegisterRequest` recebida em um formato de banco de dados (`InsertUser`). Lembre-se de checar se o email não está duplicado com um `.select { filter { eq("email", request.email) } }`. Se houver resultados, retorne código `409 Conflict`.
 
   </TabItem>
   <TabItem value="ex3" label="Exercício 3 — Desafio">
 
-Implemente rate limiting — máximo 3 tentativas por quiz por dia.
+Crie uma rota para que o usuário ou CMS possa alterar seus dados de Perfil passando um `UpdateUserRequest` com dados parciais. 
 
   </TabItem>
 </Tabs>
