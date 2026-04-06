@@ -4,23 +4,36 @@ title: "Aula 07: Autenticação via Servidor"
 description: "Endpoints de Autenticação — Login, Register, Profile e By-pass via Postgres puro."
 ---
 
-# Aula 07: Autenticação via Servidor
+# Aula 07: Autenticação Direta pelo Banco de Dados
 
 :::info 🔀 Branch da Aula
 Esta aula refere-se à branch: **`aula-07`** — `git checkout aula-07`
 :::
 
-## 📖 Conceito
+## 📖 Contexto e Conceito
 
-Diferente do fluxo focado exclusivamente no JWT pelo Ktor Plugin, exploraremos como criar rotas manuais e construir um serviço de autenticação onde validamos as credenciais (e-mail e senha) diretamente contra a tabela `users` do nosso provedor, devolvendo o modelo de _User_ com as DTOs de `AuthResponse`.
+No desenvolvimento de sistemas escaláveis usando o **Supabase** ou Firebase, a prática mais recomendada pelo mercado é o uso de sistemas de Autenticação Nativos — utilizando _JSON Web Tokens (JWT)_ por meio do serviço **GoTrue**. 
+
+Contudo, nesta aula daremos um passo atrás para entender os **fundamentos da autenticação manual**. Exploraremos como criar nossas próprias rotas no Ktor para processar os dados sensíveis. Ao invés de delegar a proteção a um provedor oficial de autenticação, criaremos um fluxo onde nosso código bate as credenciais diretamente contra os registros puramente armazenados na nossa tabela `users` do PostgreSQL.
+
+### Por que fazer esse "Bypass"?
+1. **Migração Legada:** Muitas vezes precisamos refatorar uma API desenvolvida muito antes da popularização do JWT.
+2. **Controle Total de Banco:** Quando precisamos criar gatilhos (_Triggers_), vincular as fotos de perfil de cara durante a criação e fazer consultas complexas que os SDKs de Auth simples não permitem.
+3. **Didática do Ktor:** Aprendemos a gerenciar o corpo do erro (como o `ApiError`) retornando Status Codes apropriados como `409 Conflict` ou `401 Unauthorized`.
+
+---
 
 ## 💻 Código de Referência
+
+A ideia por trás de um "Login Manual" resume-se a recebermos a DTO no Ktor (`LoginRequest`), efetuarmos um filtro simples no Postgres comparando **E-mail e Senha**, e retornarmos um modelo se o usuário for encontrado:
 
 ```kotlin title="server/.../routes/AuthRoutes.kt"
 fun Route.authRoutes(supabase: SupabaseClient) {
     route("/auth") {
         post("/login") {
-            val request = call.receive<LoginRequest>()
+            val request = call.receive<LoginRequest>() // Recebe as credenciais via JSON
+            
+            // Vai no banco e traz apenas os registros que batem a combinação exata
             val users = supabase.from("users").select {
                 filter {
                     eq("email", request.email)
@@ -28,6 +41,7 @@ fun Route.authRoutes(supabase: SupabaseClient) {
                 }
             }.decodeList<User>()
 
+            // Responde positivamente se e somente se as credenciais derem match.
             if (users.isNotEmpty()) {
                 call.respond(AuthResponse(accessToken = "", user = users.first()))
             } else {
@@ -41,7 +55,11 @@ fun Route.authRoutes(supabase: SupabaseClient) {
 }
 ```
 
+---
+
 ## 💻 Mão na Massa
+
+Nesse projeto as nossas entidades estão isoladas separadamente no **Kotlin Multiplatform (`shared`)**. Se a configuração dos seus _Data Transfer Objects_ (DTOs) estiver faltando atributos, eles serão solenemente ignorados pelo seu backend no momento em que ele tentar desserializar o JSON do app mobile.
 
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
@@ -49,21 +67,30 @@ import TabItem from '@theme/TabItem';
 <Tabs>
   <TabItem value="ex1" label="Exercício 1 — Fixação" default>
 
-Implemente os DTOs `LoginRequest`, `RegisterRequest`, e `AuthResponse` e certifique-se de que o KotlinX Serialization consegue resolver a anotação `@Serializable`.
+**Modele sua Camada de Autenticação**
 
-:::tip Atenção aos Atributos
-Relembre que o `RegisterRequest` herdado nativamente pode estar incompleto. É mandatório que ele contemple os mesmos parâmetros da API anterior (como o `name` e a anotação `@SerialName("profile_picture") val profilePictureUrl: String?`).
+Antes de ligar o Ktor ao banco, garanta os seus DTOs `LoginRequest`, `RegisterRequest`, e `AuthResponse`. Em projetos KMP é crucial usar o  `@Serializable` e o `@SerialName` nas `data classes`.
+
+:::tip 💡 Atenção aos Atributos Básicos
+Lembre-se que um usuário moderno não consiste apenas de _email_ e _password_. Verifique que a sua `RegisterRequest` contemple todos os dados exigidos pelo escopo de design anterior (como o atributo de _userName_, _name_ e a foto via `@SerialName("profile_picture") val profilePictureUrl: String?`). Omitir isso fará com que o usuário nunca ganhe foto ao se cadastrar!
 :::
 
   </TabItem>
   <TabItem value="ex2" label="Exercício 2 — Aplicação">
 
-Crie a rota `/register` convertendo a `RegisterRequest` recebida em um formato de banco de dados (`InsertUser`). Lembre-se de checar se o email não está duplicado com um `.select { filter { eq("email", request.email) } }`. Se houver resultados, retorne código `409 Conflict`.
+**Criando a Rota de Cadastros Livres**
+
+Implemente a rota `POST /auth/register`.  
+1. Converta a `RegisterRequest` recebida em um DTO específico de persistência (`InsertUser`).
+2. Utilize o `.select { filter { eq("email", request.email) } }` para descobrir se aquele e-mail já existe na tabela `users`.
+3. Se existir, retorne apropriadamente um código HTTP `409 Conflict` dizendo que a conta é inválida para ser regravada. Caso oposto, efetue a operação `.insert()`.
 
   </TabItem>
-  <TabItem value="ex3" label="Exercício 3 — Desafio">
+  <TabItem value="ex3" label="Exercício 3 — Desafio Parcial">
 
-Crie uma rota para que o usuário ou CMS possa alterar seus dados de Perfil passando um `UpdateUserRequest` com dados parciais. 
+**Fluxo de Atualização de Perfil (Profile Update)**
+
+Já que nós estamos rodando a API na mão, desenvolva a rota `PUT /auth/users/{userId}`. Ela deverá receber a `UpdateUserRequest` da interface contendo dados parciais. Dica: atualize apenas fragmentos utilizando o comando `.update(request) { filter { eq("id", userId) } }` no postgrest do Supabase.
 
   </TabItem>
 </Tabs>
