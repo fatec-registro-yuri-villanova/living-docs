@@ -1,13 +1,13 @@
 ---
 sidebar_position: 4
-title: "Aula 04: FlatList e Dados Remotos"
-description: "FlatList para listas performáticas, fetch de dados da API e renderização de cursos."
+title: "Aula 04: Design System & Design Tokens"
+description: "Implementação da identidade visual MergeSkills: Tokens de cores, escalas tipográficas e componentes atômicos."
 ---
 
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
-# Aula 04: FlatList e Dados Remotos
+# Aula 04: Design System & Design Tokens
 
 :::info 🔀 Branch da Aula
 Esta aula refere-se à branch: **`aula-04`**
@@ -16,107 +16,127 @@ git checkout aula-04
 ```
 :::
 
-## 📖 Conceito
+## 📖 Conceito: Por que um Design System?
 
-A **FlatList** é o componente de lista performático do React Native — renderiza apenas os itens visíveis na tela (equivalente ao `LazyColumn` do Compose ou `RecyclerView` do Android).
+Um **Design System** não é apenas uma biblioteca de componentes; é a "única fonte de verdade" (**Single Source of Truth**) visual e funcional de um produto. No MergeSkills, utilizamos um sistema baseado no **Material Design 3**, mas com a personalidade rústica e tecnológica da marca.
 
-### Arquivos novos nesta branch
+### O que são Design Tokens?
 
-| Arquivo | Descrição |
-|---------|-----------|
-| `app/details.tsx` | Tela de detalhes do curso |
+São as menores unidades de design. Em vez de usar valores "hardcoded" (como `#4CDF20` ou `fontSize: 16`), usamos **nomes semânticos**.
+- **Vantagem:** Se mudarmos o tom de verde da marca, alteramos em um único lugar (`Colors.ts`) e todo o app se atualiza.
+- [Referência:] Consulte `lddm-specs/design/tokens/` para as especificações originais.
 
-## 💻 Código de Referência
+---
 
-### FlatList com dados da API
+## 🏗️ Anatomia de um Componente Profissional
 
-```tsx title="app/(tabs)/index.tsx (aula-08)"
-interface Course {
-    id: string;
-    title: string;
-    description: string;
-}
+Para entender como o **[StitchButton.tsx](file:///merge-skills-react/components/StitchButton.tsx)** funciona, vamos "desmontá-lo" e analisar cada linha sob a ótica do desenvolvimento profissional.
 
-export default function CoursesScreen() {
-    const [courses, setCourses] = useState<Course[]>([]);
-    const [loading, setLoading] = useState(true);
+### 1. O Contrato: `StitchButtonProps`
+Antes de escrever a lógica, definimos as **Props** (Propriedades). No TypeScript, usamos uma `interface` para criar um contrato de segurança:
 
-    useEffect(() => { fetchCourses(); }, []);
-
-    async function fetchCourses() {
-        setLoading(true);
-        try {
-            const data = await apiClient.db.from('courses');
-            const result = await data.select();
-            if (result) setCourses(result);
-        } catch (error: any) {
-            console.error('Erro ao buscar cursos:', error.message);
-        } finally { setLoading(false); }
-    }
-
-    const renderItem = ({ item }: { item: Course }) => (
-        <View style={styles.card}>
-            <View style={styles.cardHeader}>
-                <Ionicons name="school-outline" size={24}
-                          color={Colors.colors.stitchGreen} />
-                <Text style={styles.cardTitle}>{item.title}</Text>
-            </View>
-            <Text style={styles.cardDesc}>{item.description}</Text>
-        </View>
-    );
-
-    return (
-        <SafeAreaView style={styles.safeArea}>
-            {loading ? (
-                <View style={styles.centered}>
-                    <ActivityIndicator size="large"
-                                       color={Colors.colors.stitchGreen} />
-                    <Text style={styles.loadingText}>Sincronizando trilhas...</Text>
-                </View>
-            ) : (
-                <FlatList
-                    data={courses}
-                    keyExtractor={(item) => item.id}
-                    renderItem={renderItem}
-                    contentContainerStyle={styles.list}
-                    ListEmptyComponent={
-                        <View style={styles.centered}>
-                            <Ionicons name="cloud-offline-outline"
-                                      size={64} color="#333" />
-                            <Text style={styles.emptyText}>
-                                Nenhuma trilha encontrada.
-                            </Text>
-                        </View>
-                    }
-                />
-            )}
-        </SafeAreaView>
-    );
+```typescript
+interface StitchButtonProps {
+  text: string;      // O que será exibido no botão (Obrigatório)
+  onClick: () => void; // A função que será executada ao clicar (Obrigatório)
+  enabled?: boolean;  // Opcional: define se o botão pode ser clicado
+  loading?: boolean;  // Opcional: define se o botão está processando
 }
 ```
+> **Por que usar?** Isso garante que, se você esquecer de passar o `text` ao usar o botão, o VS Code mostrará um erro na hora, antes mesmo de você rodar o app.
+
+### 2. A Estrutura: `React.FC<StitchButtonProps>`
+`FC` significa *Functional Component*. Ao declarar `export const StitchButton: React.FC<StitchButtonProps> = (...)`, estamos dizendo ao React: 
+- "Este é um componente funcional que segue o contrato definido em `StitchButtonProps`".
+
+### 3. O Componente de Toque: `TouchableOpacity`
+Diferente do `<Button />` nativo (que é limitado e difícil de estilizar), o `TouchableOpacity` nos dá controle total:
+- **`activeOpacity`**: Define o quão "apagado" o botão fica ao ser pressionado (usamos `0.8` para um feedback visual suave).
+- **Flexibilidade**: Ele aceita uma lista de estilos (`style={[styles.button, { backgroundColor }, style]}`), permitindo que o visual mude dinamicamente de acordo com o estado do botão.
+
+### 4. Inteligência e Feedback (Haptics)
+Dentro da função `handlePress`, injetamos inteligência:
+```tsx
+const handlePress = () => {
+    if (enabled && !loading) {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); // Feedback tátil
+        onClick(); // Executa a ação do usuário
+    }
+};
+```
+Isso garante que o botão só vibre e execute a ação se ele estiver **ativado** e **não estiver carregando**, evitando múltiplos cliques acidentais.
+
+### 5. Renderização Condicional (Ternário)
+No retorno (JSX), usamos uma condicional para decidir o que mostrar:
+- **`loading ? <ActivityIndicator /> : <Text />`**
+Se `loading` for verdadeiro, mostramos o "girador" de carregamento; caso contrário, mostramos o texto do botão. Isso melhora drasticamente a percepção de performance do app.
+
+---
+
+## 💻 Implementação no Código
+
+### 1. Sistema de Cores e Tematização
+
+O arquivo `constants/Colors.ts` centraliza a paleta **StitchGreen**. Ele foi projetado para suportar **Light** e **Dark Mode** nativamente.
+
+```tsx title="constants/Colors.ts"
+export default {
+  light: {
+    primary: '#4CDF20',    // StitchGreen
+    background: '#F5F5F7',
+    surface: '#FFFFFF',
+    onSurface: '#1C1C1E',
+  },
+  dark: {
+    primary: '#4CDF20',
+    background: '#0F0F0F',
+    surface: '#1C1C1E',
+    onSurface: '#E5E5E5',
+  },
+};
+```
+
+### 2. Escalas Tipográficas
+
+Utilizamos duas fontes principais via Google Fonts:
+- **Outfit**: Para títulos e destaques (`bold`, `semi-bold`).
+- **Inter**: Para corpos de texto e labels de interface.
+
+Estas escalas são mapeadas em `constants/Typography.ts`, seguindo as 15 variantes do Material3 (Display, Headline, Title, Body, Label).
+
+### 3. Componente Atômico: StitchButton
+
+O `StitchButton` é nosso primeiro componente "premium". Ele segue regras estritas de acessibilidade e design:
+- **Altura Fixa**: `56dp` (ideal para toque).
+- **Feedback Tátil**: Usa `expo-haptics` para vibrar levemente ao ser clicado.
+- **Estados**: Suporta `loading` e `disabled` com transparências específicas (`12%` para desativado).
+
+---
 
 ## 💻 Mão na Massa
 
 <Tabs>
-  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
+  <TabItem value="ex1" label="Exercício 1 — Visualização" default>
 
-### Adicione `ListEmptyComponent`
-
-Quando a lista estiver vazia, exiba um ícone e texto informativo. Use `<Ionicons name="cloud-offline-outline" />`.
+### Teste de Tematização
+Mude o sistema do seu emulador/celular para **Modo Escuro (Dark Mode)**. 
+- Verifique se o fundo (`background`) muda para cinza quase preto.
+- Observe se o texto (`onSurface`) se ajusta para uma cor clara automaticamente.
 
   </TabItem>
   <TabItem value="ex2" label="Exercício 2 — Aplicação">
 
-### Navegue ao clicar no card
-
-Wrappe o card com `TouchableOpacity` e navegue para `app/details.tsx` passando o `id` via `router.push("/course/" + item.id)`.
+### Usando Tokens de Tipografia
+No arquivo `app/index.tsx`, tente trocar o estilo do título "Design System" de `Typography.headlineMedium` para `Typography.displaySmall`.
+- **Dica:** O `displaySmall` usa a fonte **Outfit** em tamanho maior (36px).
 
   </TabItem>
-  <TabItem value="ex3" label="Exercício 3 — Desafio">
+  <TabItem value="ex3" label="Exercício 3 — Feedback Tátil">
 
-### Pull-to-refresh
-
-Adicione `refreshing={refreshing}` e `onRefresh={fetchCourses}` à `FlatList` para permitir atualização ao puxar a lista.
+### Experimente o Haptics
+No componente `StitchButton.tsx`, mude o tipo de vibração de `Medium` para `Heavy`. 
+- **Código:** `Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);`
+- Sinta a diferença no feedback ao clicar no botão "Explorar Cursos".
 
   </TabItem>
 </Tabs>
