@@ -1,48 +1,70 @@
 ---
 sidebar_position: 9
-title: "Aula 09: Error Handling e Logging"
-description: "Tratamento de erros no Ktor, StatusPages plugin, logging com Logback."
+title: "Aula 09: Gerenciamento e Upload de Arquivos"
+description: "Lógica de Multipart com Ktor e Supabase Storage para upload de Imagens."
 ---
 
-import Tabs from '@theme/Tabs';
-import TabItem from '@theme/TabItem';
+# Aula 09: Gerenciamento e Upload de Arquivos
 
-# Aula 09: Error Handling e Logging
 :::info 🔀 Branch da Aula
-**`aula-09`** — `git checkout aula-09`
+Esta aula refere-se à branch: **`aula-09`** — `git checkout aula-09`
 :::
-:::caution 🚧 Conteúdo Prospectivo
-Esta branch ainda não possui código implementado.
-:::
-## 📖 Conceito
-O plugin `StatusPages` do Ktor intercepta exceções e retorna respostas padronizadas. Logback registra cada requisição e erro para debugging.
-## 💻 Código de Referência
-```kotlin title="server/.../plugins/ErrorHandling.kt"
-fun Application.configureErrorHandling() {
-    install(StatusPages) {
-        exception<NotFoundException> { call, _ ->
-            call.respond(HttpStatusCode.NotFound, ErrorResponse("Recurso não encontrado"))
-        }
-        exception<BadRequestException> { call, cause ->
-            call.respond(HttpStatusCode.BadRequest, ErrorResponse(cause.message ?: "Requisição inválida"))
-        }
-        exception<Throwable> { call, cause ->
-            application.log.error("Erro interno", cause)
-            call.respond(HttpStatusCode.InternalServerError, ErrorResponse("Erro interno do servidor"))
+
+Iniciando o **Módulo 3**, abordaremos a integração do nosso Ktor Server com o Supabase Storage. O objetivo é implementar a funcionalidade de upload de imagens via Multipart, permitindo que os usuários salvem seus avatares de perfil (e posteriormente, administradores subam capas de cursos).
+
+## 📖 DTOs Modelados em `StorageDTOs.kt`
+
+Nossa comunicação flui entre o app e servidor padronizada, de forma simples com a resposta da URL:
+
+```kotlin
+@Serializable
+data class UploadResponse(
+    val url: String
+)
+```
+
+## 💻 Código de Referência (O Serviço)
+
+A injeção ocorre direto nas rotas de upload (`UploadRoutes.kt`) garantindo flexibilidade usando o plugin Storage do Supabase Ktor. Nós validamos as streams de bits e enviamos o conteúdo bruto (`ByteArray`) configurados com extensão para o path no cloud.
+
+```kotlin title="server/.../routes/UploadRoutes.kt"
+fun Route.uploadRoutes(supabase: SupabaseClient) {
+    route("/upload") {
+        post("/avatar") {
+            val multipart = call.receiveMultipart()
+            // ... Parse PartData.FileItem e PartData.FormItem
+            
+            // ... Lógica de upload isolada usando o bucket supabase "avatars"
+            
+            val publicUrl = bucket.publicUrl(path)
+            call.respond(HttpStatusCode.OK, UploadResponse(url = publicUrl))
         }
     }
 }
 ```
-## 💻 Mão na Massa
+
+## 🧪 Como Testar
+
+Abra o seu terminal com o Ktor Server em execução (`http://localhost:8080`), e certifique-se de que você possui um arquivo de imagem na sua máquina local antes de rodar o comando:
 
 <Tabs>
-  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
-Adicione `StatusPages` ao `Application.module()` e teste com um endpoint que lança exceção.
-  </TabItem>
-  <TabItem value="ex2" label="Exercício 2 — Aplicação">
-Configure Logback com rotação de logs diária e formato JSON para produção.
-  </TabItem>
-  <TabItem value="ex3" label="Exercício 3 — Desafio">
-Crie uma `@Serializable data class ErrorResponse` que inclua `code`, `message` e `timestamp` padronizados.
-  </TabItem>
+<TabItem value="curl" label="cURL">
+
+```bash
+# Simulação cURL de um arquivo de teste (Form-Data)
+# Substitua "@/caminho/para/avatar.jpg" pelo caminho real da imagem no seu PC
+curl -X POST http://localhost:8080/upload/avatar \
+  -H "Accept: application/json" \
+  -F "userId=20" \
+  -F "file=@/caminho/para/avatar.jpg"
+```
+
+</TabItem>
+<TabItem value="postman" label="Postman">
+No Postman, crie uma rota POST para `http://localhost:8080/upload/avatar`.
+1. Vá na aba `Body`.
+2. Habilite a caixa `form-data`.
+3. Adicione uma key `"userId"` do tipo **Texto**, enviando `20`.
+4. Adicione uma key `"file"` do tipo **File** e arraste a imagem do seu computador para o botão!
+</TabItem>
 </Tabs>
