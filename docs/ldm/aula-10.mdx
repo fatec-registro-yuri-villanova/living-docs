@@ -73,7 +73,9 @@ adminRoutes(supabase) // <--- O Módulo Seed Admin
 
 ---
 
-## 🧪 Testando com Múltiplas Chamadas (cURL & Postman)
+## 🧪 Estratégia de Idempotência e Recuperação Parcial
+
+Uma das grandes melhorias dessa migração é a capacidade de **Idempotência**. O Seeding não é destrutivo. Ele varre as coleções e insere apenas os filhos que estão faltando. Se o servidor cair no meio do fluxo e o banco de dados ficar com cursos mas sem questões, ao executar novamente o endpoint, ele "costurará" exatamente aquilo que faltava sem duplicar informações no seu Supabase.
 
 Levante o Servidor (`./gradlew run`) e invoque o novo Endpoint via POST:
 
@@ -91,7 +93,7 @@ curl -X POST http://localhost:8080/admin/seed
 }
 ```
 
-Caso você envie o request novamente (logo após os cursos já terem sido injetados), o servidor varrerá em List Comprehensions a verificação de títulos duplicados pulando blocos inúteis:
+Caso você envie o request novamente (logo após os cursos já terem sido injetados), o servidor varrerá em List Comprehensions a verificação de registros órfãos pulando blocos inúteis:
 
 ```json
 {
@@ -100,4 +102,4 @@ Caso você envie o request novamente (logo após os cursos já terem sido injeta
 }
 ```
 
-*(Zero novos cursos)* Com isso, toda a nossa equipe de Frontend Web/Mobile estará com sua base local perfeitamente recheada com nossos mesmos +80 exercícios básicos de validação, para todos testarem o MergeSkills de forma integrada! 🚀
+*(Zero novos cursos)* Com isso, toda a nossa equipe de Frontend Web/Mobile estará com sua base local perfeitamente recheada, e tolerante à falhas de network, com nossos mesmos +80 exercícios básicos de validação, para todos testarem o MergeSkills de forma integrada! 🚀
