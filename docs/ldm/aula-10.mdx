@@ -1,48 +1,103 @@
 ---
 sidebar_position: 10
-title: "Aula 10: Storage e Upload"
-description: "Upload de arquivos com Supabase Storage — avatars, imagens de cursos."
+description: Implementação de scripts administrativos de Seeding focados em injeção de massa e otimização por Batch.
 ---
 
-import Tabs from '@theme/Tabs';
-import TabItem from '@theme/TabItem';
+# Aula 10: Scripts de Semente (Seeding) e Admin
 
-# Aula 10: Storage e Upload
-:::info 🔀 Branch da Aula
-**`aula-10`** — `git checkout aula-10`
-:::
-:::caution 🚧 Conteúdo Prospectivo
-Esta branch ainda não possui código implementado.
-:::
-## 📖 Conceito
-O Supabase Storage permite upload/download de arquivos. O server recebe multipart form data via Ktor e armazena no bucket.
-## 💻 Código de Referência
-```kotlin title="server/.../routes/StorageRoutes.kt"
-fun Route.storageRoutes(supabase: SupabaseClient) {
-    post("/api/upload/avatar") {
-        val multipart = call.receiveMultipart()
-        multipart.forEachPart { part ->
-            if (part is PartData.FileItem) {
-                val bytes = part.streamProvider().readBytes()
-                supabase.storage.from("avatars")
-                    .upload("user_${userId}/${part.originalFileName}", bytes)
-            }
-            part.dispose()
-        }
-        call.respond(HttpStatusCode.OK)
-    }
+Nesta aula, aprendemos a migrar o nosso massivo bloco de **Seeding** (A injeção dos dados base da aplicação) de um comportamento acoplado ao ciclo de vida do servidor (na inicialização) para um Endpoint Administrativo **restrito e muito mais performático** usando a estratégia de envio por arrays no Supabase KMP. 
+
+Ao final, sua API estará estruturalmente madura para lidar com massa de dados de teste (Seeds).
+
+---
+
+## 🏗 Estrutura da Funcionalidade
+
+A injeção de seeds consistia originalmente em loops iterativos demorados no servidor legado. Para o MergeSkills KMP, reestruturamos a Rota em `/routes/AdminRoutes.kt` e atualizamos nossos DTOs.
+
+### DTOs do Seed
+
+Na pasta do módulo **`shared`**, precisamos garantir os objetos responsáveis pelo parsing dos inserts de Seed. O destaque da Aula é a inclusão da Payload completa das lições:
+
+```kotlin
+// com/fatec/merge_skills_kmp/domain/models/Question.kt
+@Serializable
+data class QuestionInsert(
+    @SerialName("lesson_id")
+    val lessonId: Int,
+    val question: String,
+    val code: String? = null,
+    val options: List<String>,
+    @SerialName("correct_answer")
+    val correctAnswer: Int,
+    val order: Int
+)
+```
+
+> **📌 Diferencial de Otimização (Batch Insert):** No legado, eram efetuadas 84 conexões de inserção individuais no Supabase (`client.from("questions").insert(q)`), uma por pergunta. No MergeSkills KMP as inserimos em uma tacada só passando uma Tabela Inteira com Arrays `client.from("questions").insert(questions)` melhorando drásticamente o overhead da requisição.
+
+---
+
+## 🛠 O Endpoint de Seeding (AdminRoutes)
+
+Localizado em `com.fatec.merge_skills_kmp.routes.AdminRoutes.kt`, esta classe encapsulará toda a manipulação do painel administrativo, inicialmente apenas para povoar o DB.
+
+```kotlin
+fun Route.adminRoutes(client: SupabaseClient) {
+    route("/admin") {
+        post("/seed") {
+            try {
+                seedUser(client)
+                // ...
+                val existingCourses = client.from("courses").select().decodeList<Course>()
+                // ...
+                val coursesToInsert = listOf(
+                    CourseInsert("Java Icaro", ...),
+                    // ...
+                )
+```
+
+Nós resgatados exatamente os mesmos 4 cursos base da API original: **Java, Kotlin, Python, TypeScript**. 
+
+### O Disparo do Gatilho
+
+As rotas são injetadas em `Application.configureRouting()`, através do registro na `Routing.kt`:
+
+```kotlin
+progressRoutes(supabase)
+uploadRoutes(supabase)
+adminRoutes(supabase) // <--- O Módulo Seed Admin
+```
+
+⚠️  Pelo fato da rota ser aberta e executar massas imensas, em um ambiente em Produção (Module `Auth`) será estritamente necessário proteger as rotas do prefixo `/admin` checando as Policies da Role (Somente `admin` na tabela Role logando) a fim de impedir ataques DoS de gravação.
+
+---
+
+## 🧪 Testando com Múltiplas Chamadas (cURL & Postman)
+
+Levante o Servidor (`./gradlew run`) e invoque o novo Endpoint via POST:
+
+Via cURL no terminal (Windows/Linux):
+```sh
+curl -X POST http://localhost:8080/admin/seed
+```
+
+### ✅ Retorno de Sucesso Otimizado:
+
+```json
+{
+  "message": "Database seeded successfully",
+  "new_courses_inserted": 4
 }
 ```
-## 💻 Mão na Massa
 
-<Tabs>
-  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
-Implemente upload de avatar e retorne a URL pública do arquivo.
-  </TabItem>
-  <TabItem value="ex2" label="Exercício 2 — Aplicação">
-Adicione validação: apenas imagens (JPEG/PNG), máximo 2MB.
-  </TabItem>
-  <TabItem value="ex3" label="Exercício 3 — Desafio">
-Implemente redimensionamento de imagem no server antes do upload usando uma lib JVM.
-  </TabItem>
-</Tabs>
+Caso você envie o request novamente (logo após os cursos já terem sido injetados), o servidor varrerá em List Comprehensions a verificação de títulos duplicados pulando blocos inúteis:
+
+```json
+{
+  "message": "Database seeded successfully",
+  "new_courses_inserted": 0
+}
+```
+
+*(Zero novos cursos)* Com isso, toda a nossa equipe de Frontend Web/Mobile estará com sua base local perfeitamente recheada com nossos mesmos +80 exercícios básicos de validação, para todos testarem o MergeSkills de forma integrada! 🚀
