@@ -1,23 +1,23 @@
 ---
 sidebar_position: 10
-description: Implementação de scripts administrativos de Seeding focados em injeção de massa e otimização por Batch.
+description: Implementação de scripts administrativos de Seeding focados em injeção de massa e otimização por Batch e Upsert.
 ---
 
 # Aula 10: Scripts de Semente (Seeding) e Admin
 
-Nesta aula, aprendemos a migrar o nosso massivo bloco de **Seeding** (A injeção dos dados base da aplicação) de um comportamento acoplado ao ciclo de vida do servidor (na inicialização) para um Endpoint Administrativo **restrito e muito mais performático** usando a estratégia de envio por arrays no Supabase KMP. 
+Nesta aula, aprendemos a migrar o nosso massivo bloco de **Seeding** (A injeção dos dados base da aplicação) de um comportamento acoplado ao ciclo de vida do servidor (na inicialização) para um Endpoint Administrativo **restrito e altamente performático** usando a estratégia de envio por arrays no Supabase KMP com natividade de Upsert.
 
-Ao final, sua API estará estruturalmente madura para lidar com massa de dados de teste (Seeds).
+Ao final, sua API estará estruturalmente madura para lidar com o preenchimento de massas de teste (Seeds) em lote na nuvem e o projeto manterá as Controller e Services separadas graças à Arquitetura Limpa.
 
 ---
 
 ## 🏗 Estrutura da Funcionalidade
 
-A injeção de seeds consistia originalmente em loops iterativos demorados no servidor legado. Para o MergeSkills KMP, reestruturamos a Rota em `/routes/AdminRoutes.kt` e atualizamos nossos DTOs.
+A injeção de seeds consistia originalmente em loops iterativos demorados no servidor legado onde validávamos 1 por 1. No MergeSkills KMP, reestruturamos a Rota separando responsabilidades: A Rota ficou apenas e exclusivamente em `/routes/AdminRoutes.kt` enquanto todo o trabalho de banco foi isolado dentro do `/services/SeedService.kt`.
 
-### DTOs do Seed
+### DTOs em Módulo Compartilhado
 
-Na pasta do módulo **`shared`**, precisamos garantir os objetos responsáveis pelo parsing dos inserts de Seed. O destaque da Aula é a inclusão da Payload completa das lições:
+Na pasta do módulo **`shared`**, precisamos garantir os objetos responsáveis pelo parsing dos inserts de Seed. Exemplo da payload genérica de uma lição (QuestionInsert):
 
 ```kotlin
 // com/fatec/merge_skills_kmp/domain/models/Question.kt
@@ -34,30 +34,56 @@ data class QuestionInsert(
 )
 ```
 
-> **📌 Diferencial de Otimização (Batch Insert):** No legado, eram efetuadas 84 conexões de inserção individuais no Supabase (`client.from("questions").insert(q)`), uma por pergunta. No MergeSkills KMP as inserimos em uma tacada só passando uma Tabela Inteira com Arrays `client.from("questions").insert(questions)` melhorando drásticamente o overhead da requisição.
+> **📌 Diferencial de Otimização (Batch Upsert):** No legado, eram efetuadas dezenas conexões e validações individuais no Supabase (`client.from("questions").insert(q)`). No MergeSkills KMP mudamos a arquitetura para envio em massa usando a função **Upsert**: `client.from("questions").upsert(questions)`. Isso permite lidar com recálculo de forma automática e otimiza o overhead drasticamente de centenas para apenas 1-2 hits de API.
 
 ---
 
-## 🛠 O Endpoint de Seeding (AdminRoutes)
+## 🛠 O Serviço: SeedService
 
-Localizado em `com.fatec.merge_skills_kmp.routes.AdminRoutes.kt`, esta classe encapsulará toda a manipulação do painel administrativo, inicialmente apenas para povoar o DB.
+Para obediência ao Clean Code (Clean Architecture), isolamos *Apenas O Que Interessa Ao DB*. Nosso Service cuida de gerir as instâncias dos nossos 4 Cursos (`Java Icaro, Kotlin, Python, TypeScript`) sem poluir a Web Controller. 
 
 ```kotlin
+// com/fatec/merge_skills_kmp/services/SeedService.kt
+class SeedService(private val client: SupabaseClient) {
+
+    suspend fun executeSeed(): Int {
+        var newCoursesInserted = 0
+        // ... Preparação dos Upserts com Listas de Cursos ...
+
+        if (coursesToUpsert.isNotEmpty()) {
+            val insertedCourses = client.from("courses").upsert(coursesToUpsert) { select() }.decodeList<Course>()
+        }
+        
+        // Dispara Inclusão Completa para Relacionamentos
+        return insertedCourses.size
+    }
+}
+```
+
+## 🌐 O Endpoint Administrativo (AdminRoutes)
+
+Localizado em `com.fatec.merge_skills_kmp.routes.AdminRoutes.kt`, esta view invoca nosso SeedService garantindo que só devolva HTTPs OK / Conflict. Não carrega Array de Listas!
+
+```kotlin
+// com/fatec/merge_skills_kmp/routes/AdminRoutes.kt
 fun Route.adminRoutes(client: SupabaseClient) {
     route("/admin") {
         post("/seed") {
             try {
-                seedUser(client)
-                // ...
-                val existingCourses = client.from("courses").select().decodeList<Course>()
-                // ...
-                val coursesToInsert = listOf(
-                    CourseInsert("Java Icaro", ...),
-                    // ...
-                )
-```
+                val seedService = SeedService(client)
+                val newCoursesInserted = seedService.executeSeed()
 
-Nós resgatados exatamente os mesmos 4 cursos base da API original: **Java, Kotlin, Python, TypeScript**. 
+                call.respond(
+                    HttpStatusCode.OK, 
+                    SeedResponse(message = "Database seeded successfully", new_courses_inserted = newCoursesInserted)
+                )
+            } catch (e: Exception) {
+                call.respond(HttpStatusCode.InternalServerError, SeedErrorResponse(error = "Failed to seed database: ${e.message}"))
+            }
+        }
+    }
+}
+```
 
 ### O Disparo do Gatilho
 
@@ -69,17 +95,26 @@ uploadRoutes(supabase)
 adminRoutes(supabase) // <--- O Módulo Seed Admin
 ```
 
-⚠️  Pelo fato da rota ser aberta e executar massas imensas, em um ambiente em Produção (Module `Auth`) será estritamente necessário proteger as rotas do prefixo `/admin` checando as Policies da Role (Somente `admin` na tabela Role logando) a fim de impedir ataques DoS de gravação.
+⚠️ Pelo fato da rota ser aberta e executar massas imensas, em um ambiente em Produção (Module `Auth`) será estritamente necessário proteger as rotas do prefixo `/admin` checando as Policies da Role ou JWT Claims (Somente `admin`) a fim de impedir ataques DoS.
 
 ---
 
-## 🧪 Estratégia de Idempotência e Recuperação Parcial
+## 🧪 Abordagem Híbrida: Idempotência Polimórfica com Constraints
 
-Uma das grandes melhorias dessa migração é a capacidade de **Idempotência**. O Seeding não é destrutivo. Ele varre as coleções e insere apenas os filhos que estão faltando. Se o servidor cair no meio do fluxo e o banco de dados ficar com cursos mas sem questões, ao executar novamente o endpoint, ele "costurará" exatamente aquilo que faltava sem duplicar informações no seu Supabase.
+Como o plugin nativo (PostgREST) falha quando um _JSON Batch_ possui chaves com propriedades nulas num Array, implementamos no `SeedService.kt` uma injeção de segurança de mapeamento JSON:
 
-Levante o Servidor (`./gradlew run`) e invoque o novo Endpoint via POST:
+```kotlin
+private suspend fun upsertQuestionsPolymorphic(questions: List<QuestionInsert>) {
+    val qWithCode = questions.filter { it.code != null }
+    val qWithoutCode = questions.filter { it.code == null }
+        
+    // Divide e Conquista: Os objetos exatos vão perfeitamente em Batch!
+    if (qWithCode.isNotEmpty()) client.from("questions").upsert(qWithCode)
+    if (qWithoutCode.isNotEmpty()) client.from("questions").upsert(qWithoutCode)
+}
+```
 
-Via cURL no terminal (Windows/Linux):
+Levante o Servidor (`./gradlew run`) e invoque o novo Endpoint Otimizado via POST:
 ```sh
 curl -X POST http://localhost:8080/admin/seed
 ```
@@ -93,13 +128,4 @@ curl -X POST http://localhost:8080/admin/seed
 }
 ```
 
-Caso você envie o request novamente (logo após os cursos já terem sido injetados), o servidor varrerá em List Comprehensions a verificação de registros órfãos pulando blocos inúteis:
-
-```json
-{
-  "message": "Database seeded successfully",
-  "new_courses_inserted": 0
-}
-```
-
-*(Zero novos cursos)* Com isso, toda a nossa equipe de Frontend Web/Mobile estará com sua base local perfeitamente recheada, e tolerante à falhas de network, com nossos mesmos +80 exercícios básicos de validação, para todos testarem o MergeSkills de forma integrada! 🚀
+Com esta flexibilidade a equipe de Full-Stack está blindada e pronta para seguir avante com estabilidade em banco nas lições seguintes! 🚀
