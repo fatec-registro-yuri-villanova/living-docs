@@ -1,65 +1,216 @@
 ---
 sidebar_position: 5
-title: "Aula 05: Design System & Colors"
-description: "Tokens de cor, tema escuro, Design System MergeSkills com Colors.ts."
+title: "Aula 05: Listas e Formulários"
+description: "FlatList, StitchCard, StitchTextField e useState para formulários. Construção da tela de Login com navegação via Expo Router."
 ---
 
-# Aula 05: Design System & Colors
+# Aula 05: Listas e Formulários
 
 :::info 🔀 Branch da Aula
 Esta aula refere-se à branch: **`aula-05`**
 ```bash
 git checkout aula-05
 ```
+Branch de referência (ponto de partida sem implementação):
+```bash
+git checkout base-aula-05
+```
 :::
 
-## 📖 Conceito
+## 🎯 Objetivo
 
-Um **Design System** garante consistência visual. Centralizamos todas as cores no arquivo `Colors.ts`, separando tokens de marca (stitchGreen) dos tokens de superfície (background, surface).
+Construir os blocos fundamentais de uma interface mobile interativa:
+- **`StitchCard`** → container reutilizável para exibição em listas dinâmicas.
+- **`StitchTextField`** → input controlado com estados visuais de foco e erro.
+- **`LoginScreen`** → tela de autenticação com `KeyboardAvoidingView` e navegação real.
+- **`FlatList`** → renderização performática de coleções de dados.
 
-## 💻 Código de Referência
+---
 
-### Colors.ts — Tokens de Design (versão evoluída em aula-08)
+## 🌿 Fluxo de Navegação
 
-```ts title="constants/Colors.ts"
-const stitchGreen = '#4CDF20';
-const stitchDarkBackground = '#0F0F0F';
-const stitchDarkSurface = '#1C1C1E';
+O app agora abre diretamente na tela de Login. Após o submit (simulado nesta aula), o usuário é redirecionado para o **Showcase** (`index.tsx`) via `router.replace('/')`.
 
-export default {
-  light: {
-    text: '#000',
-    background: '#fff',
-    tint: stitchGreen,
-    tabIconDefault: '#ccc',
-    tabIconSelected: stitchGreen,
-    surface: '#F2F2F7',
-  },
-  dark: {
-    text: '#E5E5E5',
-    background: stitchDarkBackground,
-    tint: stitchGreen,
-    tabIconDefault: '#ccc',
-    tabIconSelected: stitchGreen,
-    surface: stitchDarkSurface,
-    nav: '#1F222A',
-  },
-  colors: {
-    stitchGreen,
-    stitchDarkBackground,
-    stitchDarkSurface,
-    stitchError: '#FF453A',
-    stitchGreenDark: '#36A015',
-    stitchGreenContainer: '#1B4D0B',
-  }
-};
+```
+[ Login ] ──→ (submit) ──→ [ Showcase / FlatList ]
 ```
 
-:::tip Comparação com Android
-Esses tokens são **os mesmos** definidos no `Color.kt` do PDMII:
-- `StitchGreen = Color(0xFF4CDF20)` → `stitchGreen = '#4CDF20'`
-- `Background = Color(0xFF0F0F0F)` → `stitchDarkBackground = '#0F0F0F'`
+A configuração do Stack vive em `app/_layout.tsx`:
+
+```tsx title="app/_layout.tsx"
+<Stack screenOptions={{ headerShown: false }}>
+  {/* login é a primeira rota — abre ao iniciar o app */}
+  <Stack.Screen name="login" />
+  <Stack.Screen name="index" />
+</Stack>
+```
+
+:::tip Por que `router.replace` ao invés de `router.push`?
+- `router.push('/') ` → mantém o Login na pilha de navegação (usuário pode voltar com o botão físico).
+- `router.replace('/')` → **substitui** o Login pelo Showcase. O usuário não consegue "voltar" para o Login depois de entrar. ✅
 :::
+
+---
+
+## 📖 Recapitulação: `useState`
+
+O **`useState`** é o Hook do React mais importante. Ele permite que um componente "lembre" de informações entre renderizações.
+
+```tsx
+// Sintaxe básica
+const [valor, setValor] = useState(valorInicial);
+//     ↑            ↑            ↑
+//  variável    função setter   estado inicial
+```
+
+### Como Funciona em Formulários (Controlled Components)
+
+```tsx
+const [email, setEmail] = useState('');
+
+// Fluxo completo ao digitar "a":
+// 1. Usuário pressiona "a" no teclado
+// 2. onChangeText é chamado com o texto atual
+// 3. setEmail("a") atualiza o estado
+// 4. React re-renderiza o componente
+// 5. TextInput exibe "a" (valor vem do estado, não do DOM)
+
+<TextInput
+  value={email}            // ← lê do estado
+  onChangeText={setEmail}  // ← escreve no estado
+/>
+```
+
+:::tip Controlled vs Uncontrolled
+- **Controlled** (`useState`): React é a fonte da verdade → fácil de validar ✅
+- **Uncontrolled** (`useRef`): o DOM é a fonte da verdade → difícil de validar ❌
+:::
+
+---
+
+## 📦 Estrutura de Componentes
+
+Nesta aula, todos os componentes ficam em arquivos separados dentro de `components/`:
+
+```
+components/
+  ├── ColorBox.tsx        ← amostra de cor (Showcase)
+  ├── Section.tsx         ← bloco de seção (Showcase)
+  ├── StitchButton.tsx    ← botão (Aula 04)
+  ├── StitchCard.tsx      ← card de lista  ← NOVO
+  └── StitchTextField.tsx ← input de formulário ← NOVO
+```
+
+:::caution Organização é obrigatória
+Componentes definidos **inline** dentro de telas (ex: `const Section = ...` dentro de `index.tsx`) são difíceis de reusar e testar. Cada componente deve ter seu **próprio arquivo** em `components/`.
+:::
+
+---
+
+## 💻 Novos Componentes
+
+### `StitchCard` — Container para Listas
+
+```tsx title="components/StitchCard.tsx"
+interface StitchCardProps {
+  children: React.ReactNode;
+  onPress?: () => void;       // torna o card clicável
+  containerColor?: string;    // cor de fundo customizada
+}
+```
+
+**Uso em `FlatList`:**
+
+```tsx
+<FlatList
+  data={cursos}
+  keyExtractor={(item) => item.id}
+  renderItem={({ item }) => (
+    <StitchCard onPress={() => console.log(item.title)}>
+      <Text>{item.title}</Text>
+      <Text>{item.description}</Text>
+    </StitchCard>
+  )}
+/>
+```
+
+---
+
+### `StitchTextField` — Input com Estado Visual
+
+```tsx title="components/StitchTextField.tsx"
+interface StitchTextFieldProps {
+  label: string;
+  value: string;                          // conectado ao useState
+  onValueChange: (text: string) => void;  // setter do useState
+  placeholder?: string;
+  isError?: boolean;                      // borda vermelha
+  errorMessage?: string;                  // texto abaixo do campo
+  secureTextEntry?: boolean;              // para senhas
+  keyboardType?: KeyboardTypeOptions;
+}
+```
+
+**Uso com validação:**
+
+```tsx
+const [senha, setSenha] = useState('');
+
+<StitchTextField
+  label="Senha"
+  value={senha}
+  onValueChange={setSenha}
+  secureTextEntry
+  isError={senha.length > 0 && senha.length < 6}
+  errorMessage="Mínimo 6 caracteres"
+/>
+```
+
+---
+
+## 📱 Tela de Login
+
+```
+┌──────────────────────────────┐
+│                              │
+│   MergeSkills               │  ← Título (Colors.primary)
+│   Bem-vindo de volta 👋     │
+│   Entre para continuar...   │
+│                              │
+│  ┌──────────────────────┐   │
+│  │ E-mail               │   │  ← StitchTextField
+│  └──────────────────────┘   │
+│                              │
+│  ┌──────────────────────┐   │
+│  │ Senha ●●●●●●         │   │  ← StitchTextField (secureTextEntry)
+│  └──────────────────────┘   │    borda vermelha se < 6 chars
+│                              │
+│  ┌──────────────────────┐   │
+│  │       Entrar         │   │  ← StitchButton (simula 1.5s loading)
+│  └──────────────────────┘   │
+│                              │
+└──────────────────────────────┘
+```
+
+### `KeyboardAvoidingView` — Ergonomia Mobile
+
+Evita que o teclado cubra os campos:
+
+```tsx
+<KeyboardAvoidingView
+  behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+  style={{ flex: 1 }}
+>
+  {/* Formulário aqui */}
+</KeyboardAvoidingView>
+```
+
+:::caution Comportamento por Plataforma
+- **iOS**: `behavior="padding"` empurra o conteúdo para cima.
+- **Android**: `behavior="height"` reduz a altura do container.
+:::
+
+---
 
 ## 💻 Mão na Massa
 
@@ -69,23 +220,58 @@ import TabItem from '@theme/TabItem';
 <Tabs>
   <TabItem value="ex1" label="Exercício 1 — Fixação" default>
 
-### Use Colors na tela de login
+### Renderize uma lista de tecnologias
 
-Substitua todas as cores hardcoded do `login.tsx` por referências a `Colors.dark.background`, `Colors.colors.stitchGreen`, etc.
+Crie um array `TECHS` com 5 itens e use `FlatList` + `StitchCard` para exibi-los no Showcase:
+
+```tsx
+const TECHS = [
+  { id: '1', name: 'React Native', desc: 'Mobile com JS' },
+  { id: '2', name: 'TypeScript', desc: 'JS com tipos' },
+  // ... mais itens
+];
+```
 
   </TabItem>
   <TabItem value="ex2" label="Exercício 2 — Aplicação">
 
-### Adicione tokens de tipografia
+### Validação de e-mail em tempo real
 
-Crie `constants/Typography.ts` com escalas de fonte (title, body, caption) equivalentes ao Material 3 Type.kt do Android.
+Adicione validação de formato de e-mail com `regex` no `StitchTextField`:
+
+```tsx
+const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const isEmailValid = emailRegex.test(email);
+
+<StitchTextField
+  label="E-mail"
+  value={email}
+  onValueChange={setEmail}
+  isError={email.length > 0 && !isEmailValid}
+  errorMessage="Digite um e-mail válido"
+/>
+```
 
   </TabItem>
   <TabItem value="ex3" label="Exercício 3 — Desafio">
 
-### Modo Light/Dark automático
+### Toggle de senha visível/oculta
 
-Use `useColorScheme()` do React Native para detectar o tema do sistema e alternar entre `Colors.light` e `Colors.dark` automaticamente em toda a aplicação.
+Adicione um `useState` extra para alternar `secureTextEntry`:
+
+```tsx
+const [showPassword, setShowPassword] = useState(false);
+
+<StitchTextField
+  label="Senha"
+  value={password}
+  onValueChange={setPassword}
+  secureTextEntry={!showPassword}
+/>
+<TouchableOpacity onPress={() => setShowPassword(p => !p)}>
+  <Text>{showPassword ? 'Ocultar senha' : 'Mostrar senha'}</Text>
+</TouchableOpacity>
+```
 
   </TabItem>
 </Tabs>
