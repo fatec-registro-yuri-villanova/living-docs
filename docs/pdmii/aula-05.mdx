@@ -1,177 +1,410 @@
 ---
 sidebar_position: 5
-title: "Aula 05: ViewModel e UDF (Unidirectional Data Flow)"
-description: "Padrão Action/UiState/ViewModel com MutableStateFlow, sealed interface e viewModelScope."
+title: "Aula 05: Listas e Formulários"
+description: "Compose State, LazyColumn, LazyVerticalGrid e LoginViewModel com UDF. Construção da tela de Login com navegação via NavHost."
 ---
 
-# Aula 05: ViewModel e UDF
+# Aula 05: Listas e Formulários
 
 :::info 🔀 Branch da Aula
 Esta aula refere-se à branch: **`aula-05`**
 ```bash
 git checkout aula-05
 ```
+Branch de referência (ponto de partida sem implementação):
+```bash
+git checkout base-aula-05
+```
 :::
 
-## 📖 Conceito
+## 🎯 Objetivo
 
-O **ViewModel** sobrevive a rotações de tela e gerencia o estado da UI. Usamos o padrão **UDF (Unidirectional Data Flow)**: `Action → ViewModel → UiState → UI`.
+Construir os blocos fundamentais de uma interface mobile interativa:
+- **`StitchCard`** → container reutilizável para exibição em listas dinâmicas.
+- **`StitchTextField`** → input controlado com estados visuais de foco e erro.
+- **`LoginScreen`** → tela de autenticação com `imePadding` e `LoginViewModel`.
+- **`LazyColumn`** → renderização performática de coleções de dados.
+- **`LazyVerticalGrid`** → grid responsivo com múltiplas colunas.
 
-### Arquivos novos nesta branch
+---
+
+## 🌿 Fluxo de Navegação
+
+O app agora abre diretamente na tela de Login. Após o submit simulado, o usuário é redirecionado para o **Showcase** via `navController.navigate("showcase")`.
+
+```
+[ Login ] ──→ (submit) ──→ [ Showcase / LazyColumn + LazyVerticalGrid ]
+                                     │
+                              (Voltar para Login)
+```
+
+A configuração do `NavHost` vive em `MainActivity.kt`:
+
+```kotlin title="MainActivity.kt"
+val navController = rememberNavController()
+
+NavHost(navController = navController, startDestination = "login") {
+    composable("login") {
+        LoginScreen(
+            onLoginSuccess = {
+                navController.navigate("showcase") {
+                    popUpTo("login") { inclusive = true } // Remove login do back stack
+                }
+            }
+        )
+    }
+    composable("showcase") {
+        ShowcaseScreen(
+            onBackToLogin = {
+                navController.navigate("login") {
+                    popUpTo("showcase") { inclusive = true }
+                }
+            }
+        )
+    }
+}
+```
+
+:::tip Por que `popUpTo` com `inclusive = true`?
+- `navController.navigate("showcase")` → mantém o Login na pilha (usuário pode voltar).
+- `popUpTo("login") { inclusive = true }` → **remove** o Login da pilha. O usuário não consegue "voltar" para o Login com o botão físico depois de entrar. ✅
+:::
+
+---
+
+## 📖 Recapitulação: State no Compose
+
+Diferente do React Native, no Compose o estado é **observado** e dispara recomposições automáticas:
+
+| Hook | Sobrevive a recomposição? | Sobrevive a rotação de tela? |
+|------|--------------------------|------------------------------|
+| `mutableStateOf(T)` | ❌ | ❌ |
+| `remember { mutableStateOf(T) }` | ✅ | ❌ |
+| `rememberSaveable { mutableStateOf(T) }` | ✅ | ✅ |
+
+```kotlin
+// Estado local simples — perde o valor ao recompor
+var nome = mutableStateOf("")
+
+// Estado que sobrevive a recomposições (maioria dos casos)
+var nome by remember { mutableStateOf("") }
+
+// Estado que sobrevive a rotação de tela
+var nome by rememberSaveable { mutableStateOf("") }
+```
+
+:::info Nesta aula usamos ViewModel + StateFlow
+Para lógica de negócio (validação, loading, navegação), elevamos o estado para um **ViewModel**. A tela (`Screen`) fica o mais **stateless** possível, apenas observando e disparando eventos.
+:::
+
+---
+
+## 📦 Arquivos novos nesta branch
 
 | Arquivo | Descrição |
 |---------|-----------|
-| `ui/screens/aula05/Aula05Action.kt` | Sealed interface com ações do usuário |
-| `ui/screens/aula05/Aula05UiState.kt` | Data class do estado da UI |
-| `ui/screens/aula05/Aula05ViewModel.kt` | ViewModel com lógica de negócio |
-| `ui/screens/aula05/Aula05Screen.kt` | Tela Compose que consome o estado |
+| `ui/components/StitchCard.kt` | ElevatedCard reutilizável com onClick opcional |
+| `ui/components/StitchTextField.kt` | OutlinedTextField com estado visual de erro |
+| `ui/screens/auth/LoginViewModel.kt` | ViewModel com `LoginUiState` e validação |
+| `ui/screens/auth/LoginScreen.kt` | Tela de login com `imePadding` e navegação |
+| `ui/screens/showcase/ShowcaseScreen.kt` | Showcase com `LazyColumn` e `LazyVerticalGrid` |
 
-### O Fluxo UDF
+---
 
-```
-Usuário clica → Action (sealed interface)
-                      ↓
-               ViewModel (processa)
-                      ↓
-               UiState (data class)
-                      ↓
-               Compose (recompõe)
-```
+## 💻 Novos Componentes
 
-## 💻 Código de Referência
+### `StitchCard` — Container para Listas
 
-### 1. Actions — O que o usuário pode fazer
-
-```kotlin title="ui/screens/aula05/Aula05Action.kt"
-sealed interface Aula05Action {
-    data class OnNameChanged(val name: String) : Aula05Action
-    object OnSubmitClicked : Aula05Action
-    object OnDismissMessage : Aula05Action
+```kotlin title="ui/components/StitchCard.kt"
+@Composable
+fun StitchCard(
+    onClick: (() -> Unit)? = null,  // null = card não clicável
+    modifier: Modifier = Modifier,
+    containerColor: Color = Surface,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    ElevatedCard(
+        onClick = { onClick?.invoke() },
+        enabled = onClick != null,  // desabilita o ripple se não clicável
+        modifier = modifier,
+        colors = CardDefaults.elevatedCardColors(containerColor = containerColor),
+        shape = RoundedCornerShape(12.dp),
+        elevation = CardDefaults.elevatedCardElevation(
+            defaultElevation = 2.dp,
+            pressedElevation = 6.dp
+        ),
+        content = content
+    )
 }
 ```
 
-### 2. UiState — O que a tela precisa exibir
+**Uso em `LazyColumn`:**
 
-```kotlin title="ui/screens/aula05/Aula05UiState.kt"
-data class Aula05UiState(
-    val userName: String = "",
-    val isLoading: Boolean = false,
-    val successMessage: String? = null,
-    val errorMessage: String? = null
+```kotlin
+LazyColumn {
+    items(cursos) { curso ->
+        StitchCard(
+            onClick = { /* navegar para detalhes */ },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(text = curso.titulo, style = MaterialTheme.typography.titleMedium)
+                Text(text = curso.descricao, style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+    }
+}
+```
+
+---
+
+### `StitchTextField` — Input com Estado Visual
+
+```kotlin title="ui/components/StitchTextField.kt"
+@Composable
+fun StitchTextField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    label: String,
+    modifier: Modifier = Modifier,
+    placeholder: String? = null,
+    isError: Boolean = false,
+    errorMessage: String? = null,
+    secureTextEntry: Boolean = false,
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+    visualTransformation: VisualTransformation = VisualTransformation.None
+) {
+    Column(modifier = modifier) {
+        OutlinedTextField(
+            value = value,
+            onValueChange = onValueChange,
+            label = { Text(label) },
+            placeholder = placeholder?.let { { Text(it) } },
+            isError = isError,
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp),
+            visualTransformation = visualTransformation,
+            keyboardOptions = keyboardOptions,
+            singleLine = true
+        )
+        if (isError && errorMessage != null) {
+            Text(
+                text = errorMessage,
+                color = StitchError,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(start = 8.dp, top = 4.dp)
+            )
+        }
+    }
+}
+```
+
+**Uso com validação de senha:**
+
+```kotlin
+StitchTextField(
+    label = "Senha",
+    value = uiState.password,
+    onValueChange = { viewModel.onPasswordChange(it) },
+    secureTextEntry = true,
+    visualTransformation = PasswordVisualTransformation(),
+    keyboardOptions = KeyboardOptions(
+        keyboardType = KeyboardType.Password,
+        imeAction = ImeAction.Done
+    ),
+    isError = uiState.error?.contains("6 caracteres") == true,
+    errorMessage = uiState.error
 )
 ```
 
-### 3. ViewModel — Processa Actions e emite UiState
+:::caution `secureTextEntry` vs `PasswordVisualTransformation`
+No Compose, o parâmetro `secureTextEntry` do nosso componente serve apenas como documentação semântica. A máscara real dos caracteres é feita por `PasswordVisualTransformation()` passado em `visualTransformation`.
+:::
 
-```kotlin title="ui/screens/aula05/Aula05ViewModel.kt"
-class Aula05ViewModel : ViewModel() {
-    private val _uiState = MutableStateFlow(Aula05UiState())
-    val uiState: StateFlow<Aula05UiState> = _uiState.asStateFlow()
+---
 
-    fun onAction(action: Aula05Action) {
-        when (action) {
-            is Aula05Action.OnNameChanged -> {
-                _uiState.update { it.copy(userName = action.name, errorMessage = null) }
-            }
-            is Aula05Action.OnSubmitClicked -> {
-                submitData()
-            }
-            is Aula05Action.OnDismissMessage -> {
-                _uiState.update { it.copy(successMessage = null, errorMessage = null) }
-            }
-        }
+## 📱 Tela de Login
+
+```
+┌──────────────────────────────┐
+│                              │
+│   MergeSkills               │  ← Título (colorScheme.primary)
+│   Bem-vindo de volta 👋     │
+│   Entre para continuar...   │
+│                              │
+│  ┌──────────────────────┐   │
+│  │ E-mail               │   │  ← StitchTextField (ImeAction.Next)
+│  └──────────────────────┘   │
+│                              │
+│  ┌──────────────────────┐   │
+│  │ Senha ●●●●●●         │   │  ← StitchTextField (ImeAction.Done)
+│  └──────────────────────┘   │    borda vermelha se < 6 chars
+│                              │
+│  ┌──────────────────────┐   │
+│  │       Entrar         │   │  ← Button (desabilitado durante isLoading)
+│  └──────────────────────┘   │    CircularProgressIndicator quando loading
+│                              │
+└──────────────────────────────┘
+```
+
+### `LoginUiState` e `LoginViewModel`
+
+```kotlin title="ui/screens/auth/LoginViewModel.kt"
+data class LoginUiState(
+    val email: String = "",
+    val password: String = "",
+    val isLoading: Boolean = false,
+    val error: String? = null,
+    val isLoginSuccess: Boolean = false  // dispara navegação via LaunchedEffect
+)
+
+class LoginViewModel : ViewModel() {
+
+    private val _uiState = MutableStateFlow(LoginUiState())
+    val uiState: StateFlow<LoginUiState> = _uiState.asStateFlow()
+
+    fun onEmailChange(newValue: String) {
+        _uiState.update { it.copy(email = newValue, error = null) }
     }
 
-    private fun submitData() {
-        val currentName = _uiState.value.userName
-        if (currentName.isBlank()) {
-            _uiState.update { it.copy(errorMessage = "O nome não pode ser vazio") }
+    fun onPasswordChange(newValue: String) {
+        _uiState.update { it.copy(password = newValue, error = null) }
+    }
+
+    fun onLoginClick() {
+        val email = _uiState.value.email
+        val password = _uiState.value.password
+
+        if (!email.contains("@")) {
+            _uiState.update { it.copy(error = "Digite um e-mail válido") }
             return
         }
 
-        // Simulando fluxo assíncrono básico sem rede real ainda
+        if (password.length < 6) {
+            _uiState.update { it.copy(error = "Mínimo 6 caracteres") }
+            return
+        }
+
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, errorMessage = null) }
-            delay(1500) // Fake network delay
-            _uiState.update {
-                it.copy(
-                    isLoading = false,
-                    successMessage = "Usuário $currentName cadastrado com sucesso!"
-                )
-            }
+            _uiState.update { it.copy(isLoading = true, error = null) }
+            delay(1500) // Simulação de rede
+            _uiState.update { it.copy(isLoading = false, isLoginSuccess = true) }
         }
     }
 }
 ```
 
-### 4. Screen — Consome o estado reativo
+### `imePadding` — Ergonomia Mobile no Compose
 
-```kotlin title="ui/screens/aula05/Aula05Screen.kt"
+O equivalente Compose do `KeyboardAvoidingView` do React Native:
+
+```kotlin title="ui/screens/auth/LoginScreen.kt"
 @Composable
-fun Aula05Screen(
-    modifier: Modifier = Modifier,
-    viewModel: Aula05ViewModel = viewModel()
-) {
+fun LoginScreen(onLoginSuccess: () -> Unit, viewModel: LoginViewModel = viewModel()) {
     val uiState by viewModel.uiState.collectAsState()
 
-    Column(
-        modifier = modifier.fillMaxSize().padding(24.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
+    // LaunchedEffect observa isLoginSuccess e dispara navegação sem efeito colateral na composição
+    LaunchedEffect(uiState.isLoginSuccess) {
+        if (uiState.isLoginSuccess) onLoginSuccess()
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(24.dp)
+            .imePadding() // ← equivalente ao KeyboardAvoidingView
     ) {
-        Text(
-            text = "MVVM Básico",
-            style = MaterialTheme.typography.headlineLarge,
-            color = MaterialTheme.colorScheme.primary
-        )
+        // Conteúdo do formulário
+    }
+}
+```
 
-        Spacer(modifier = Modifier.height(32.dp))
+:::tip `imePadding()` vs `KeyboardAvoidingView`
+| React Native | Compose |
+|---|---|
+| `<KeyboardAvoidingView behavior="padding">` | `.imePadding()` no Modifier |
+| Requer configuração por plataforma (iOS/Android) | Funciona automaticamente em ambas |
+:::
 
-        OutlinedTextField(
-            value = uiState.userName,
-            onValueChange = { viewModel.onAction(Aula05Action.OnNameChanged(it)) },
-            label = { Text("Nome do Aluno") },
-            modifier = Modifier.fillMaxWidth(),
-            isError = uiState.errorMessage != null
-        )
+---
 
-        if (uiState.errorMessage != null) {
-            Text(
-                text = uiState.errorMessage!!,
-                color = MaterialTheme.colorScheme.error,
-                style = MaterialTheme.typography.labelSmall,
-                modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
-            )
-        }
+## 📋 ShowcaseScreen — LazyColumn e LazyVerticalGrid
 
-        Spacer(modifier = Modifier.height(16.dp))
+### `LazyColumn` — Lista Vertical Performática
 
-        Button(
-            onClick = { viewModel.onAction(Aula05Action.OnSubmitClicked) },
-            modifier = Modifier.fillMaxWidth(),
-            enabled = !uiState.isLoading
+```kotlin title="ui/screens/showcase/ShowcaseScreen.kt"
+LazyColumn(
+    modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
+    verticalArrangement = Arrangement.spacedBy(16.dp),
+    contentPadding = PaddingValues(vertical = 16.dp)
+) {
+    item { /* Cabeçalho */ }
+
+    items(MOCK_COURSES) { course ->
+        StitchCard(
+            onClick = { /* ação de clique */ },
+            modifier = Modifier.fillMaxWidth()
         ) {
-            if (uiState.isLoading) {
-                CircularProgressIndicator(
-                    modifier = Modifier.padding(2.dp),
-                    color = MaterialTheme.colorScheme.onPrimary
-                )
-            } else {
-                Text("Cadastrar")
+            Column(modifier = Modifier.padding(16.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(text = course.title, fontWeight = FontWeight.Bold)
+                    Badge { Text(course.level) }
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(text = course.description, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
+    }
 
-        if (uiState.successMessage != null) {
-            Spacer(modifier = Modifier.height(16.dp))
-            Text(
-                text = uiState.successMessage!!,
-                color = MaterialTheme.colorScheme.primary,
-                style = MaterialTheme.typography.titleMedium
-            )
+    item { /* Seção Grid abaixo */ }
+}
+```
+
+### `LazyVerticalGrid` — Grid Responsivo
+
+```kotlin
+LazyVerticalGrid(
+    columns = GridCells.Fixed(2),           // 2 colunas fixas
+    modifier = Modifier
+        .fillMaxWidth()
+        .height(340.dp),                    // altura fixa (necessário dentro de LazyColumn)
+    horizontalArrangement = Arrangement.spacedBy(12.dp),
+    verticalArrangement = Arrangement.spacedBy(12.dp),
+    userScrollEnabled = false               // scroll delegado ao LazyColumn pai
+) {
+    items(MOCK_COURSES) { course ->
+        StitchCard(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(12.dp)) {
+                Text(text = course.title, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(6.dp))
+                Badge(
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                ) {
+                    Text(course.level)
+                }
+            }
         }
     }
 }
 ```
+
+:::caution `LazyVerticalGrid` dentro de `LazyColumn`
+Lazy layouts aninhados causam erro de tamanho ilimitado no Compose. A solução é:
+1. Definir `height(Xdp)` fixo no `LazyVerticalGrid`
+2. Setar `userScrollEnabled = false` para delegar o scroll ao pai
+:::
+
+| `LazyColumn` | `LazyVerticalGrid` |
+|---|---|
+| Lista vertical simples | Grid com N colunas |
+| `items(list)` | `items(list)` + `columns = GridCells.Fixed(N)` |
+| `FlatList` no React Native | `FlatList numColumns={N}` no React Native |
+
+---
 
 ## 💻 Mão na Massa
 
@@ -181,23 +414,48 @@ import TabItem from '@theme/TabItem';
 <Tabs>
   <TabItem value="ex1" label="Exercício 1 — Fixação" default>
 
-### Adicione uma nova Action
+### Adicione um item extra no grid
 
-Crie `Aula05Action.OnClearClicked` que limpe o campo de nome. Adicione um botão "Limpar" na tela que dispare essa action.
+Crie um novo `MockCourse` na lista `MOCK_COURSES` e verifique como o `LazyVerticalGrid` se reorganiza automaticamente com `GridCells.Fixed(2)`.
+
+```kotlin
+MockCourse("6", "Testes no Compose", "Testes unitários e de UI com Compose Testing.", "Avançado")
+```
+
+Observe: com 6 itens e 2 colunas, o grid ocupa 3 linhas. Ajuste o `height()` conforme necessário.
 
   </TabItem>
   <TabItem value="ex2" label="Exercício 2 — Aplicação">
 
-### Campo de email com validação
+### Validação de e-mail em tempo real no `StitchTextField`
 
-Adicione um campo `email` ao `UiState` e uma action `OnEmailChanged`. Valide no `submitData()` se o email contém `@`. Exiba erro específico no campo se inválido.
+Adicione validação em tempo real no campo de e-mail da `LoginScreen` — exibir erro imediatamente enquanto o usuário digita, sem esperar o clique em "Entrar":
+
+```kotlin
+StitchTextField(
+    value = uiState.email,
+    onValueChange = { viewModel.onEmailChange(it) },
+    label = "E-mail",
+    isError = uiState.email.isNotEmpty() && !uiState.email.contains("@"),
+    errorMessage = "Digite um e-mail válido"
+)
+```
 
   </TabItem>
   <TabItem value="ex3" label="Exercício 3 — Desafio">
 
-### Formulário completo com lista de registros
+### Grid adaptativo com `GridCells.Adaptive`
 
-Integre tudo: nome + email. Ao submeter com sucesso, adicione o registro a uma `List<UserProfile>` (da Aula 02) no UiState. Exiba a lista abaixo do formulário usando `Column`.
+Substitua `GridCells.Fixed(2)` por `GridCells.Adaptive(minSize = 150.dp)` no `LazyVerticalGrid`:
+
+```kotlin
+LazyVerticalGrid(
+    columns = GridCells.Adaptive(minSize = 150.dp), // colunas automáticas
+    // ...
+)
+```
+
+Teste em diferentes tamanhos de tela (emulador tablet vs phone) e observe como o número de colunas se ajusta automaticamente. Essa é a vantagem do grid responsivo do Compose sobre o `FlatList numColumns` do React Native.
 
   </TabItem>
 </Tabs>
