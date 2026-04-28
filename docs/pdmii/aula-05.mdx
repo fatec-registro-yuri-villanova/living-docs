@@ -97,6 +97,51 @@ var nome by rememberSaveable { mutableStateOf("") }
 Para lógica de negócio (validação, loading, navegação), elevamos o estado para um **ViewModel**. A tela (`Screen`) fica o mais **stateless** possível, apenas observando e disparando eventos.
 :::
 
+## Entendendo ViewModel
+
+`ViewModel` é a camada que segura o estado da tela e coordena as regras de interação sem acoplar lógica ao Composable.
+
+### Por que usar `ViewModel`?
+
+- **Separação de responsabilidades**: UI renderiza, `ViewModel` decide regras.
+- **Sobrevive à rotação**: estado não é perdido em mudança de configuração.
+- **Facilita testes**: validações e fluxos podem ser testados sem UI.
+- **UDF (Unidirectional Data Flow)**: eventos entram, estado sai.
+
+### Responsabilidades no contexto desta aula
+
+No `LoginViewModel`, ele:
+- recebe eventos (`onEmailChange`, `onPasswordChange`, `onLoginClick`)
+- valida entrada (e-mail e senha)
+- controla loading (`isLoading`)
+- expõe resultado para navegação (`isLoginSuccess`)
+
+Enquanto isso, a `LoginScreen`:
+- observa `uiState`
+- desenha a interface com base no estado atual
+- dispara callbacks para o `ViewModel`
+
+### Fluxo mental (UDF)
+
+```
+[Usuário digita/clica] 
+    ↓
+[LoginScreen envia evento] 
+    ↓
+[LoginViewModel processa regra] 
+    ↓
+[uiState é atualizado] 
+    ↓
+[Compose recompõe a tela]
+```
+
+### Regra prática
+
+- **No Composable**: manter apenas lógica de apresentação.
+- **No ViewModel**: validação, chamadas assíncronas e transições de estado.
+
+Essa separação evita telas “inchadas” e prepara a base para autenticação real nas próximas aulas.
+
 ---
 
 ## 📦 Arquivos novos nesta branch
