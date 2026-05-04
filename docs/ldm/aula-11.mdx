@@ -1,41 +1,165 @@
 ---
 sidebar_position: 11
-title: "Aula 11: Leaderboard API"
-description: "Endpoint de ranking com ordenação, paginação e posição do usuário."
+title: "Aula 11: CMS Desktop — Setup e Auth"
+description: "Compose for Desktop como painel administrativo — estrutura de telas, roteamento e autenticação de admin."
 ---
 
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
-# Aula 11: Leaderboard API
+# Aula 11: CMS Desktop — Setup e Auth
 :::info 🔀 Branch da Aula
 **`aula-11`** — `git checkout aula-11`
 :::
-:::caution 🚧 Conteúdo Prospectivo
-Esta branch ainda não possui código implementado.
-:::
+
 ## 📖 Conceito
-O leaderboard ordena usuários por XP total. O server calcula a posição do usuário logado e retorna a lista paginada.
-## 💻 Código de Referência
-```kotlin title="server/.../routes/LeaderboardRoutes.kt"
-get("/api/leaderboard") {
-    val limit = call.request.queryParameters["limit"]?.toIntOrNull() ?: 20
-    val rankings = supabase.postgrest.from("user_stats")
-        .select { order("total_xp", Order.DESCENDING); limit(limit.toLong()) }
-        .decodeList<RankedUser>()
-    call.respond(rankings.mapIndexed { i, u -> u.copy(position = i + 1) })
+
+O **CMS (Content Management System)** é uma aplicação Desktop construída com Compose for Desktop que permite gerenciar cursos, aulas e quizzes do MergeSkills. Ela roda na JVM e reutiliza os modelos do módulo `shared/`.
+
+A aula 13 estabelece a **infraestrutura base**: janela principal maximizada, roteamento entre `LoginScreen` e `CmsScreen`, e autenticação com verificação de `role = "admin"`.
+
+---
+
+## 🗂️ Estrutura de Arquivos
+
+```
+composeApp/src/desktopMain/kotlin/com/fatec/merge_skills_kmp/
+├── main.kt                          ← Entry point, Window + roteamento
+├── viewmodel/
+│   └── AuthViewModel.kt             ← Estado de auth + persistência de sessão
+├── features/
+│   ├── auth/
+│   │   └── LoginScreen.kt           ← Tela de login do CMS
+│   └── admin/
+│       └── CmsScreen.kt             ← Painel admin (placeholder → aula 14)
+├── data/
+│   └── KtorUserRepository.kt        ← Implementação HTTP do UserRepository
+└── di/
+    └── DesktopModule.kt             ← Módulo Koin para injeção de dependência
+```
+
+---
+
+## 🔑 AuthViewModel
+
+Gerencia o estado de autenticação. Usa `multiplatform-settings` (não DataStore) para persistência local.
+
+```kotlin title="desktopMain/.../viewmodel/AuthViewModel.kt"
+class AuthViewModel(
+    private val repository: UserRepository,
+    private val settings: Settings
+) {
+    sealed class AuthUiState {
+        object Idle : AuthUiState()
+        object Loading : AuthUiState()
+        data class Success(val user: User) : AuthUiState()
+        data class Error(val message: String) : AuthUiState()
+        object NotAdmin : AuthUiState()   // usuário existe mas não é admin
+    }
+
+    fun login(email: String, password: String) {
+        scope.launch {
+            _authState.value = AuthUiState.Loading
+            repository.login(LoginRequest(email, password))
+                .onSuccess { response ->
+                    val user = response.user
+                    if (user != null && user.role == "admin") {
+                        saveSession(user)
+                        _authState.value = AuthUiState.Success(user)
+                    } else {
+                        _authState.value = AuthUiState.NotAdmin
+                    }
+                }
+                .onFailure { error ->
+                    _authState.value = AuthUiState.Error(error.message ?: "Erro desconhecido")
+                }
+        }
+    }
 }
 ```
+
+:::caution Estado `NotAdmin`
+Quando um usuário sem `role = "admin"` tenta logar, o estado fica `NotAdmin` — **não** `Success`. A `LoginScreen` exibe uma mensagem específica sem navegar para o CMS.
+:::
+
+---
+
+## 🖥️ LoginScreen
+
+Layout centralizado com `Card` de 400dp. Reage reativamente ao estado do `AuthViewModel`.
+
+```kotlin title="desktopMain/.../features/auth/LoginScreen.kt"
+@Composable
+fun LoginScreen(viewModel: AuthViewModel, onLoginSuccess: () -> Unit) {
+    val authState by viewModel.authState.collectAsState()
+
+    LaunchedEffect(authState) {
+        if (authState is AuthViewModel.AuthUiState.Success) onLoginSuccess()
+    }
+    // Card 400dp centralizado com campos E-mail, Senha, mensagens de erro e botão "Entrar"
+}
+```
+
+---
+
+## 🚪 Main.kt — Roteamento
+
+A troca de tela é feita via `mutableStateOf<Screen>` — sem `NavController`.
+
+```kotlin title="desktopMain/.../main.kt"
+sealed class Screen {
+    object Login : Screen()
+    object Cms : Screen()
+}
+
+fun main() {
+    val koin = startKoin { modules(desktopAppModule) }.koin
+    val authViewModel = koin.get<AuthViewModel>()
+
+    application {
+        var currentScreen by remember {
+            val initial: Screen = if (runBlocking { authViewModel.isLoggedIn() }) Screen.Cms else Screen.Login
+            mutableStateOf(initial)
+        }
+
+        Window(
+            onCloseRequest = ::exitApplication,
+            title = "MergeSkills CMS",
+            state = rememberWindowState(placement = WindowPlacement.Maximized)
+        ) {
+            MaterialTheme(colorScheme = darkColorScheme()) {
+                when (currentScreen) {
+                    Screen.Login -> LoginScreen(viewModel = authViewModel,
+                        onLoginSuccess = { currentScreen = Screen.Cms })
+                    Screen.Cms -> CmsScreen(authViewModel = authViewModel,
+                        onLogout = { currentScreen = Screen.Login })
+                }
+            }
+        }
+    }
+}
+```
+
+---
+
+## ▶️ Como Executar
+
+```bash
+./gradlew :composeApp:run
+```
+
+---
+
 ## 💻 Mão na Massa
 
 <Tabs>
   <TabItem value="ex1" label="Exercício 1 — Fixação" default>
-Implemente o endpoint e teste com dados seed no Supabase.
+Execute `./gradlew :composeApp:run` e verifique que a `LoginScreen` abre com o card centralizado e o fundo escuro.
   </TabItem>
   <TabItem value="ex2" label="Exercício 2 — Aplicação">
-Adicione filtro por período (`?period=weekly`) usando `gte` no timestamp.
+Tente logar com um usuário que **não** tem `role = "admin"`. Confirme que a mensagem "Conta sem permissão de admin" aparece sem navegar para o CMS.
   </TabItem>
   <TabItem value="ex3" label="Exercício 3 — Desafio">
-Adicione `GET /api/leaderboard/me` que retorna a posição do usuário logado sem buscar o ranking inteiro.
+Feche o app após um login de admin bem-sucedido. Abra novamente. Verifique que o `isLoggedIn()` via `Settings` leva diretamente para a `CmsScreen`, pulando o login.
   </TabItem>
 </Tabs>

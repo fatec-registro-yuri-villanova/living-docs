@@ -124,12 +124,12 @@ const sidebars: SidebarsConfig = {
         {
             type: "category",
             label: "Módulo 3 — Lógica Avançada e Gamificação",
-            items: ["ldm/aula-09", "ldm/aula-10", "ldm/aula-11", "ldm/aula-12"],
+            items: ["ldm/aula-09", "ldm/aula-10"],
         },
         {
             type: "category",
             label: "Módulo 4 — CMS Desktop",
-            items: ["ldm/aula-13", "ldm/aula-14", "ldm/aula-15", "ldm/aula-16"],
+            items: ["ldm/aula-11", "ldm/aula-14", "ldm/aula-15", "ldm/aula-16"],
         },
         {
             type: "category",
