@@ -8,131 +8,306 @@ import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
 # Aula 11: CMS Desktop — Setup e Auth
-:::info 🔀 Branch da Aula
-**`aula-11`** — `git checkout aula-11`
+
+:::info 🔀 Branches da Aula
+- **Ponto de partida:** `git checkout base-aula-11`
+- **Gabarito final:** `git checkout aula-11`
 :::
 
-## 📖 Conceito
+## 📖 Contexto
 
-O **CMS (Content Management System)** é uma aplicação Desktop construída com Compose for Desktop que permite gerenciar cursos, aulas e quizzes do MergeSkills. Ela roda na JVM e reutiliza os modelos do módulo `shared/`.
+O **CMS (Content Management System)** é uma aplicação Desktop construída com **Compose for Desktop** que permite gerenciar cursos, aulas e quizzes do MergeSkills. Roda na JVM e reutiliza os modelos do módulo `shared/`.
 
-A aula 13 estabelece a **infraestrutura base**: janela principal maximizada, roteamento entre `LoginScreen` e `CmsScreen`, e autenticação com verificação de `role = "admin"`.
+Nesta aula construímos a **infraestrutura base** do CMS:
+- Janela principal maximizada
+- Roteamento simples entre `LoginScreen` e `CmsScreen` via `mutableStateOf`
+- Autenticação com verificação de `role = "admin"`
+- Persistência de sessão com `multiplatform-settings`
+- Injeção de dependência com **Koin**
 
 ---
 
 ## 🗂️ Estrutura de Arquivos
 
+Todos os arquivos novos ficam em `composeApp/src/desktopMain/`:
+
 ```
 composeApp/src/desktopMain/kotlin/com/fatec/merge_skills_kmp/
-├── main.kt                          ← Entry point, Window + roteamento
+├── main.kt                          ← Entry point: janela, tema e roteamento
 ├── viewmodel/
-│   └── AuthViewModel.kt             ← Estado de auth + persistência de sessão
+│   └── AuthViewModel.kt             ← Gerencia estado de autenticação
 ├── features/
 │   ├── auth/
-│   │   └── LoginScreen.kt           ← Tela de login do CMS
+│   │   └── LoginScreen.kt           ← Tela de login
 │   └── admin/
-│       └── CmsScreen.kt             ← Painel admin (placeholder → aula 14)
+│       └── CmsScreen.kt             ← Painel admin (placeholder)
 ├── data/
-│   └── KtorUserRepository.kt        ← Implementação HTTP do UserRepository
+│   └── KtorUserRepository.kt        ← Chama a API Ktor via HTTP
 └── di/
-    └── DesktopModule.kt             ← Módulo Koin para injeção de dependência
+    └── DesktopModule.kt             ← Módulo Koin (wiring de dependências)
 ```
 
 ---
 
-## 🔑 AuthViewModel
+## Passo 1 — Dependências (`base-aula-11`)
 
-Gerencia o estado de autenticação. Usa `multiplatform-settings` (não DataStore) para persistência local.
+A branch `base-aula-11` já tem as dependências configuradas. Veja o que foi adicionado em `composeApp/build.gradle.kts`:
 
-```kotlin title="desktopMain/.../viewmodel/AuthViewModel.kt"
-class AuthViewModel(
-    private val repository: UserRepository,
-    private val settings: Settings
-) {
-    sealed class AuthUiState {
-        object Idle : AuthUiState()
-        object Loading : AuthUiState()
-        data class Success(val user: User) : AuthUiState()
-        data class Error(val message: String) : AuthUiState()
-        object NotAdmin : AuthUiState()   // usuário existe mas não é admin
-    }
-
-    fun login(email: String, password: String) {
-        scope.launch {
-            _authState.value = AuthUiState.Loading
-            repository.login(LoginRequest(email, password))
-                .onSuccess { response ->
-                    val user = response.user
-                    if (user != null && user.role == "admin") {
-                        saveSession(user)
-                        _authState.value = AuthUiState.Success(user)
-                    } else {
-                        _authState.value = AuthUiState.NotAdmin
-                    }
-                }
-                .onFailure { error ->
-                    _authState.value = AuthUiState.Error(error.message ?: "Erro desconhecido")
-                }
-        }
+```kotlin title="composeApp/build.gradle.kts"
+val desktopMain by getting {
+    dependsOn(commonMain)
+    dependencies {
+        implementation(compose.desktop.currentOs)
+        implementation(libs.kotlinx.coroutines.swing)
+        // highlight-start
+        implementation(libs.koin.core)               // Injeção de dependência
+        implementation(libs.multiplatform.settings)  // Persistência local JVM
+        implementation(libs.ktor.client.cio)         // Engine HTTP para Desktop
+        // highlight-end
     }
 }
 ```
 
-:::caution Estado `NotAdmin`
-Quando um usuário sem `role = "admin"` tenta logar, o estado fica `NotAdmin` — **não** `Success`. A `LoginScreen` exibe uma mensagem específica sem navegar para o CMS.
+E em `gradle/libs.versions.toml`:
+
+```toml title="gradle/libs.versions.toml"
+[versions]
+multiplatform-settings = "1.1.1"
+
+[libraries]
+multiplatform-settings = { module = "com.russhwolf:multiplatform-settings", version.ref = "multiplatform-settings" }
+```
+
+:::tip Por que `multiplatform-settings` e não DataStore?
+O DataStore (usado no Android) depende de `Context` da plataforma. No Desktop JVM, usamos `multiplatform-settings` com `PreferencesSettings` — que internamente usa o `java.util.prefs.Preferences` da JVM.
 :::
 
 ---
 
-## 🖥️ LoginScreen
+## Passo 2 — `KtorUserRepository` (camada de dados)
 
-Layout centralizado com `Card` de 400dp. Reage reativamente ao estado do `AuthViewModel`.
+Implementa a interface `UserRepository` do `shared/` fazendo chamadas HTTP para a API Ktor.
 
-```kotlin title="desktopMain/.../features/auth/LoginScreen.kt"
-@Composable
-fun LoginScreen(viewModel: AuthViewModel, onLoginSuccess: () -> Unit) {
-    val authState by viewModel.authState.collectAsState()
+```kotlin title="desktopMain/.../data/KtorUserRepository.kt"
+class KtorUserRepository(
+    private val client: HttpClient,
+    private val baseUrl: String
+) : UserRepository {
 
-    LaunchedEffect(authState) {
-        if (authState is AuthViewModel.AuthUiState.Success) onLoginSuccess()
+    override suspend fun login(request: LoginRequest): Result<AuthResponse> = runCatching {
+        client.post("$baseUrl/auth/login") {
+            contentType(ContentType.Application.Json)
+            setBody(request)
+        }.body()
     }
-    // Card 400dp centralizado com campos E-mail, Senha, mensagens de erro e botão "Entrar"
+
+    override suspend fun register(request: RegisterRequest): Result<AuthResponse> = runCatching {
+        client.post("$baseUrl/auth/register") {
+            contentType(ContentType.Application.Json)
+            setBody(request)
+        }.body()
+    }
+
+    override suspend fun getUserProfile(userId: Int): Result<User> = runCatching {
+        client.get("$baseUrl/users/$userId").body()
+    }
+
+    override suspend fun updateStreak(userId: Int): Result<User> = runCatching {
+        client.post("$baseUrl/users/$userId/streak").body()
+    }
 }
 ```
 
+:::note `runCatching`
+Cada função envolve a chamada em `runCatching {}` que retorna `Result<T>` — se a requisição lançar uma exceção, ela é capturada em `Result.failure`. O `AuthViewModel` trata esse resultado com `.onSuccess` e `.onFailure`.
+:::
+
 ---
 
-## 🚪 Main.kt — Roteamento
+## Passo 3 — `DesktopModule` (Koin DI)
 
-A troca de tela é feita via `mutableStateOf<Screen>` — sem `NavController`.
+Define como cada dependência é criada e injetada. O Koin vai montar o grafo automaticamente.
 
-```kotlin title="desktopMain/.../main.kt"
-sealed class Screen {
-    object Login : Screen()
-    object Cms : Screen()
+```kotlin title="desktopMain/.../di/DesktopModule.kt"
+val desktopAppModule = module {
+
+    // 1. HttpClient com engine CIO (JVM) e suporte a JSON
+    single<HttpClient> {
+        HttpClient(CIO) {
+            install(ContentNegotiation) {
+                json(Json { ignoreUnknownKeys = true })
+            }
+        }
+    }
+
+    // 2. Repositório que chama a API local
+    single<UserRepository> {
+        KtorUserRepository(
+            client = get(),
+            baseUrl = "http://localhost:8080"
+        )
+    }
+
+    // 3. Persistência local via java.util.prefs (nó "mergeskills-cms")
+    single<Settings> {
+        PreferencesSettings(Preferences.userRoot().node("mergeskills-cms"))
+    }
+
+    // 4. ViewModel recebe o repositório e as settings via get()
+    single {
+        AuthViewModel(
+            repository = get(),
+            settings = get()
+        )
+    }
+}
+```
+
+:::info Como o Koin resolve dependências
+`get()` dentro de um bloco `single {}` pede ao Koin a instância já registrada daquele tipo. A ordem de declaração não importa — o Koin resolve o grafo de forma lazy.
+:::
+
+---
+
+## Passo 4 — `AuthViewModel`
+
+Gerencia o ciclo completo de autenticação e a persistência de sessão.
+
+### UiState
+
+```kotlin title="desktopMain/.../viewmodel/AuthViewModel.kt"
+sealed class AuthUiState {
+    object Idle : AuthUiState()       // estado inicial
+    object Loading : AuthUiState()    // chamada em andamento
+    data class Success(val user: User) : AuthUiState()  // login OK
+    data class Error(val message: String) : AuthUiState() // erro de rede
+    object NotAdmin : AuthUiState()   // login OK, mas não é admin
+}
+```
+
+### `login()`
+
+```kotlin
+fun login(email: String, password: String) {
+    scope.launch {
+        _authState.value = AuthUiState.Loading
+        repository.login(LoginRequest(email, password))
+            .onSuccess { response ->
+                val user = response.user
+                if (user != null && user.role == "admin") {
+                    saveSession(user)                          // persiste na JVM
+                    _authState.value = AuthUiState.Success(user)
+                } else {
+                    _authState.value = AuthUiState.NotAdmin   // não navega!
+                }
+            }
+            .onFailure { error ->
+                _authState.value = AuthUiState.Error(error.message ?: "Erro desconhecido")
+            }
+    }
+}
+```
+
+### `isLoggedIn()` e persistência de sessão
+
+```kotlin
+// Verificação síncrona chamada com runBlocking no main()
+suspend fun isLoggedIn(): Boolean {
+    val userId = settings.getIntOrNull("user_id")
+    return userId != null && userId > 0
 }
 
-fun main() {
-    val koin = startKoin { modules(desktopAppModule) }.koin
-    val authViewModel = koin.get<AuthViewModel>()
+// Salva dados do usuário nas preferences da JVM
+private fun saveSession(user: User) {
+    settings.putInt("user_id", user.id)
+    settings.putString("user_name", user.name ?: user.username)
+    settings.putString("user_role", user.role)
+}
 
-    application {
-        var currentScreen by remember {
-            val initial: Screen = if (runBlocking { authViewModel.isLoggedIn() }) Screen.Cms else Screen.Login
-            mutableStateOf(initial)
+// Remove tudo ao fazer logout
+private fun clearSession() {
+    settings.remove("user_id")
+    settings.remove("user_name")
+    settings.remove("user_role")
+}
+```
+
+:::caution Estado `NotAdmin`
+Um usuário que existe no banco mas não tem `role = "admin"` recebe `NotAdmin` — **nunca** `Success`. A tela exibe uma mensagem específica sem navegar para o CMS.
+:::
+
+---
+
+## Passo 5 — `LoginScreen`
+
+Composable centralizado. Observa o `authState` e navega automaticamente ao receber `Success`.
+
+```kotlin title="desktopMain/.../features/auth/LoginScreen.kt"
+@Composable
+fun LoginScreen(
+    viewModel: AuthViewModel,
+    onLoginSuccess: () -> Unit
+) {
+    val authState by viewModel.authState.collectAsState()
+
+    // Navegação reativa: só dispara quando o estado muda para Success
+    LaunchedEffect(authState) {
+        if (authState is AuthViewModel.AuthUiState.Success) {
+            onLoginSuccess()
         }
+    }
 
-        Window(
-            onCloseRequest = ::exitApplication,
-            title = "MergeSkills CMS",
-            state = rememberWindowState(placement = WindowPlacement.Maximized)
-        ) {
-            MaterialTheme(colorScheme = darkColorScheme()) {
-                when (currentScreen) {
-                    Screen.Login -> LoginScreen(viewModel = authViewModel,
-                        onLoginSuccess = { currentScreen = Screen.Cms })
-                    Screen.Cms -> CmsScreen(authViewModel = authViewModel,
-                        onLogout = { currentScreen = Screen.Login })
+    var email by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+
+    Box(
+        modifier = Modifier.fillMaxSize().background(Color(0xFF0F0F0F)),
+        contentAlignment = Alignment.Center
+    ) {
+        Card(modifier = Modifier.width(400.dp)) {
+            Column(
+                modifier = Modifier.padding(32.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Text("MergeSkills CMS", style = MaterialTheme.typography.headlineMedium)
+
+                OutlinedTextField(
+                    value = email, onValueChange = { email = it },
+                    label = { Text("E-mail") }, modifier = Modifier.fillMaxWidth(), singleLine = true
+                )
+                OutlinedTextField(
+                    value = password, onValueChange = { password = it },
+                    label = { Text("Senha") },
+                    visualTransformation = PasswordVisualTransformation(),
+                    modifier = Modifier.fillMaxWidth(), singleLine = true
+                )
+
+                // Mensagem de erro de rede
+                if (authState is AuthViewModel.AuthUiState.Error) {
+                    Text(
+                        text = (authState as AuthViewModel.AuthUiState.Error).message,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+
+                // Mensagem específica para usuário sem role admin
+                if (authState is AuthViewModel.AuthUiState.NotAdmin) {
+                    Text(
+                        text = "Conta sem permissão de admin",
+                        color = MaterialTheme.colorScheme.tertiary,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+
+                Button(
+                    onClick = { viewModel.login(email, password) },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = authState !is AuthViewModel.AuthUiState.Loading
+                ) { Text("Entrar") }
+
+                if (authState is AuthViewModel.AuthUiState.Loading) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
                 }
             }
         }
@@ -142,11 +317,100 @@ fun main() {
 
 ---
 
+## Passo 6 — `CmsScreen` (placeholder)
+
+Por enquanto exibe apenas um título e o botão "Sair". O painel completo (cursos, aulas, questões) será construído na próxima aula.
+
+```kotlin title="desktopMain/.../features/admin/CmsScreen.kt"
+@Composable
+fun CmsScreen(
+    authViewModel: AuthViewModel,
+    onLogout: () -> Unit
+) {
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically)
+    ) {
+        Text("MergeSkills CMS", style = MaterialTheme.typography.headlineLarge)
+        Button(onClick = {
+            authViewModel.logout()
+            onLogout()
+        }) {
+            Text("Sair")
+        }
+    }
+}
+```
+
+---
+
+## Passo 7 — `main.kt` (entry point e roteamento)
+
+Inicializa o Koin, verifica a sessão e decide a tela inicial. A navegação é feita com um simples `mutableStateOf<Screen>` — sem `NavController`.
+
+```kotlin title="desktopMain/.../main.kt"
+sealed class Screen {
+    object Login : Screen()
+    object Cms : Screen()
+}
+
+fun main() {
+    // Koin inicializado ANTES do application {}
+    val koin = startKoin {
+        modules(desktopAppModule)
+    }.koin
+
+    val authViewModel = koin.get<AuthViewModel>()
+
+    application {
+        // runBlocking só é chamado UMA VEZ dentro do remember
+        var currentScreen by remember {
+            val initial: Screen =
+                if (runBlocking { authViewModel.isLoggedIn() }) Screen.Cms else Screen.Login
+            mutableStateOf(initial)
+        }
+
+        Window(
+            onCloseRequest = ::exitApplication,
+            title = "MergeSkills CMS",
+            state = rememberWindowState(
+                placement = WindowPlacement.Maximized,
+                width = 1280.dp,
+                height = 800.dp
+            )
+        ) {
+            MaterialTheme(colorScheme = darkColorScheme()) {
+                when (currentScreen) {
+                    Screen.Login -> LoginScreen(
+                        viewModel = authViewModel,
+                        onLoginSuccess = { currentScreen = Screen.Cms }
+                    )
+                    Screen.Cms -> CmsScreen(
+                        authViewModel = authViewModel,
+                        onLogout = { currentScreen = Screen.Login }
+                    )
+                }
+            }
+        }
+    }
+}
+```
+
+:::info Por que `startKoin` fora do `application {}`?
+O `application {}` do Compose Desktop é um lambda recomposto. Inicializar o Koin dentro dele causaria re-inicialização a cada recomposição. Iniciando fora, o Koin é um singleton da JVM.
+:::
+
+---
+
 ## ▶️ Como Executar
 
 ```bash
+# A partir da raiz do projeto
 ./gradlew :composeApp:run
 ```
+
+O servidor Ktor deve estar rodando em `localhost:8080` para o login funcionar.
 
 ---
 
@@ -154,12 +418,18 @@ fun main() {
 
 <Tabs>
   <TabItem value="ex1" label="Exercício 1 — Fixação" default>
-Execute `./gradlew :composeApp:run` e verifique que a `LoginScreen` abre com o card centralizado e o fundo escuro.
+
+Partindo da branch `base-aula-11`, crie os 6 arquivos desta aula do zero e execute `./gradlew :composeApp:run`. Confirme que a `LoginScreen` abre com o card centralizado e fundo escuro.
+
   </TabItem>
   <TabItem value="ex2" label="Exercício 2 — Aplicação">
-Tente logar com um usuário que **não** tem `role = "admin"`. Confirme que a mensagem "Conta sem permissão de admin" aparece sem navegar para o CMS.
+
+Com o servidor rodando, tente logar com um usuário que **não** tem `role = "admin"`. Confirme que a mensagem **"Conta sem permissão de admin"** aparece sem navegar para o CMS.
+
   </TabItem>
   <TabItem value="ex3" label="Exercício 3 — Desafio">
-Feche o app após um login de admin bem-sucedido. Abra novamente. Verifique que o `isLoggedIn()` via `Settings` leva diretamente para a `CmsScreen`, pulando o login.
+
+Após um login de admin bem-sucedido, feche o app e abra novamente. O `isLoggedIn()` deve detectar a sessão salva em `PreferencesSettings` e abrir diretamente na `CmsScreen`, pulando o login. Use `./gradlew :composeApp:run` para testar.
+
   </TabItem>
 </Tabs>
