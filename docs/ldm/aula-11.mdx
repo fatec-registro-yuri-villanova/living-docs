@@ -403,10 +403,28 @@ O `application {}` do Compose Desktop é um lambda recomposto. Inicializar o Koi
 
 ---
 
+## ⚠️ Atenção — `AndroidManifest.xml`
+
+O módulo `composeApp` usa `namespace = "com.fatec.merge_skills_kmp.android"` no Gradle, mas a `MainActivity` está no pacote `com.fatec.merge_skills_kmp`. Isso cria uma armadilha: o atalho `.MainActivity` no manifest resolve para `com.fatec.merge_skills_kmp.android.MainActivity` — classe que não existe — causando `ClassNotFoundException` no Android.
+
+A correção é usar o **nome totalmente qualificado**:
+
+```xml title="composeApp/src/androidMain/AndroidManifest.xml"
+<activity
+    android:name="com.fatec.merge_skills_kmp.MainActivity"
+    android:exported="true">
+```
+
+:::danger Não use `.MainActivity` aqui
+O atalho com ponto só funciona quando o pacote da classe é igual ao `namespace` do módulo. Como aqui são diferentes, o nome completo é obrigatório.
+:::
+
+---
+
 ## ▶️ Como Executar
 
 ```bash
-# A partir da raiz do projeto
+# Desktop (Compose for Desktop)
 ./gradlew :composeApp:run
 ```
 
