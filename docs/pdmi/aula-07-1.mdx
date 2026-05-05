@@ -195,47 +195,91 @@ O padrão `.from('courses').select()` imita a sintaxe do Supabase JS Client, pre
 
 ---
 
-## 💻 Mão na Massa
+## � useEffect — Executando código fora do render
 
-import Tabs from '@theme/Tabs';
-import TabItem from '@theme/TabItem';
+Em React Native, o corpo de um componente é executado **toda vez que ele renderiza**. Isso é um problema para operações que devem acontecer apenas uma vez — como buscar dados da API ao abrir uma tela.
 
-<Tabs>
-  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
-
-Abra o arquivo `lib/api.ts` e responda:
-
-1. O que acontece se o servidor retornar status `500`? O app vai travar ou o erro será tratado?
-2. O que o operador spread `...options.headers` faz na montagem dos headers?
-3. Por que `JSON.stringify({ email, password: pass })` é necessário no corpo do `signIn`?
-
-  </TabItem>
-  <TabItem value="ex2" label="Exercício 2 — Aplicação">
-
-Adicione um método `getProfile` ao namespace `auth` do `apiClient` que faz um `GET` em `/profile`:
+O `useEffect` resolve isso: permite executar código **após** a renderização, com controle sobre quando ele roda.
 
 ```ts
-auth: {
-    // ...métodos existentes...
-    async getProfile() {
-        // TODO: implementar
+useEffect(() => {
+    // código a executar
+}, [dependências]);
+```
+
+### O array de dependências
+
+| Caso | Comportamento |
+|------|--------------|
+| `[]` (array vazio) | Executa **uma única vez**, quando o componente é montado |
+| `[valor]` | Executa sempre que `valor` mudar |
+| Sem array | Executa após **toda** renderização (raramente desejado) |
+
+---
+
+## 📖 Por que usar useEffect para buscar dados?
+
+Imagine que `fetchCourses` fosse chamado diretamente no corpo do componente:
+
+```ts
+// ❌ ERRADO — loop infinito
+export default function CoursesScreen() {
+    const [courses, setCourses] = useState([]);
+
+    fetchCourses(); // → chama setCourses → renderiza → chama fetchCourses → ...
+}
+```
+
+Chamar `setCourses` dentro de `fetchCourses` dispara uma nova renderização, que chamaria `fetchCourses` de novo — loop infinito.
+
+Com `useEffect`:
+
+```ts
+// ✅ CORRETO — executa só uma vez ao montar
+export default function CoursesScreen() {
+    const [courses, setCourses] = useState([]);
+
+    useEffect(() => {
+        fetchCourses();
+    }, []); // [] = só na montagem
+
+    async function fetchCourses() {
+        const data = await apiClient.db.from('courses');
+        const result = await data.select();
+        setCourses(result);
     }
 }
 ```
 
-  </TabItem>
-  <TabItem value="ex3" label="Exercício 3 — Desafio">
+---
 
-Atualmente o `apiClient.fetch` usa `console.error` para logar erros mas depois faz `throw` do mesmo erro. 
+## 📖 useEffect com cleanup
 
-Adicione um campo `lastError` no `apiClient` que guarda a última mensagem de erro, para que as telas possam exibir sem precisar do `catch`:
+Quando o `useEffect` inicia uma operação que precisa ser cancelada (ex: timers), ele pode retornar uma função de **cleanup**, executada quando o componente é desmontado:
 
 ```ts
-export const apiClient = {
-    lastError: null as string | null,
-    // ...
-};
+// Exemplo da Splash Screen (app/index.tsx)
+useEffect(() => {
+    const timer = setTimeout(() => {
+        router.replace('/login');
+    }, 2000);
+
+    return () => clearTimeout(timer); // cleanup: cancela o timer se o componente desmontar antes
+}, []);
 ```
 
-  </TabItem>
-</Tabs>
+Sem o cleanup, se o usuário navegasse para outra tela antes dos 2 segundos, o `router.replace` ainda seria chamado — causando um erro de navegação.
+
+---
+
+## 📖 useEffect vs funções chamadas manualmente
+
+Nem toda chamada à API precisa de `useEffect`. A diferença é simples:
+
+| Situação | Abordagem |
+|----------|-----------|
+| Buscar dados **ao abrir** a tela | `useEffect(() => { fetch() }, [])` |
+| Buscar dados **ao pressionar** um botão | Chamar a função direto no `onPress` |
+| Buscar dados **quando um filtro muda** | `useEffect(() => { fetch() }, [filtro])` |
+
+Na tela de cursos, o botão de refresh chama `fetchCourses` diretamente no `onPress` — sem `useEffect`, pois é uma ação do usuário, não uma inicialização automática.
