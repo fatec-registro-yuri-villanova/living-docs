@@ -1,70 +1,67 @@
 ---
 sidebar_position: 7
-title: "Aula 07: Splash Screen e Auth Flow"
-description: "SplashScreen com verificação de autenticação, AsyncStorage para persistência de token."
+title: "Aula 07: Splash Screen, Login e Home"
+description: "Implementar a SplashScreen com redirecionamento, tela de Login integrada à API e Home com lista de cursos."
 ---
 
-# Aula 07: Splash Screen e Auth Flow
+# Aula 07: Splash Screen, Login e Home
 
-:::info 🔀 Branch da Aula
-Esta aula refere-se à branch: **`aula-07`**
+:::info 🔀 Branches desta aula
+- **Base (ponto de partida):** `base-aula-07`
+- **Resultado final:** `aula-07`
+
 ```bash
-git checkout aula-07
+git checkout base-aula-07
 ```
 :::
 
-## 📖 Conceito
+## 📖 O que vamos construir
 
-A **SplashScreen** é o primeiro contato visual do usuário com o app. No MergeSkills, ela verifica se o usuário já está autenticado (token no AsyncStorage) e redireciona automaticamente.
+Nesta aula vamos implementar três telas que formam o fluxo principal do MergeSkills:
 
-### Arquivos novos nesta branch
+1. **Splash Screen** — tela de entrada com o logo do app que redireciona automaticamente para o Login após 2 segundos
+2. **Login** — formulário com e-mail e senha integrado à API REST no Render
+3. **Home (Cursos)** — lista de cursos buscada da API via `apiClient`
+
+### Arquivos modificados nesta aula
 
 | Arquivo | Descrição |
 |---------|-----------|
-| `lib/supabase.ts` | Configuração do Supabase (adicionada nesta branch) |
+| `app/index.tsx` | Splash Screen com redirecionamento |
+| `app/login.tsx` | Tela de Login com integração à API |
+| `app/courses.tsx` | Home com lista de cursos |
+| `lib/supabase.ts` | Configuração inicial do cliente Supabase |
+
+---
 
 ## 💻 Código de Referência
 
-### SplashScreen com Auth Check
+### 1. Splash Screen (`app/index.tsx`)
+
+A splash exibe o logo e usa `useEffect` + `setTimeout` para redirecionar ao Login após 2 segundos.
 
 ```tsx title="app/index.tsx"
 import React, { useEffect } from 'react';
-import { View, Text, StyleSheet, StatusBar } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
-import Colors from '../constants/Colors';
-import { apiClient } from '../lib/api';
+import { Ionicons } from '@expo/vector-icons';
 
 export default function SplashScreen() {
     const router = useRouter();
 
     useEffect(() => {
-        const checkAuth = async () => {
-            await new Promise(resolve => setTimeout(resolve, 2000));
+        const timer = setTimeout(() => {
+            router.replace('/login');
+        }, 2000);
 
-            try {
-                const authenticated = await apiClient.auth.isAuthenticated();
-                if (authenticated) {
-                    router.replace('/(tabs)');
-                } else {
-                    router.replace('/login');
-                }
-            } catch (error) {
-                console.error('Erro no checkAuth:', error);
-                router.replace('/login');
-            }
-        };
-
-        checkAuth();
+        return () => clearTimeout(timer);
     }, []);
 
     return (
         <View style={styles.container}>
-            <StatusBar barStyle="light-content" />
             <View style={styles.logoContainer}>
-                <View style={styles.logoSymbol}>
-                    <Text style={styles.logoText}>M</Text>
-                </View>
-                <Text style={styles.brandName}>Merge Skills</Text>
+                <Ionicons name="person" size={100} color="#ff0000" />
+                <Text style={styles.logoText}>Merge Skills</Text>
             </View>
         </View>
     );
@@ -73,40 +70,256 @@ export default function SplashScreen() {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: Colors.dark.background,
-        justifyContent: 'center',
+        backgroundColor: '#fff',
+        alignItems: 'center',
+        justifyContent: 'center'
+    },
+    logoContainer: {
         alignItems: 'center'
     },
-    logoSymbol: {
-        width: 80, height: 80,
-        backgroundColor: Colors.colors.stitchGreen,
-        borderRadius: 20,
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginBottom: 16
-    },
     logoText: {
-        fontSize: 57, fontWeight: 'bold',
-        color: Colors.dark.background
-    },
-    brandName: {
-        fontSize: 32, fontWeight: '600',
-        color: Colors.colors.stitchGreen,
-        letterSpacing: 1
+        fontSize: 48,
+        fontWeight: 'bold',
+        color: '#333',
+        marginTop: 16
     }
 });
 ```
 
-### isAuthenticated no api.ts
+---
 
-```ts title="lib/api.ts (trecho)"
-auth: {
-    async isAuthenticated() {
-        const token = await AsyncStorage.getItem(API_CONFIG.TOKEN_KEY);
-        return !!token;
+### 2. Tela de Login (`app/login.tsx`)
+
+Formulário com dois campos e um botão que chama `apiClient.auth.signIn`. Durante o carregamento exibe `ActivityIndicator`.
+
+```tsx title="app/login.tsx"
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
+import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
+import { apiClient } from '../lib/api';
+
+export default function LoginScreen() {
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [loading, setLoading] = useState(false);
+    const router = useRouter();
+
+    async function handleLogin() {
+        setLoading(true);
+        try {
+            await apiClient.auth.signIn(email, password);
+            router.replace('/courses');
+        } catch (error: any) {
+            Alert.alert('Erro ao entrar', error.message || 'Verifique suas credenciais');
+        } finally {
+            setLoading(false);
+        }
     }
+
+    return (
+        <View style={styles.container}>
+            <Text style={styles.header}>Merge Skills</Text>
+            <Text style={styles.subheader}>Login com API (Render)</Text>
+
+            <View style={styles.spacer} />
+
+            <View style={styles.inputContainer}>
+                <Ionicons name="mail-outline" size={20} color="#666" style={styles.icon} />
+                <TextInput
+                    style={styles.input}
+                    placeholder="E-mail"
+                    value={email}
+                    onChangeText={setEmail}
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                />
+            </View>
+
+            <View style={styles.inputContainer}>
+                <Ionicons name="lock-closed-outline" size={20} color="#666" style={styles.icon} />
+                <TextInput
+                    style={styles.input}
+                    placeholder="Senha"
+                    value={password}
+                    onChangeText={setPassword}
+                    secureTextEntry
+                />
+            </View>
+
+            <TouchableOpacity
+                style={[styles.button, loading ? styles.buttonDisabled : null]}
+                onPress={handleLogin}
+                disabled={loading}
+            >
+                {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Entrar</Text>}
+            </TouchableOpacity>
+
+            <TouchableOpacity onPress={() => router.push('/register')}>
+                <Text style={styles.linkText}>Criar nova conta</Text>
+            </TouchableOpacity>
+        </View>
+    );
 }
+
+const styles = StyleSheet.create({
+    container: {
+        flex: 1,
+        padding: 24,
+        backgroundColor: '#fff',
+        justifyContent: 'center',
+        alignItems: 'center'
+    },
+    header: {
+        fontSize: 32,
+        fontWeight: 'bold',
+        color: '#ff0000',
+    },
+    subheader: {
+        fontSize: 16,
+        color: '#666',
+        marginBottom: 40
+    },
+    inputContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        width: '100%',
+        height: 56,
+        borderWidth: 1,
+        borderColor: '#ccc',
+        borderRadius: 8,
+        paddingHorizontal: 16,
+        marginBottom: 16
+    },
+    icon: { marginRight: 12 },
+    input: { flex: 1, fontSize: 16 },
+    button: {
+        width: '100%',
+        height: 56,
+        backgroundColor: '#ff0000',
+        borderRadius: 8,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginTop: 24,
+        marginBottom: 20
+    },
+    buttonDisabled: { backgroundColor: '#ffaaaa' },
+    buttonText: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
+    linkText: { color: '#333', fontSize: 14 },
+    spacer: { height: 20 }
+});
 ```
+
+---
+
+### 3. Home — Lista de Cursos (`app/courses.tsx`)
+
+Busca os cursos da API ao montar a tela com `useEffect`. Usa `FlatList` para renderizar os cards e exibe um estado vazio quando não há dados.
+
+```tsx title="app/courses.tsx"
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, FlatList, ActivityIndicator, SafeAreaView, TouchableOpacity } from 'react-native';
+import { apiClient } from '../lib/api';
+import { Ionicons } from '@expo/vector-icons';
+
+interface Course {
+    id: string;
+    title: string;
+    description: string;
+}
+
+export default function CoursesScreen() {
+    const [courses, setCourses] = useState<Course[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        fetchCourses();
+    }, []);
+
+    async function fetchCourses() {
+        setLoading(true);
+        try {
+            const data = await apiClient.db.from('courses');
+            const result = await data.select();
+            if (result) {
+                setCourses(result);
+            }
+        } catch (error: any) {
+            console.error('Erro ao buscar cursos:', error.message);
+        } finally {
+            setLoading(false);
+        }
+    }
+
+    const renderItem = ({ item }: { item: Course }) => (
+        <View style={styles.card}>
+            <Text style={styles.cardTitle}>{item.title}</Text>
+            <Text style={styles.cardDesc}>{item.description}</Text>
+        </View>
+    );
+
+    return (
+        <SafeAreaView style={styles.safeArea}>
+            <View style={styles.header}>
+                <Text style={styles.headerTitle}>Cursos Disponíveis</Text>
+                <TouchableOpacity onPress={fetchCourses}>
+                    <Ionicons name="refresh" size={24} color="#fff" />
+                </TouchableOpacity>
+            </View>
+
+            {loading ? (
+                <View style={styles.centered}>
+                    <ActivityIndicator size="large" color="#ff0000" />
+                    <Text style={styles.loadingText}>Carregando cursos...</Text>
+                </View>
+            ) : (
+                <FlatList
+                    data={courses}
+                    keyExtractor={(item) => item.id}
+                    renderItem={renderItem}
+                    contentContainerStyle={styles.list}
+                    ListEmptyComponent={
+                        <View style={styles.centered}>
+                            <Ionicons name="school-outline" size={64} color="#ccc" />
+                            <Text style={styles.emptyText}>Nenhum curso encontrado.</Text>
+                        </View>
+                    }
+                />
+            )}
+        </SafeAreaView>
+    );
+}
+
+const styles = StyleSheet.create({
+    safeArea: { flex: 1, backgroundColor: '#fff' },
+    header: {
+        height: 64,
+        backgroundColor: '#ff0000',
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: 20,
+        elevation: 4
+    },
+    headerTitle: { color: '#fff', fontSize: 20, fontWeight: 'bold' },
+    list: { padding: 20 },
+    card: {
+        backgroundColor: '#f9f9f9',
+        padding: 16,
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: '#eee',
+        marginBottom: 12
+    },
+    cardTitle: { fontSize: 18, fontWeight: 'bold', color: '#333' },
+    cardDesc: { fontSize: 14, color: '#666', marginTop: 4 },
+    centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 40 },
+    loadingText: { marginTop: 12, color: '#666' },
+    emptyText: { marginTop: 16, color: '#ccc', fontSize: 18 }
+});
+```
+
+---
 
 ## 💻 Mão na Massa
 
@@ -114,28 +327,35 @@ import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
 <Tabs>
-  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
+  <TabItem value="ex1" label="Exercício 1 — Splash Screen" default>
 
-### Adicione animação ao logo
+Implemente a **Splash Screen** em `app/index.tsx`:
 
-Use `Animated.Value` para fazer o logo aparecer com fade-in durante os 2 segundos de splash.
-
-  </TabItem>
-  <TabItem value="ex2" label="Exercício 2 — Aplicação">
-
-### Token persistence no signIn
-
-Atualize `apiClient.auth.signIn` para salvar o `access_token` retornado pela API no `AsyncStorage`. Verifique que após login → fechar app → reabrir, o splash redireciona direto para `(tabs)`.
+1. Exiba um ícone (`Ionicons`) e o texto `"Merge Skills"` centralizados na tela
+2. Após **2 segundos**, redirecione automaticamente para `/login` usando `router.replace`
+3. Limpe o timer com `clearTimeout` no cleanup do `useEffect`
 
   </TabItem>
-  <TabItem value="ex3" label="Exercício 3 — Desafio">
+  <TabItem value="ex2" label="Exercício 2 — Login">
 
-### Logout com limpeza de token
+Implemente a **tela de Login** em `app/login.tsx`:
 
-Na tela de perfil, adicione um botão "Sair" que:
-1. Chame `apiClient.auth.signOut()` (remove token do AsyncStorage)
-2. Navegue para `/login` com `router.replace()`
-3. Garanta que o back button não retorne à home
+1. Crie dois campos de texto: e-mail (com ícone `mail-outline`) e senha (com ícone `lock-closed-outline`)
+2. Ao pressionar "Entrar", chame `apiClient.auth.signIn(email, password)`
+3. Enquanto aguarda a resposta, desabilite o botão e exiba `ActivityIndicator`
+4. Em caso de erro, exiba um `Alert` com a mensagem
+5. Em caso de sucesso, navegue para `/courses` com `router.replace`
+
+  </TabItem>
+  <TabItem value="ex3" label="Exercício 3 — Home">
+
+Implemente a **tela de Cursos** em `app/courses.tsx`:
+
+1. Ao montar a tela, busque os cursos com `apiClient.db.from('courses')` → `.select()`
+2. Enquanto carrega, exiba `ActivityIndicator` com texto "Carregando cursos..."
+3. Renderize a lista com `FlatList` usando cards com `title` e `description`
+4. Adicione um botão de refresh no header que chama `fetchCourses` novamente
+5. Mostre um estado vazio com ícone `school-outline` quando não houver cursos
 
   </TabItem>
 </Tabs>
