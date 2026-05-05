@@ -1,0 +1,241 @@
+---
+sidebar_position: 7.1
+title: "Aula 07.1: Conceitos de API REST"
+description: "Como funciona a comunicação com APIs REST: fetch, headers, async/await e o apiClient do MergeSkills."
+---
+
+# Aula 07.1: Conceitos de API REST
+
+:::info 📚 Aula de Conceitos
+Esta aula apoia a implementação da **`aula-07`**. Não há branch específica — o código de referência é o arquivo `lib/api.ts` presente em `base-aula-07` e `aula-07`.
+:::
+
+## 📖 O que é uma API REST?
+
+Uma **API REST** (Representational State Transfer) é uma forma padronizada de comunicação entre o aplicativo e um servidor. O cliente (app) faz **requisições HTTP** e o servidor responde com dados, normalmente em formato **JSON**.
+
+### Verbos HTTP usados no MergeSkills
+
+| Verbo | Uso |
+|-------|-----|
+| `GET` | Buscar dados (ex: listar cursos) |
+| `POST` | Enviar dados (ex: login, cadastro) |
+
+---
+
+## 📖 fetch — A função nativa de requisições
+
+O JavaScript/TypeScript possui a função `fetch` nativa para fazer requisições HTTP:
+
+```ts
+const response = await fetch('https://api.exemplo.com/courses');
+const data = await response.json();
+```
+
+### Por que dois `await`?
+
+1. `await fetch(url)` — aguarda a **conexão** com o servidor e receber os headers de resposta
+2. `await response.json()` — aguarda a **leitura do corpo** da resposta e conversão para objeto JS
+
+---
+
+## 📖 Headers — Metadados da Requisição
+
+Headers são informações extras enviadas junto com a requisição. No MergeSkills, toda requisição precisa de:
+
+```ts
+const headers = {
+    'Content-Type': 'application/json',   // corpo da requisição é JSON
+    'apikey': SUPABASE_KEY,               // chave de autenticação do Supabase
+    'Authorization': `Bearer ${TOKEN}`,   // token de acesso
+};
+```
+
+- **`Content-Type`**: informa ao servidor que o corpo é JSON
+- **`apikey`**: exigido pelo Supabase para identificar o projeto
+- **`Authorization`**: token Bearer — o padrão mais comum de autenticação em APIs REST
+
+---
+
+## 📖 async/await
+
+Requisições de rede são **assíncronas** — levam tempo e não podem bloquear a interface. O `async/await` torna esse código mais legível:
+
+```ts
+// Sem async/await (difícil de ler)
+fetch('/courses')
+    .then(res => res.json())
+    .then(data => console.log(data))
+    .catch(err => console.error(err));
+
+// Com async/await (limpo e legível)
+async function fetchCourses() {
+    try {
+        const response = await fetch('/courses');
+        const data = await response.json();
+        console.log(data);
+    } catch (error) {
+        console.error(error);
+    }
+}
+```
+
+Regra: toda função que usa `await` precisa ser declarada como `async`.
+
+---
+
+## 📖 O apiClient do MergeSkills
+
+O `apiClient` em `lib/api.ts` é um objeto que **encapsula** toda a lógica de comunicação com a API. Isso evita repetição de código nas telas.
+
+```ts title="lib/api.ts"
+export const API_CONFIG = {
+    BASE_URL: 'https://lddm-api-inicial-1.onrender.com',
+    SUPABASE_KEY: '...',
+};
+
+export const apiClient = {
+    // Método base — todas as requisições passam por aqui
+    async fetch(endpoint: string, options: RequestInit = {}) {
+        const url = `${API_CONFIG.BASE_URL}${endpoint}`;
+
+        const headers = {
+            'Content-Type': 'application/json',
+            'apikey': API_CONFIG.SUPABASE_KEY,
+            'Authorization': `Bearer ${API_CONFIG.SUPABASE_KEY}`,
+            ...options.headers,  // permite sobrescrever headers específicos
+        };
+
+        const response = await fetch(url, { ...options, headers });
+
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.message || `Erro HTTP: ${response.status}`);
+        }
+
+        return await response.json();
+    },
+
+    // Namespace de autenticação
+    auth: {
+        async signIn(email: string, pass: string) {
+            return apiClient.fetch('/auth/login', {
+                method: 'POST',
+                body: JSON.stringify({ email, password: pass }),
+            });
+        },
+        async signUp(name: string, email: string, pass: string) {
+            return apiClient.fetch('/auth/register', {
+                method: 'POST',
+                body: JSON.stringify({ name, email, password: pass }),
+            });
+        }
+    },
+
+    // Namespace de banco de dados
+    db: {
+        async from(table: string) {
+            return {
+                select: async () => apiClient.fetch(`/${table}`),
+            };
+        }
+    }
+};
+```
+
+### Por que organizar em namespaces (`auth`, `db`)?
+
+Agrupa métodos relacionados, tornando o uso intuitivo e auto-documentado:
+
+```ts
+// Deixa claro o que cada chamada faz
+apiClient.auth.signIn(email, password);   // autenticação
+apiClient.db.from('courses').select();    // banco de dados
+```
+
+---
+
+## 📖 Tratamento de erros com response.ok
+
+O `fetch` **não lança erro** automaticamente para respostas de erro HTTP (4xx, 5xx). É preciso verificar manualmente:
+
+```ts
+const response = await fetch(url);
+
+if (!response.ok) {
+    // response.status = 401, 404, 500...
+    throw new Error(`Erro HTTP: ${response.status}`);
+}
+```
+
+Por isso o `apiClient` verifica `response.ok` e lança um erro explícito — assim as telas podem usar `try/catch` normalmente.
+
+---
+
+## 📖 Como as telas consomem o apiClient
+
+### Login
+
+```ts
+// Em handleLogin():
+await apiClient.auth.signIn(email, password);
+router.replace('/courses');
+```
+
+### Buscar cursos
+
+```ts
+// Em fetchCourses():
+const data = await apiClient.db.from('courses');
+const result = await data.select();
+setCourses(result);
+```
+
+O padrão `.from('courses').select()` imita a sintaxe do Supabase JS Client, preparando o código para a migração futura.
+
+---
+
+## 💻 Mão na Massa
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+<Tabs>
+  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
+
+Abra o arquivo `lib/api.ts` e responda:
+
+1. O que acontece se o servidor retornar status `500`? O app vai travar ou o erro será tratado?
+2. O que o operador spread `...options.headers` faz na montagem dos headers?
+3. Por que `JSON.stringify({ email, password: pass })` é necessário no corpo do `signIn`?
+
+  </TabItem>
+  <TabItem value="ex2" label="Exercício 2 — Aplicação">
+
+Adicione um método `getProfile` ao namespace `auth` do `apiClient` que faz um `GET` em `/profile`:
+
+```ts
+auth: {
+    // ...métodos existentes...
+    async getProfile() {
+        // TODO: implementar
+    }
+}
+```
+
+  </TabItem>
+  <TabItem value="ex3" label="Exercício 3 — Desafio">
+
+Atualmente o `apiClient.fetch` usa `console.error` para logar erros mas depois faz `throw` do mesmo erro. 
+
+Adicione um campo `lastError` no `apiClient` que guarda a última mensagem de erro, para que as telas possam exibir sem precisar do `catch`:
+
+```ts
+export const apiClient = {
+    lastError: null as string | null,
+    // ...
+};
+```
+
+  </TabItem>
+</Tabs>

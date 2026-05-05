@@ -74,6 +74,7 @@ const sidebars: SidebarsConfig = {
                 "pdmi/aula-05",
                 "pdmi/aula-06",
                 "pdmi/aula-07",
+                "pdmi/aula-07-1",
                 "pdmi/aula-08",
             ],
         },
