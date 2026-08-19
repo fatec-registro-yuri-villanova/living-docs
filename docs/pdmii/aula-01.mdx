@@ -1,37 +1,71 @@
 ---
 sidebar_position: 1
 title: "Aula 01: Fundamentos de Kotlin"
-description: "Variables (val/var), null safety, funções, controle de fluxo, coleções, lambdas, OOP e interfaces."
+description: "Variáveis (val/var), null safety, funções, controle de fluxo, coleções, lambdas, OOP e interfaces — com lista de 10 exercícios resolvidos e comentados."
 ---
 
 # Aula 01: Fundamentos de Kotlin
 
-:::info 🔀 Branch da Aula
-Esta aula refere-se à branch: **`aula-01`**
+:::info 🔀 Repositório da Aula
+
+O código desta aula vive em [`fatec-registro-yuri-villanova/fundamentos-kotlin`](https://github.com/fatec-registro-yuri-villanova/fundamentos-kotlin), na branch **`main`**.
+
 ```bash
-git checkout aula-01
+git clone https://github.com/fatec-registro-yuri-villanova/fundamentos-kotlin.git
 ```
+
+Abra no Android Studio a **pasta raiz** do projeto — a que contém `settings.gradle.kts`. Abrir a pasta `app` faz o Gradle não ser reconhecido.
 :::
 
 ## 📖 Conceito
 
-A `aula-01` é a base completa do Kotlin. O arquivo `FundamentosKotlin.kt` contém 8 seções didáticas que cobrem desde variáveis até interfaces, tudo contextualizado no domínio do MergeSkills.
+Esta aula é a base completa da linguagem Kotlin: **8 tópicos fundamentais**, de variáveis a interfaces, e uma **lista de 10 exercícios** resolvidos e comentados linha a linha.
 
-### Arquivos da Branch
+Cada tópico mora em seu próprio arquivo dentro de `basics/`, e cada exercício em seu próprio arquivo dentro de `exercicios/`. Nada de Compose ainda — o foco aqui é a linguagem.
+
+:::warning ⚠️ A saída NÃO aparece na tela do app
+
+Ao rodar o projeto, o emulador mostra apenas `Hello Android!`. **Isso está correto.** Todo o resultado da aula é impresso no **Logcat**.
+
+1. Clique em ▶ **Run** e espere o app abrir.
+2. Abra a aba **Logcat** (rodapé do Android Studio).
+3. No filtro do Logcat, digite `System.out`.
+
+Quem dispara tudo é o `MainActivity.onCreate`, com duas chamadas: `executarFundamentosKotlin()` e `executarListaDeExercicios()`. Para rodar só uma parte, comente a outra.
+:::
+
+### Estrutura do projeto
 
 | Arquivo | Descrição |
 |---------|-----------|
-| `basics/FundamentosKotlin.kt` | 263 linhas — 8 tópicos fundamentais |
-| `MainActivity.kt` | Activity raiz com `setContent` |
-| `ui/theme/Color.kt` | Design tokens (StitchGreen, Background) |
-| `ui/theme/Theme.kt` | Tema Material 3 customizado |
-| `ui/theme/Type.kt` | Tipografia do projeto |
+| `basics/FundamentosKotlin.kt` | Índice — executa os 8 tópicos na ordem |
+| `basics/Topico01Variaveis.kt` … `Topico08HerancaEInterfaces.kt` | Um arquivo por tópico fundamental |
+| `exercicios/ListaDeExercicios.kt` | Índice — executa os 10 exercícios na ordem |
+| `exercicios/Exercicio01CalculoIrrf.kt` … `Exercicio10ContratosDeRemuneracao.kt` | Um arquivo por exercício, com enunciado e solução |
+| `util/Formatador.kt` | `Double.emReais()` — formata valores em R$ (pt-BR) |
+| `util/Console.kt` | Separador visual das seções no Logcat |
+| `MainActivity.kt` | Activity raiz — dispara os dois roteiros no `onCreate` |
+| `ui/theme/` | Tema Material 3 (fora do conteúdo desta aula) |
+
+### Roteiro de estudo
+
+Os três blocos da lista se apoiam exatamente nos tópicos anteriores a eles:
+
+| Etapa | Estude primeiro | Depois tente |
+|-------|-----------------|--------------|
+| 1 | Tópicos **1 a 4** — variáveis, null safety, funções, controle de fluxo | **Bloco A** (exercícios 01–03) |
+| 2 | Tópicos **5 e 6** — coleções, lambdas e higher-order functions | **Bloco B** (exercícios 04–06) |
+| 3 | Tópicos **7 e 8** — classes, data classes, herança e interfaces | **Bloco C** (exercícios 07–10) |
+
+Não pule para o Bloco C sem o tópico 8: os exercícios 09 e 10 são polimorfismo puro e, sem essa base, parecem mágica.
 
 ## 💻 Código de Referência
 
 ### 1. Val e Var — Variáveis Mutáveis e Imutáveis
 
-```kotlin title="basics/FundamentosKotlin.kt"
+`val` só pode ser atribuída uma vez; `var` pode ser reatribuída. Regra prática: **comece sempre com `val`** e só troque para `var` quando o compilador reclamar.
+
+```kotlin title="basics/Topico01Variaveis.kt"
 fun entendendoVariaveis() {
     // val (Value): variável IMUTÁVEL
     val pi: Double = 3.14
@@ -53,7 +87,9 @@ fun entendendoVariaveis() {
 
 ### 2. Null Safety — Proteção contra NullPointerException
 
-```kotlin title="basics/FundamentosKotlin.kt"
+Em Kotlin o **tipo já diz** se o valor pode ser nulo: `String` nunca é nulo, `String?` pode ser. O compilador obriga você a tratar o segundo caso.
+
+```kotlin title="basics/Topico02NullSafety.kt"
 fun lidandoComNulos() {
     var nome: String = "João"           // Non-nullable: nunca pode ser null
     var sobrenome: String? = null       // Nullable: pode ser null
@@ -72,7 +108,7 @@ fun lidandoComNulos() {
 
 ### 3. Funções
 
-```kotlin title="basics/FundamentosKotlin.kt"
+```kotlin title="basics/Topico03Funcoes.kt"
 // Função tradicional com parâmetros e retorno
 fun sayHello(name: String) {
     println("Olá, $name!")
@@ -87,9 +123,13 @@ fun saudar(nome: String, saudacao: String = "Olá") {
 }
 ```
 
+Valores padrão evitam criar várias sobrecargas da mesma função. E argumentos nomeados deixam a chamada legível: `saudar(saudacao = "Boa noite", nome = "Ana")`.
+
 ### 4. Controle de Fluxo — if, when e Loops
 
-```kotlin title="basics/FundamentosKotlin.kt"
+Detalhe que muda tudo: em Kotlin, `if` e `when` são **expressões** — devolvem valor. Por isso a linguagem não tem operador ternário: o próprio `if` já faz esse papel.
+
+```kotlin title="basics/Topico04ControleDeFluxo.kt"
 fun controleDeFluxo(notaMedia: Double) {
     // IF como expressão (retorna valor)
     val status = if (notaMedia >= 7.0) "Aprovado" else "Reprovado"
@@ -111,7 +151,9 @@ fun controleDeFluxo(notaMedia: Double) {
 
 ### 5. Coleções — List, Set, Map
 
-```kotlin title="basics/FundamentosKotlin.kt"
+Kotlin separa a coleção **imutável** (`listOf`, `setOf`, `mapOf`) da **mutável** (`mutableListOf`, …). Prefira sempre a imutável: ela não pode ser alterada por engano em outro ponto do código.
+
+```kotlin title="basics/Topico05Colecoes.kt"
 fun exemploColecoes() {
     // LIST: coleção ordenada, permite duplicatas
     val nomes = listOf("João", "Maria", "Pedro")    // Imutável
@@ -131,7 +173,9 @@ fun exemploColecoes() {
 
 ### 6. Higher-Order Functions e Lambdas
 
-```kotlin title="basics/FundamentosKotlin.kt"
+Uma **higher-order function** é a que recebe outra função como parâmetro. `map`, `filter` e `forEach` são os exemplos que você mais vai usar. `it` é o nome implícito do único parâmetro do lambda.
+
+```kotlin title="basics/Topico06LambdasEHof.kt"
 fun exemploHigherOrderFunctions() {
     val numeros = listOf(1, 2, 3, 4)
     val quadrados = numeros.map { it * it }       // [1, 4, 9, 16]
@@ -147,9 +191,13 @@ fun exemploHigherOrderFunctions() {
 }
 ```
 
+A vantagem: em vez de descrever **como** percorrer a coleção (`for`, índice, acumulador), você descreve **o que** quer dela.
+
 ### 7. OOP — Classes e Data Classes
 
-```kotlin title="basics/FundamentosKotlin.kt"
+`class` tem comportamento; `data class` existe para **carregar dados**. O compilador gera de graça `equals()`, `hashCode()`, `toString()` e `copy()` — por isso ela é o tipo natural para respostas de API e itens de lista.
+
+```kotlin title="basics/Topico07ClassesEDataClasses.kt"
 class AlunoNormal(val nome: String, val idade: Int) {
     fun apresentar() {
         println("Olá, me chamo $nome e tenho $idade anos.")
@@ -166,7 +214,9 @@ data class Curso(
 
 ### 8. Herança, Polimorfismo e Interfaces
 
-```kotlin title="basics/FundamentosKotlin.kt"
+Em Kotlin toda classe é **final por padrão**: para permitir herança, marque a classe e cada método sobrescrevível como `open`. Isso é proposital — herança só onde foi projetada.
+
+```kotlin title="basics/Topico08HerancaEInterfaces.kt"
 open class UsuarioPlataforma(val id: Int, val nickname: String) {
     open fun autenticar() {
         println("Autenticando via email e senha padrão...")
@@ -192,45 +242,233 @@ interface NavegadorDeCursos {
 }
 ```
 
+**Polimorfismo** é a consequência prática: uma lista de `UsuarioPlataforma` pode conter os dois tipos, e cada item executa a *sua* versão de `autenticar()` — sem `if`, sem checagem de tipo.
+
 ## 💻 Mão na Massa
+
+A lista tem **10 exercícios em 3 blocos**. Cada um tem seu próprio arquivo em `exercicios/`, com o enunciado completo no cabeçalho e a solução comentada abaixo.
+
+:::tip Como aproveitar a lista
+
+As soluções já estão no repositório. Leia o enunciado, **feche o arquivo**, escreva a sua versão e só então compare. Ler a solução pronta dá a sensação de ter aprendido; escrever a sua prova que aprendeu.
+:::
 
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
 <Tabs>
-  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
+  <TabItem value="blocoA" label="Bloco A — Cálculos e Validações" default>
 
-### Atividade Prática (já existe no código)
+### Exercício 01 — Cálculo de IRRF
 
-Abra `FundamentosKotlin.kt` e complete a função `atividadePratica()`:
-1. Crie uma lista mutável de nomes de alunos
-2. Adicione 3 alunos à lista
-3. Use `filter` para manter apenas os nomes com mais de 4 letras
-4. Use `map` para deixar todos os nomes em maiúsculo
-5. Use `forEach` para imprimir cada nome no console
+O RH precisa estimar o Imposto de Renda a partir do salário bruto. O campo é **opcional**: o valor pode não ser informado.
+
+1. Crie a função `calcularIrrf(salarioBruto: Double?): Double`.
+2. Quando o salário não for informado, o cálculo considera `0.0`.
+3. A função deve ter um **único ponto de saída**, e a alíquota deve ser determinada em **um único lugar**.
+4. Não é permitido o operador `!!`.
+
+| Faixa salarial | Alíquota |
+|----------------|----------|
+| Até R$ 2.259,20 | Isento (0%) |
+| De R$ 2.259,21 até R$ 2.826,65 | 7,5% |
+| Acima de R$ 2.826,65 | 15% |
+
+| Entrada | Saída esperada |
+|---------|----------------|
+| `2000.0` | R$ 0,00 |
+| `2500.0` | R$ 187,50 |
+| `5000.0` | R$ 750,00 |
+| `null` | R$ 0,00 |
+
+**Conceito:** operador elvis para tratar a ausência de valor; `when` sem argumento para escolher a alíquota em um único ponto.
+
+---
+
+### Exercício 02 — Fatura de energia com bandeira tarifária
+
+A distribuidora aplica bandeira vermelha quando o consumo mensal ultrapassa o limite.
+
+1. Implemente `calcularFatura(consumoKwh: Double, precoKwh: Double): Double`.
+2. O corpo da função deve caber em **uma única linha, sem chaves e sem variáveis auxiliares**.
+3. Consumo **acima** de 150 kWh recebe acréscimo de 10%.
+4. O limite é **exclusivo**: exatamente 150 kWh não recebe acréscimo.
+
+| Consumo (preço do kWh = R$ 0,85) | Saída esperada |
+|----------------------------------|----------------|
+| `100.0` | R$ 85,00 |
+| `150.0` | R$ 127,50 |
+| `200.0` | R$ 187,00 |
+
+**Conceito:** função de expressão única, com `if` usado como expressão dentro do próprio cálculo.
+
+---
+
+### Exercício 03 — Validador de segurança de token
+
+Antes de liberar acesso a uma API, o app precisa validar a chave recebida, que pode não existir.
+
+1. Crie `validarAcesso(token: String?): String`.
+2. Acesso é `"Autorizado"` somente se o token existir **e** tiver mais de 10 caracteres.
+3. Nos demais casos, a mensagem deve **diferenciar as duas falhas**: token ausente × token curto demais.
+4. Não é permitido `!!` nem `try/catch`.
+
+| Entrada | Saída esperada |
+|---------|----------------|
+| `"abc123xyz789"` | Autorizado |
+| `"abc123"` | Alerta: token muito curto |
+| `null` | Alerta: token ausente |
+
+**Conceito:** *smart cast*. Ao testar `token == null` no primeiro ramo do `when`, o compilador já sabe que nos ramos seguintes o token não é nulo — e `token.length` fica seguro sem nenhum operador de força.
 
   </TabItem>
-  <TabItem value="ex2" label="Exercício 2 — Aplicação">
+  <TabItem value="blocoB" label="Bloco B — Processamento de Listas">
 
-### Crie uma `data class Aluno`
+### Exercício 04 — Motor de descontos dinâmicos
 
-Adicione ao `FundamentosKotlin.kt` uma `data class Aluno(val nome: String, val nota: Double)` e:
-1. Crie uma lista de 5 alunos com notas variadas
-2. Use `filter` para exibir apenas aprovados (`nota >= 7.0`)
-3. Use `sortedByDescending` para ordenar por nota
-4. Use `when` para classificar cada aluno (Excelente, Bom, Regular)
+O checkout precisa suportar novas promoções **sem que o código do cálculo seja alterado** a cada campanha.
+
+1. Crie `aplicarDesconto`, que recebe o valor original e devolve o preço final.
+2. A regra de desconto é definida por **quem chama**, no momento da chamada. Nenhuma porcentagem pode aparecer dentro de `aplicarDesconto`.
+3. Criar uma promoção nova não pode exigir nenhuma alteração em `aplicarDesconto`.
+4. Demonstre com os cenários abaixo **e mais um criado por você**.
+
+| Cenário (valor original R$ 200,00) | Desconto | Saída esperada |
+|------------------------------------|----------|----------------|
+| Pagamento via PIX | 5% | R$ 190,00 |
+| Cupom promocional | 10% | R$ 180,00 |
+| Sem desconto | 0% | R$ 200,00 |
+
+**Conceito:** higher-order function. O tipo `(Double) -> Double` significa "uma função que recebe um Double e devolve um Double" — o parâmetro deixa de ser um dado e passa a ser **código executável**. É o padrão de projeto *Strategy*, que em Java exigiria uma interface e uma classe por campanha.
+
+---
+
+### Exercício 05 — Filtro de folha de pagamento líquida
+
+O RH quer saber quem permanece acima de um patamar salarial após o desconto previdenciário.
+
+1. Parta de uma lista de salários brutos.
+2. Desconte 11% de previdência de cada salário.
+3. Mantenha apenas os líquidos **acima de R$ 2.000,00**.
+4. Resolva **sem laços** (`for`, `while`) e **sem coleções mutáveis**, em uma única expressão.
+5. A lista original deve permanecer inalterada — **comprove imprimindo-a**.
+
+| Entrada | Saída esperada |
+|---------|----------------|
+| `[1500.0, 2000.0, 2500.0, 3000.0, 5000.0]` | `[2225.00, 2670.00, 4450.00]` |
+
+**Conceito:** `map` e `filter` não alteram a lista de origem — cada um devolve uma lista nova. Por isso o requisito 5 se resolve sozinho, sem esforço extra.
+
+---
+
+### Exercício 06 — Correção de preços no e-commerce
+
+A campanha exige reajuste em **apenas uma categoria** do catálogo.
+
+1. Modele o tipo `Produto`, com nome, preço e categoria — todas as propriedades **somente leitura**.
+2. Aplique reajuste de 5% apenas na categoria `"Eletrônicos"`.
+3. Nenhum objeto original pode ser alterado: o resultado é sempre uma **nova lista de novos objetos**.
+4. Entregue **duas versões** do resultado e comente qual usaria em produção: **(a)** somente os eletrônicos reajustados; **(b)** catálogo completo, com apenas os eletrônicos reajustados.
+
+| Produto | Categoria | Preço | Preço na versão (b) |
+|---------|-----------|-------|---------------------|
+| Notebook | Eletrônicos | R$ 3.000,00 | R$ 3.150,00 |
+| Cadeira | Móveis | R$ 800,00 | R$ 800,00 |
+| Fone | Eletrônicos | R$ 200,00 | R$ 210,00 |
+
+**Conceito:** imutabilidade com `copy()`, que constrói um objeto novo em vez de alterar o existente.
 
   </TabItem>
-  <TabItem value="ex3" label="Exercício 3 — Desafio">
+  <TabItem value="blocoC" label="Bloco C — Modelagem de Domínio">
 
-### Sistema de Matrícula
+### Exercício 07 — Registro de cashback
 
-Implemente um sistema de matrícula usando todos os conceitos da aula:
-1. `interface Matriculavel` com `fun matricular()` e `fun cancelar()`
-2. `open class Pessoa(val nome: String, val cpf: String)` 
-3. `class Estudante : Pessoa, Matriculavel` com propriedade `curso: String?` (nullable)
-4. Use `when` para definir o valor da mensalidade baseado no curso
-5. Gerencie uma `mutableListOf<Estudante>` com operações de adicionar, filtrar e buscar
+Cada transação aprovada gera um novo registro com bônus, mas o histórico original **nunca pode ser alterado**, por auditoria.
+
+1. Modele `Transacao`, com identificador, descrição e valor — todas as propriedades somente leitura.
+2. Crie `aplicarCashback`, que devolve um **novo** registro aproveitando os demais dados do original.
+3. O novo registro recebe o valor original acrescido de 2%.
+4. Imprima o original e o novo, comprovando que o primeiro não mudou.
+5. Dois registros de mesmo conteúdo devem ser **iguais**, e a impressão do objeto deve exibir seus valores.
+
+| Entrada | Saída esperada |
+|---------|----------------|
+| `Transacao(1, "Compra supermercado", 100.0)` | registro original com 100,00 e novo com 102,00 |
+
+**Conceito:** o requisito 5 é a definição de `data class` — `equals()` compara conteúdo e `toString()` exibe os valores. O requisito 2 é o `copy()`.
+
+---
+
+### Exercício 08 — Regras de reserva de hotel
+
+O status de uma reserva não pode ser alterado livremente pelo resto do sistema.
+
+1. Crie a classe `Reserva` com quantidade de hóspedes, dias de estadia e status. Toda reserva nasce `"PENDENTE"`.
+2. O status **não pode ser alterado de fora** da classe: a única forma é o método `confirmar(): Boolean`.
+3. `confirmar()` só muda para `"CONFIRMADA"` se hóspedes **e** dias forem maiores que 0.
+4. Se a validação falhar, o status permanece e o método retorna `false`.
+5. Deixe **comentada** uma linha que tenta atribuir o status diretamente, mostrando que ela não compila.
+
+| Hóspedes | Dias | Retorno | Status final |
+|----------|------|---------|--------------|
+| 2 | 3 | `true` | CONFIRMADA |
+| 0 | 3 | `false` | PENDENTE |
+| 2 | 0 | `false` | PENDENTE |
+
+**Conceito:** encapsulamento com `private set` — qualquer um lê o status, só a própria classe escreve nele.
+
+---
+
+### Exercício 09 — Tarifador de locação de veículos
+
+A locadora aluga carros e caminhões; o caminhão cobra adicional proporcional à carga.
+
+1. Modele `Veiculo` com placa e taxa diária, e `calcularAluguel(dias: Int): Double`.
+2. Modele `Carro` e `Caminhao` a partir de `Veiculo`. O caminhão tem tonelagem e taxa por peso, e cobra de forma diferente.
+3. Monte **uma única lista** com carros e caminhões e calcule o aluguel de 5 dias de cada item.
+4. Ao percorrer a lista, **não é permitido verificar o tipo** de cada objeto nem usar desvios condicionais.
+
+| Tipo | Fórmula |
+|------|---------|
+| Carro | Dias × Taxa Diária |
+| Caminhão | (Dias × Taxa Diária) + (Tonelagem × Taxa por Peso) |
+
+| Veículo (período de 5 dias) | Saída esperada |
+|-----------------------------|----------------|
+| Carro — diária R$ 120,00 | R$ 600,00 |
+| Caminhão — diária R$ 300,00; 8 t; R$ 50,00/t | R$ 1.900,00 |
+
+**Conceito:** o requisito 4 é o próprio polimorfismo. Cada objeto já sabe a sua fórmula, então a chamada executa a versão correta sozinha — sem `if`, sem `is`.
+
+---
+
+### Exercício 10 — Contratos de remuneração
+
+A folha precisa tratar perfis de contratação diferentes sob um mesmo contrato de cálculo.
+
+1. Defina o contrato `Remuneravel`, que exige o nome do colaborador e o cálculo do pagamento do mês.
+2. Implemente dois perfis: `Mensalista` (valor fixo) e `Freelancer` (Horas × Valor da Hora).
+3. Crie `imprimirDemonstrativo`, que emite o demonstrativo de qualquer colaborador **sem conhecer o perfil concreto**.
+4. Percorra uma lista mista, emita o demonstrativo de todos e exiba o total da folha.
+5. Acrescentar um novo perfil **não pode exigir alteração** em `imprimirDemonstrativo`.
+
+| Perfil | Parâmetros | Saída esperada |
+|--------|------------|----------------|
+| Mensalista | R$ 4.500,00 fixos | R$ 4.500,00 |
+| Freelancer | 80 h × R$ 75,00 | R$ 6.000,00 |
+| **Total da folha** | — | **R$ 10.500,00** |
+
+**Conceito:** interface como contrato. O parâmetro de `imprimirDemonstrativo` é do tipo da interface, não de uma classe concreta — por isso ela nunca precisa mudar.
 
   </TabItem>
 </Tabs>
+
+## 🧯 Problemas comuns
+
+| Sintoma | Causa e solução |
+|---------|-----------------|
+| "Rodei e só aparece `Hello Android!`" | Está correto — a saída vai para o Logcat, filtrada por `System.out`. |
+| Logcat vazio ou cheio de mensagens do sistema | Confirme o filtro `System.out` e que o dispositivo selecionado é o mesmo em que o app roda. Reinicie com ▶ para ver desde o começo. |
+| "Gradle sync failed" ou erro de versão de Java | Em **Settings → Build, Execution, Deployment → Build Tools → Gradle**, defina o *Gradle JDK* como o **jbr** que acompanha o Android Studio. |
+| "SDK location not found" | O `local.properties` é específico da sua máquina e não vai para o repositório. O Studio o recria ao abrir; se não recriar, instale o SDK em **Tools → SDK Manager**. |
+| O emulador não abre | Crie um dispositivo em **Tools → Device Manager** com API 24 ou superior, ou use um celular por USB com Depuração USB ativada. |
