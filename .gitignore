@@ -4,3 +4,6 @@ build/
 .cache-loader/
 *.log
 .DS_Store
+
+# Configuracao local do Claude Code
+.claude/
