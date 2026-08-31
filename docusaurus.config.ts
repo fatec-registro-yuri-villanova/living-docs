@@ -68,7 +68,7 @@ const config: Config = {
                     type: "docSidebar",
                     sidebarId: "ldmSidebar",
                     position: "left",
-                    label: "LDM — Backend & CMS",
+                    label: "LDM — Bluetooth e Impressora",
                 },
                 {
                     href: "https://github.com/fatec-registro-yuri-villanova",
@@ -85,7 +85,7 @@ const config: Config = {
                     items: [
                         { label: "PDMII — Android Nativo", to: "/pdmii/aula-01" },
                         { label: "PDMI — React Native", to: "/pdmi/aula-01" },
-                        { label: "LDM — Backend & CMS", to: "/ldm/aula-01" },
+                        { label: "LDM — Bluetooth e Impressora", to: "/ldm/" },
                     ],
                 },
                 {

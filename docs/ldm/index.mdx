@@ -1,0 +1,50 @@
+---
+sidebar_position: 0
+title: "Sobre a trilha"
+description: "Printec — app Kotlin Multiplatform que imprime etiquetas por Bluetooth em Android e Desktop."
+---
+
+# LDM — Bluetooth e Impressora
+
+Esta trilha constrói o **Printec**: um app Kotlin Multiplatform que compõe
+etiquetas e as imprime numa impressora térmica **Lintian LT-8359**, por
+Bluetooth no Android e por porta COM ou USB no Desktop.
+
+## O que você vai construir
+
+Ao fim das 15 aulas você terá o app rodando nas duas plataformas, imprimindo
+etiquetas com título, linhas de texto, QR Code e controle de cópias.
+
+## Como esta trilha funciona
+
+Todo código que você vê aqui existe no repositório do projeto — nada foi
+escrito para a aula. Cada aula segue o mesmo ciclo:
+
+1. Você vê o **teste** que a funcionalidade precisa passar
+2. Roda o teste: **vermelho**
+3. Vê o **código** que a faz passar
+4. Roda de novo: **verde**
+
+:::info 🔀 O repositório
+```bash
+git clone https://github.com/<org>/printec.git
+cd printec
+git checkout base-app
+```
+A branch `base-app` é o ponto de partida. A branch `main` é o gabarito final —
+consulte quando travar, mas tente escrever antes de olhar.
+:::
+
+## Hardware
+
+| Propriedade | Valor |
+|---|---|
+| Modelo | Lintian LT-8359 |
+| Linguagem | ESC/POS |
+| Code page | 3 = PC860 (portuguesa) |
+| Largura | 384 dots ≈ 48 mm úteis, papel 58 mm |
+| Colunas | 32 caracteres por linha |
+| Interfaces | Bluetooth (SPP) + USB |
+| Bateria | **auto-desliga em 10 minutos** |
+
+Essas duas últimas linhas explicam metade das decisões do código. Guarde-as.
