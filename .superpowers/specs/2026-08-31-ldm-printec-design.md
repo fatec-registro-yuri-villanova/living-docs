@@ -170,10 +170,13 @@ Consequências que o design assume:
 - **Não há versões intermediárias.** Um arquivo aparece uma vez, completo, na
   aula em que suas dependências já existem. Nenhuma aula mostra "uma versão
   simplificada por enquanto".
-- **Os arquivos de build crescem por adição.** Cada aula acrescenta a
-  `gradle/libs.versions.toml` e `shared/build.gradle.kts` exatamente as linhas
-  da `main` que aquela camada exige — nunca linhas reescritas. Assim o projeto
-  compila em todo estágio sem que nada seja inventado.
+- **Os arquivos de build não mudam durante a trilha.** Verificado:
+  `git diff base-app main -- settings.gradle.kts build.gradle.kts
+  shared/build.gradle.kts gradle/libs.versions.toml androidApp/build.gradle.kts
+  desktopApp/build.gradle.kts` retorna vazio. O scaffold já traz o plugin do
+  SQLDelight, o `escpos-coffee`, o `jSerialComm` e o source set `jvmCommonMain`
+  configurados. Da aula 02 em diante, toda aula acrescenta apenas arquivos
+  `.kt` e `.sq` — nenhuma linha de Gradle.
 - **Os comentários do código original são preservados.** Eles explicam o porquê
   de cada decisão a partir do sintoma real que a motivou (o título que borra em
   2x, a cauda do documento descartada, `SecurityException` em `bondedDevices`) —
@@ -286,7 +289,8 @@ Notas de conteúdo que o plano deve respeitar:
 - **`DesktopSerialTransport` é específico do Windows.** A porta COM virtual é o
   caminho do Windows; em Linux/macOS o dispositivo aparece com outro nome. A
   aula 08 registra isso em vez de fingir portabilidade.
-- **A aula 01 aplica o plugin do SQLDelight antes de existir `.sq`.** Por isso
-  os arquivos de build crescem por adição (§5.3): a aula 01 leva só o que o
-  scaffold precisa, e o bloco `sqldelight { }` entra na aula 09, junto com o
-  `Printec.sq`. O plano deve verificar em qual aula cada linha de build entra.
+- ~~Risco de o plugin do SQLDelight ser aplicado antes de existir `.sq`.~~
+  **Resolvido por verificação:** os arquivos de build são idênticos em
+  `base-app` e `main`, e `base-app` é uma branch que compila. O scaffold já
+  convive com o plugin sem nenhum `.sq`. A trilha nunca edita Gradle depois da
+  aula 01.
