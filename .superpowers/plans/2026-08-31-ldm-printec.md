@@ -16,6 +16,7 @@ Valem para **toda** tarefa deste plano.
 
 - **Nenhum bloco de código é escrito pelo redator.** Todo bloco vem de `git show base-app:<arquivo>` (só na aula 01) ou `git show main:<arquivo>` (todo o resto), copiado literalmente, comentários inclusive.
 - **Todo bloco de código Kotlin, `.sq`, `.kts`, `.toml` ou `.xml` leva `title="<caminho completo a partir da raiz do printec>"`** — sem abreviar com `...`. O script de fidelidade depende disso para localizar o arquivo real.
+- **No info string, `reference="base-app"` vem sempre DEPOIS de `title="..."`** (Ruling 2 do pre-flight). O verificador só procura o `reference` à direita do `title`; ordem invertida faz o bloco ser conferido contra `main`, onde o arquivo do scaffold não existe.
 - **Sem versões intermediárias.** Um arquivo aparece uma única vez, completo, na aula em que suas dependências já existem. Nenhuma aula mostra "uma versão simplificada por enquanto".
 - **Os arquivos de build não mudam durante a trilha.** Verificado: `git diff base-app main` nos seis arquivos de build retorna vazio. Da aula 02 em diante, nenhuma aula edita Gradle.
 - **Os comentários do código original são preservados.** Eles explicam o porquê a partir do sintoma real que o motivou — são a melhor parte do material.
@@ -1005,7 +1006,9 @@ git commit -m "docs(ldm): aula 08 - USB e serial no desktop"
 
 **Interfaces:**
 - Consumes: `LabelDocument` (aula 04)
-- Produces: o schema `Printec.sq` (tabelas `etiqueta`, `bloco`, `configuracao` e as queries nomeadas); `enum class PerfilMidia { CONTINUO, GAP }`; `data class Configuracoes(impressoraId, impressoraNome, perfilMidia, avancoFinalMm)`; `data class EtiquetaSalva(id, nome, documento)`; `interface LabelStore` com `configuracoes()`, `etiquetasSalvas()`, `salvarConfiguracoes()`, `salvarEtiqueta()`, `excluirEtiqueta()`, `salvarRascunho()`, `carregarRascunho()`; `interface FabricaDeDriver { fun criar(): SqlDriver }`; `class DriverAndroid(context)` e `class DriverDesktop(diretorio: File = diretorioPadrao())`; `internal actual fun agoraEmMillis(): Long`. Aulas 10, 11, 13 e 14 dependem disso.
+- Produces: o schema `Printec.sq` (tabelas `etiqueta`, `bloco`, `configuracao` e as queries nomeadas); `enum class PerfilMidia { CONTINUO, GAP }`; `data class Configuracoes(impressoraId, impressoraNome, perfilMidia, avancoFinalMm)`; `data class EtiquetaSalva(id, nome, documento)`; `interface LabelStore` com `configuracoes()`, `etiquetasSalvas()`, `salvarConfiguracoes()`, `salvarEtiqueta()`, `excluirEtiqueta()`, `salvarRascunho()`, `carregarRascunho()`; `interface FabricaDeDriver { fun criar(): SqlDriver }`; `class DriverAndroid(context)` e `class DriverDesktop(diretorio: File = diretorioPadrao())`. Aulas 10, 11, 13 e 14 dependem disso.
+
+**Nota de correção (Ruling 1 do pre-flight):** `Relogio.android.kt` e `Relogio.jvm.kt` NÃO entram nesta aula. São declarações `actual` cujo `expect agoraEmMillis()` mora dentro de `LabelStoreSqlDelight.kt`, que só chega na aula 10 — um `actual` sem `expect` não compila, e esta aula não ficaria verde. Os dois arquivos foram movidos para a Task 11.
 
 - [ ] **Step 1: Extrair os arquivos reais**
 
@@ -1014,8 +1017,6 @@ git -C ../printec show main:shared/src/jvmTest/kotlin/com/fatec/printec/dados/Dr
 git -C ../printec show main:shared/src/commonMain/sqldelight/com/fatec/printec/db/Printec.sq
 git -C ../printec show main:shared/src/commonMain/kotlin/com/fatec/printec/dados/LabelStore.kt
 git -C ../printec show main:shared/src/commonMain/kotlin/com/fatec/printec/dados/FabricaDeDriver.kt
-git -C ../printec show main:shared/src/androidMain/kotlin/com/fatec/printec/dados/Relogio.android.kt
-git -C ../printec show main:shared/src/jvmMain/kotlin/com/fatec/printec/dados/Relogio.jvm.kt
 git -C ../printec show main:shared/src/androidMain/kotlin/com/fatec/printec/dados/DriverAndroid.kt
 git -C ../printec show main:shared/src/jvmMain/kotlin/com/fatec/printec/dados/DriverDesktop.kt
 ```
@@ -1030,9 +1031,9 @@ Apresentar o schema: `etiqueta` (com a coluna `eh_rascunho`, que faz o rascunho 
 
 Explicar a decisão que o próprio código documenta e que contraria a expectativa: **`FabricaDeDriver` é uma interface, não `expect`/`actual`**. O motivo está no comentário do arquivo — o Android precisa de `Context` no construtor e o Desktop de um caminho de arquivo. `expect`/`actual` exige a mesma assinatura nas duas plataformas; uma interface deixa cada app montar o seu e injetar.
 
-E então mostrar **onde `expect`/`actual` realmente aparece**: `agoraEmMillis()`, um par de 104 bytes em cada plataforma. É a ferramenta certa exatamente porque a assinatura é idêntica dos dois lados. Ligar de volta ao `Platform.kt` do scaffold, que a aula 01 mostrou e que já não existe.
+Fechar dizendo onde `expect`/`actual` **de fato** aparece neste projeto — uma vez só, e na aula 10, junto do arquivo que declara o `expect`. Deixar o gancho, sem mostrar o código aqui.
 
-**`## 🗂️ Estrutura de Arquivos`** — `Printec.sq` em `commonMain/sqldelight/com/fatec/printec/db/`, os três de `commonMain/dados/`, os dois `Relogio.*` e os dois drivers.
+**`## 🗂️ Estrutura de Arquivos`** — `Printec.sq` em `commonMain/sqldelight/com/fatec/printec/db/`, os três de `commonMain/dados/` e os dois drivers.
 
 **`## 🔴 O Teste`** — bloco com `title="shared/src/jvmTest/kotlin/com/fatec/printec/dados/DriverDesktopTest.kt"`, arquivo inteiro, e:
 
@@ -1046,9 +1047,7 @@ Esperado: falha de compilação.
 
 **`## Passo 2 — LabelStore e FabricaDeDriver`** — dois blocos, arquivos inteiros.
 
-**`## Passo 3 — O relógio (expect/actual)`** — os dois `Relogio.*`, arquivos inteiros. Explicar que o `expect` correspondente mora dentro de `LabelStoreSqlDelight.kt`, que chega na aula 10 — e que por isso a compilação só fecha lá.
-
-**`## Passo 4 — Os drivers`** — `DriverAndroid.kt` e `DriverDesktop.kt`, arquivos inteiros.
+**`## Passo 3 — Os drivers`** — `DriverAndroid.kt` e `DriverDesktop.kt`, arquivos inteiros.
 
 **`## ⚠️ Atenção`** — a migração do `DriverDesktop` é o trecho mais sutil da aula, e o comentário do código conta a história inteira: `arquivo.exists()` não diz em qual versão de schema o arquivo está, e `PRAGMA user_version = 0` significa **duas coisas diferentes** — banco novo, ou banco antigo criado antes de a classe passar a gravar a versão, já com as tabelas populadas. Sem distinguir os dois casos, `Schema.create()` roda contra tabelas existentes (o `Printec.sq` não usa `IF NOT EXISTS`) e todo banco pré-existente falharia com "table etiqueta already exists". Daí a checagem `tabelaEtiquetaExiste`.
 
@@ -1110,14 +1109,18 @@ git commit -m "docs(ldm): aula 09 - banco nas duas plataformas"
 - Modify: `sidebars.ts`
 
 **Interfaces:**
-- Consumes: `LabelStore`, `Configuracoes`, `EtiquetaSalva`, `PerfilMidia`, `FabricaDeDriver`, `agoraEmMillis()` (aula 09); `LabelDocument`, `Bloco`, `Alinhamento` (aula 04)
-- Produces: `class LabelStoreSqlDelight(driver: SqlDriver) : LabelStore` e a declaração `internal expect fun agoraEmMillis(): Long`. As aulas 11, 13 e 14 instanciam esta classe.
+- Consumes: `LabelStore`, `Configuracoes`, `EtiquetaSalva`, `PerfilMidia`, `FabricaDeDriver` (aula 09); `LabelDocument`, `Bloco`, `Alinhamento` (aula 04)
+- Produces: `class LabelStoreSqlDelight(driver: SqlDriver) : LabelStore`, a declaração `internal expect fun agoraEmMillis(): Long` e os dois `actual` correspondentes. As aulas 11, 13 e 14 instanciam esta classe.
+
+**Nota de correção (Ruling 1 do pre-flight):** `Relogio.android.kt` e `Relogio.jvm.kt` vieram da Task 10 para cá. O `expect agoraEmMillis()` é declarado dentro de `LabelStoreSqlDelight.kt`; separar o `expect` dos `actual` em aulas diferentes deixaria a aula 09 sem compilar.
 
 - [ ] **Step 1: Extrair os arquivos reais**
 
 ```bash
 git -C ../printec show main:shared/src/jvmTest/kotlin/com/fatec/printec/dados/LabelStoreTest.kt
 git -C ../printec show main:shared/src/commonMain/kotlin/com/fatec/printec/dados/LabelStoreSqlDelight.kt
+git -C ../printec show main:shared/src/androidMain/kotlin/com/fatec/printec/dados/Relogio.android.kt
+git -C ../printec show main:shared/src/jvmMain/kotlin/com/fatec/printec/dados/Relogio.jvm.kt
 ```
 
 - [ ] **Step 2: Escrever `docs/ldm/aula-10.mdx`**
@@ -1130,7 +1133,9 @@ Explicar o `Flow`: `configuracoes()` e `etiquetasSalvas()` devolvem fluxos que r
 
 Explicar `garantirConfiguracao`: a linha 0 é criada com `INSERT OR IGNORE` antes de toda leitura, para `lerConfiguracao` nunca voltar vazia.
 
-**`## 🗂️ Estrutura de Arquivos`** — o arquivo em `commonMain/dados/` e o teste em `jvmTest/dados/`.
+Explicar o par `expect`/`actual` que aparece aqui — o único do projeto. `agoraEmMillis()` é declarado `internal expect` dentro de `LabelStoreSqlDelight.kt` e realizado em `Relogio.android.kt` e `Relogio.jvm.kt`, 104 bytes cada. É a ferramenta certa exatamente porque a assinatura é idêntica dos dois lados — ao contrário de `FabricaDeDriver` na aula 09, onde as assinaturas divergem e por isso o projeto usa interface. Ligar de volta ao `Platform.kt` do scaffold, que a aula 01 mostrou e que já não existe.
+
+**`## 🗂️ Estrutura de Arquivos`** — o arquivo em `commonMain/dados/`, os dois `Relogio.*` em `androidMain/dados/` e `jvmMain/dados/`, e o teste em `jvmTest/dados/`.
 
 **`## 🔴 O Teste`** — bloco com `title="shared/src/jvmTest/kotlin/com/fatec/printec/dados/LabelStoreTest.kt"`, arquivo inteiro, e:
 
@@ -1141,6 +1146,8 @@ Explicar `garantirConfiguracao`: a linha 0 é criada com `INSERT OR IGNORE` ante
 Esperado: falha de compilação.
 
 **`## Passo 1 — LabelStoreSqlDelight`** — bloco com `title="shared/src/commonMain/kotlin/com/fatec/printec/dados/LabelStoreSqlDelight.kt"`, arquivo inteiro. Como é o maior arquivo de `commonMain/dados/`, percorrer por partes: a declaração `expect` do relógio, a leitura de configurações, a escrita, a serialização dos blocos e a reconstrução.
+
+**`## Passo 2 — O relógio (expect/actual)`** — os dois `Relogio.*`, arquivos inteiros, com os caminhos completos. Sem eles a compilação não fecha: um `expect` sem `actual` é erro tanto quanto o contrário.
 
 **`## ⚠️ Atenção`** — o rascunho não é uma tabela à parte: é uma etiqueta com `eh_rascunho = 1`, e `excluirRascunhos` roda antes de gravar o novo. Um rascunho por vez, por construção — não por convenção que alguém precisa lembrar de respeitar.
 
