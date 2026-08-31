@@ -1,0 +1,411 @@
+---
+sidebar_position: 1
+title: "Aula 01: Setup KMP — os dois apps rodando"
+description: "Targets, source sets e a estrutura do projeto Printec. Android e Desktop abrindo."
+---
+
+# Aula 01: Setup KMP — os dois apps rodando
+
+:::info 🔀 Código da Aula
+Ponto de partida desta aula: branch **`base-app`**.
+```bash
+git checkout base-app
+```
+Gabarito, se travar: branch **`main`**.
+```bash
+git checkout main
+```
+:::
+
+## 📖 Conceito
+
+O **Kotlin Multiplatform (KMP)** deixa você escrever uma vez o que é igual nas duas plataformas e escrever separado só o que não é. A divisão acontece em *source sets*: pastas de código, cada uma compilada só para um alvo (ou um grupo de alvos).
+
+- **`commonMain`** é agnóstico de plataforma. Só pode depender de bibliotecas multiplataforma — nada de `android.*` nem `java.io.*` aqui. É onde moram o modelo de dados, a UI em Compose e a lógica que não sabe se está rodando num celular ou num desktop.
+- **`androidMain`** e **`jvmMain`** são os source sets específicos: cada um pode importar o que quiser da sua própria plataforma (Android SDK de um lado, APIs Java/JVM do outro).
+
+No Printec essa divisão vira três módulos Gradle:
+
+| Módulo | Função |
+|---|---|
+| `shared/` | Modelo, renderização, transporte, UI Compose e ViewModel — tudo que as duas plataformas dividem |
+| `androidApp/` | Só o host Android: `Application`, `Activity`, Manifest |
+| `desktopApp/` | Só o host Desktop: a função `main()` e a janela |
+
+### O source set que não vem de graça: `jvmCommonMain`
+
+O KMP cria `commonMain` para você automaticamente. O que ele **não** cria é compartilhamento entre `androidMain` e `jvmMain` — esses dois só enxergam `commonMain`, não um ao outro. Se duas plataformas precisam do mesmo código Java (mas não podem usar em `commonMain`, porque `commonMain` não pode depender de bibliotecas Java puras), é preciso declarar um source set intermediário à mão.
+
+É exatamente o caso do Printec: `escpos-coffee`, a biblioteca que monta os comandos ESC/POS, é uma lib Java comum — roda tanto no `jvmMain` (Desktop) quanto no `androidMain` (Android), mas não é multiplataforma, então não pode entrar em `commonMain`. A solução, já configurada em `base-app`, é criar `jvmCommonMain` e pendurar os dois nele:
+
+```kotlin title="shared/build.gradle.kts" reference="base-app"
+        val jvmCommonMain by creating {
+            dependsOn(commonMain.get())
+            dependencies {
+                implementation(libs.escpos.coffee)
+            }
+        }
+```
+
+`dependsOn(commonMain.get())` faz `jvmCommonMain` herdar tudo de `commonMain`, e mais abaixo no arquivo `jvmMain.get().dependsOn(jvmCommonMain)` e `androidMain.get().dependsOn(jvmCommonMain)` penduram as duas plataformas nele. É assim que `escpos-coffee` fica disponível para as duas sem estar em `commonMain` nem duplicado em cada uma.
+
+## 🗂️ Estrutura de Arquivos
+
+```
+shared/
+├── build.gradle.kts
+└── src/
+    ├── commonMain/
+    │   ├── composeResources/drawable/compose-multiplatform.xml
+    │   └── kotlin/com/fatec/printec/
+    │       ├── App.kt              ← UI Compose raiz, chamada pelos dois hosts
+    │       ├── Greeting.kt         ← lógica de exemplo do template KMP
+    │       ├── GreetingUtil.kt
+    │       └── Platform.kt         ← expect fun getPlatform()
+    ├── commonTest/kotlin/com/fatec/printec/
+    │   └── SharedCommonTest.kt
+    ├── jvmMain/kotlin/com/fatec/printec/
+    │   └── Platform.jvm.kt         ← actual (Desktop) — só jvmMain enxerga isso
+    ├── jvmTest/kotlin/com/fatec/printec/
+    │   └── SharedLogicDesktopTest.kt
+    ├── androidMain/kotlin/com/fatec/printec/
+    │   └── Platform.android.kt     ← actual (Android) — só androidMain enxerga isso
+    └── androidHostTest/kotlin/com/fatec/printec/
+        └── SharedLogicAndroidHostTest.kt
+
+androidApp/
+├── build.gradle.kts
+├── proguard-rules.pro
+└── src/main/
+    ├── AndroidManifest.xml
+    ├── kotlin/com/fatec/printec/
+    │   └── MainActivity.kt         ← só o host: chama setContent { App() }
+    └── res/                        ← ícones, strings.xml
+
+desktopApp/
+├── build.gradle.kts
+└── src/main/kotlin/com/fatec/printec/
+    └── main.kt                     ← só o host: fun main() abre a Window com App()
+```
+
+Repare que `androidMain/` e `jvmMain/` não têm uma pasta irmã chamada `jvmCommonMain/` no disco — esse source set existe só na configuração do Gradle (a que você acabou de ver), sem pasta própria neste ponto da trilha.
+
+## Passo 1 — Clonar e abrir
+
+```bash
+git clone https://github.com/negoNegoso/printec.git
+cd printec
+git checkout base-app
+```
+
+Abra a pasta no Android Studio (ele reconhece o projeto Gradle e sincroniza sozinho) ou no IntelliJ IDEA.
+
+## Passo 2 — settings.gradle.kts
+
+Este é o arquivo que declara quais módulos existem no projeto. Sem um `include`, o Gradle nem tenta compilar a pasta.
+
+```kotlin title="settings.gradle.kts" reference="base-app"
+rootProject.name = "Printec"
+
+pluginManagement {
+    repositories {
+        google {
+            mavenContent {
+                includeGroupAndSubgroups("androidx")
+                includeGroupAndSubgroups("com.android")
+                includeGroupAndSubgroups("com.google")
+            }
+        }
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+
+dependencyResolutionManagement {
+    repositories {
+        google {
+            mavenContent {
+                includeGroupAndSubgroups("androidx")
+                includeGroupAndSubgroups("com.android")
+                includeGroupAndSubgroups("com.google")
+            }
+        }
+        mavenCentral()
+    }
+}
+
+plugins {
+    id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
+}
+
+include(":androidApp")
+include(":desktopApp")
+include(":shared")
+```
+
+As três últimas linhas são o que importa aqui: `include(":androidApp")`, `include(":desktopApp")` e `include(":shared")` registram os três módulos da seção anterior.
+
+## Passo 3 — shared/build.gradle.kts
+
+Este é o build file do módulo compartilhado — o mais denso dos três, porque é onde os alvos e os source sets são configurados.
+
+```kotlin title="shared/build.gradle.kts" reference="base-app"
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
+plugins {
+    alias(libs.plugins.kotlinMultiplatform)
+    alias(libs.plugins.androidMultiplatformLibrary)
+    alias(libs.plugins.composeMultiplatform)
+    alias(libs.plugins.composeCompiler)
+    alias(libs.plugins.sqldelight)
+}
+
+sqldelight {
+    databases {
+        create("PrintecDatabase") {
+            packageName.set("com.fatec.printec.db")
+        }
+    }
+}
+
+kotlin {
+    jvm()
+    
+    android {
+       namespace = "com.fatec.printec.shared"
+       compileSdk = libs.versions.android.compileSdk.get().toInt()
+       minSdk = libs.versions.android.minSdk.get().toInt()
+    
+       compilerOptions {
+           jvmTarget = JvmTarget.JVM_11
+       }
+       androidResources {
+           enable = true
+       }
+       withHostTest {
+           isIncludeAndroidResources = true
+       }
+       withDeviceTestBuilder {
+           sourceSetTreeName = "test"
+       }.configure {
+           instrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+       }
+    }
+    
+    sourceSets {
+        val jvmCommonMain by creating {
+            dependsOn(commonMain.get())
+            dependencies {
+                implementation(libs.escpos.coffee)
+            }
+        }
+        val jvmCommonTest by creating {
+            dependsOn(commonTest.get())
+            dependencies {
+                implementation(libs.kotlin.test)
+            }
+        }
+        jvmMain.get().dependsOn(jvmCommonMain)
+        androidMain.get().dependsOn(jvmCommonMain)
+        jvmTest.get().dependsOn(jvmCommonTest)
+        getByName("androidHostTest").dependsOn(jvmCommonTest)
+        getByName("androidDeviceTest").dependencies {
+            implementation(libs.kotlin.test)
+            implementation(libs.androidx.testExt.junit)
+        }
+        androidMain.dependencies {
+            implementation(libs.compose.uiToolingPreview)
+            implementation(libs.compose.uiTooling)
+            implementation(libs.sqldelight.androidDriver)
+        }
+        commonMain.dependencies {
+            implementation(libs.compose.runtime)
+            implementation(libs.compose.foundation)
+            implementation(libs.compose.material3)
+            implementation(libs.compose.ui)
+            implementation(libs.compose.components.resources)
+            implementation(libs.compose.uiToolingPreview)
+            implementation(libs.androidx.lifecycle.viewmodelCompose)
+            implementation(libs.androidx.lifecycle.runtimeCompose)
+            implementation(libs.kotlinx.coroutinesCore)
+            implementation(libs.sqldelight.coroutinesExtensions)
+        }
+        commonTest.dependencies {
+            implementation(libs.kotlin.test)
+            implementation(libs.kotlinx.coroutinesTest)
+        }
+        jvmMain.dependencies {
+            implementation(libs.sqldelight.sqliteDriver)
+            implementation(libs.jSerialComm)
+        }
+        jvmTest.dependencies {
+            implementation(libs.sqldelight.sqliteDriver)
+            implementation(libs.kotlinx.coroutinesTest)
+        }
+    }
+}
+
+dependencies {
+    androidRuntimeClasspath(libs.compose.uiTooling)
+}
+```
+
+Dois blocos merecem atenção:
+
+- **`kotlin { jvm(); android { ... } }`** declara os dois alvos que `shared/` compila: `jvm()` para o Desktop e `android { }` para o Android (com `namespace`, `compileSdk`/`minSdk` vindos do catálogo de versões, e a configuração de testes instrumentados). É essa dupla declaração que faz o Gradle gerar `jvmMain` e `androidMain` automaticamente.
+- **`sourceSets { ... }`** é onde `jvmCommonMain` e `jvmCommonTest` são criados e pendurados em `jvmMain`/`androidMain` (visto na seção Conceito), e onde cada source set declara suas próprias dependências — repare que `commonMain.dependencies` só lista bibliotecas multiplataforma (Compose, coroutines, SQLDelight), enquanto `jvmMain.dependencies` inclui `libs.jSerialComm`, que só existe na JVM.
+
+## Passo 4 — expect/actual no scaffold
+
+O template inicial do KMP já vem com um exemplo mínimo de `expect`/`actual`, e é ele que prova que a divisão de source sets está funcionando antes de você escrever uma linha sequer de lógica de impressão.
+
+```kotlin title="shared/src/commonMain/kotlin/com/fatec/printec/Platform.kt" reference="base-app"
+package com.fatec.printec
+
+interface Platform {
+    val name: String
+}
+
+expect fun getPlatform(): Platform
+```
+
+`commonMain` declara o contrato (`expect fun getPlatform()`) sem implementá-lo — só quem souber a plataforma pode responder a essa pergunta.
+
+```kotlin title="shared/src/jvmMain/kotlin/com/fatec/printec/Platform.jvm.kt" reference="base-app"
+package com.fatec.printec
+
+class JVMPlatform: Platform {
+    override val name: String = "Java ${System.getProperty("java.version")}"
+}
+
+actual fun getPlatform(): Platform = JVMPlatform()
+```
+
+```kotlin title="shared/src/androidMain/kotlin/com/fatec/printec/Platform.android.kt" reference="base-app"
+package com.fatec.printec
+
+import android.os.Build
+
+class AndroidPlatform : Platform {
+    override val name: String = "Android ${Build.VERSION.SDK_INT}"
+}
+
+actual fun getPlatform(): Platform = AndroidPlatform()
+```
+
+Cada `actual` mora no source set que sabe respondê-lo: `JVMPlatform` lê `System.getProperty("java.version")` (só existe na JVM), `AndroidPlatform` lê `Build.VERSION.SDK_INT` (só existe no Android SDK). Nenhum dos dois compilaria em `commonMain`.
+
+Esses três arquivos são scaffold — o exemplo genérico que todo projeto KMP nasce com. Eles vão sumir ao longo da trilha: o app final usa `expect`/`actual` de verdade em um lugar só, e a Aula 09 mostra qual e por quê.
+
+## ⚠️ Atenção
+
+O build já vem completo. SQLDelight, `escpos-coffee` e `jSerialComm` já estão declarados no catálogo de versões desde `base-app`:
+
+```toml title="gradle/libs.versions.toml" reference="base-app"
+escpos-coffee = { module = "com.github.anastaciocintra:escpos-coffee", version.ref = "escposCoffee" }
+jSerialComm = { module = "com.fazecast:jSerialComm", version.ref = "jSerialComm" }
+sqldelight-androidDriver = { module = "app.cash.sqldelight:android-driver", version.ref = "sqldelight" }
+sqldelight-sqliteDriver = { module = "app.cash.sqldelight:sqlite-driver", version.ref = "sqldelight" }
+```
+
+**Nenhuma aula desta trilha vai editar Gradle de novo.** Se você vir uma instrução para mexer em `build.gradle.kts` ou em `libs.versions.toml` depois desta aula, é engano — pare e confira aqui.
+
+## ▶️ Como Executar
+
+```bash
+./gradlew :desktopApp:run
+```
+
+```bash
+./gradlew :androidApp:assembleDebug
+```
+
+O primeiro comando compila `shared/` e `desktopApp/` e abre uma janela chamada "Printec" com a tela padrão do template KMP: um botão "Click me!" que revela uma saudação do Compose Multiplatform. O segundo comando não abre nada sozinho — ele gera o APK em `androidApp/build/outputs/apk/debug/`, pronto para instalar num emulador ou aparelho físico. É a mesma tela `App()`, compartilhada, que os dois hosts chamam:
+
+```kotlin title="shared/src/commonMain/kotlin/com/fatec/printec/App.kt" reference="base-app"
+package com.fatec.printec
+
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.safeContentPadding
+import androidx.compose.material3.Button
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.tooling.preview.Preview
+import org.jetbrains.compose.resources.painterResource
+
+import printec.shared.generated.resources.Res
+import printec.shared.generated.resources.compose_multiplatform
+
+@Composable
+@Preview
+fun App() {
+    MaterialTheme {
+        var showContent by remember { mutableStateOf(false) }
+        Column(
+            modifier = Modifier
+                .background(MaterialTheme.colorScheme.primaryContainer)
+                .safeContentPadding()
+                .fillMaxSize(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Button(onClick = { showContent = !showContent }) {
+                Text("Click me!")
+            }
+            AnimatedVisibility(showContent) {
+                val greeting = remember { Greeting().greet() }
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Image(painterResource(Res.drawable.compose_multiplatform), null)
+                    Text("Compose: $greeting")
+                }
+            }
+        }
+    }
+}
+```
+
+Se as duas telas abrirem com o mesmo botão e a mesma saudação, o setup está correto — os dois hosts (`MainActivity.kt` no Android, `main.kt` no Desktop) não fazem nada além de chamar essa função.
+
+## 💻 Mão na Massa
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+<Tabs>
+  <TabItem value="ex1" label="Exercício 1 — Onde mora o quê" default>
+
+### Sem abrir o gabarito, responda
+
+Para cada classe abaixo, diga em qual source set ela viveria — `commonMain`, `androidMain`, `jvmMain` ou `jvmCommonMain`:
+
+1. Uma classe que só usa `kotlin.String`.
+2. Uma classe que importa `android.bluetooth.BluetoothAdapter`.
+3. Uma classe que importa `javax.print.PrintService`.
+4. Uma classe que importa `java.io.ByteArrayOutputStream` e precisa rodar nas duas plataformas (Android e Desktop).
+
+Confira sua resposta contra a árvore da seção "Estrutura de Arquivos" e contra o trecho de `sourceSets` do Passo 3.
+
+  </TabItem>
+  <TabItem value="ex2" label="Exercício 2 — Rodar os testes">
+
+### Execute os testes que já existem no `base-app`
+
+```bash
+./gradlew :shared:jvmTest
+./gradlew :shared:testAndroidHostTest
+```
+
+Anote quantos testes rodam em cada comando. Ao fim da trilha esse número passa de 20 arquivos de teste — você vai escrever todos, um por aula.
+
+  </TabItem>
+</Tabs>

@@ -112,6 +112,12 @@ const sidebars: SidebarsConfig = {
 
     ldmSidebar: [
         "ldm/index",
+        {
+            type: "category",
+            label: "Módulo 1 — Fundação",
+            collapsed: false,
+            items: ["ldm/aula-01"],
+        },
     ],
 };
 
