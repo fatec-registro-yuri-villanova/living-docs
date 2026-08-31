@@ -3,21 +3,18 @@
 **Data:** 2026-08-31
 **Status:** Design aprovado, aguardando plano de implementação
 **Repositório de documentação:** `living-docs` (Docusaurus)
-**Projeto documentado:** `printec`, branch `main` — Kotlin Multiplatform, Android + Desktop
+**Projeto documentado:** `printec`, branches `base-app` e `main` — Kotlin Multiplatform, Android + Desktop
 
 ---
 
 ## 1. Objetivo
 
 Substituir o conteúdo atual da trilha LDM por um curso completo sobre o app
-**Printec**: 15 aulas que levam o aluno do repositório vazio até o app rodando
-em Android e Desktop, imprimindo etiquetas numa impressora térmica por
-Bluetooth.
+**Printec**: 15 aulas que levam o aluno do scaffold vazio até o app rodando em
+Android e Desktop, imprimindo etiquetas numa impressora térmica por Bluetooth.
 
 O terceiro dos cinco módulos chama-se **"Bluetooth e Impressora"** e concentra a
-camada de transporte. A progressão, porém, é de fatia vertical: o aluno imprime
-por Bluetooth já na aula 3, e o módulo 3 é onde aquele código tosco vira
-transporte de verdade.
+camada de transporte.
 
 ---
 
@@ -62,8 +59,8 @@ jvmCommonMain   (source set intermediário: androidMain + jvmMain)
 androidMain                        jvmMain
   AndroidBluetoothTransport        TransporteDesktop
   DriverAndroid                      |- DesktopUsbTransport    (spooler javax.print)
-                                     |- DesktopSerialTransport (jSerialComm / porta COM)
-                                   DriverDesktop
+  Relogio.android                    |- DesktopSerialTransport (jSerialComm / porta COM)
+                                   DriverDesktop, Relogio.jvm
 ```
 
 O Bluetooth chega às duas plataformas por caminhos diferentes: no Android é
@@ -73,13 +70,24 @@ na impressora. Essa assimetria é um dos pontos didáticos centrais do módulo 3
 
 ### 2.3 Branches disponíveis
 
-Só duas são úteis para o curso:
-
-- `base-app` — scaffold cru do wizard KMP (`Greeting`, `Platform`), ponto de partida
+- `base-app` — scaffold cru do wizard KMP (`Greeting`, `Platform`, `App`), ponto de partida
 - `main` — app completo, gabarito final
 
 **Não existem branches por aula.** Isso muda a convenção usada nas outras
 trilhas do living-docs (`git checkout aula-11`) e está resolvido em §5.2.
+
+### 2.4 Suíte de testes disponível
+
+A `main` traz **20 arquivos de teste** cobrindo quase toda camada — é o que
+torna possível dar resultado visível em toda aula sem inventar código:
+
+| Source set | Comando Gradle | Testes |
+|---|---|---|
+| `commonTest` | `:shared:jvmTest` (roda junto) | `QuebraDeLinhaTest`, `Pc860Test`, `EtiquetaDeTesteTest`, `EscritaEmBlocosTest`, `EtiquetaViewModelTest`, `FormularioEtiquetaTest`, `LinhasDePreviewTest`, `SharedCommonTest` |
+| `jvmCommonTest` | `:shared:jvmTest` | `EscPosRendererTest`, `EscPosCoffeeVivoTest`, `RendererIgualAoPreviewTest` |
+| `jvmTest` | `:shared:jvmTest` | `LabelStoreTest`, `DriverDesktopTest`, `TransporteDesktopTest`, `DesktopUsbTransportTest`, `SharedLogicDesktopTest` |
+| `androidHostTest` | `:shared:testAndroidHostTest` | `AndroidBluetoothTransportTest`, `SharedLogicAndroidHostTest` |
+| `androidDeviceTest` | dispositivo/emulador | `EscPosCoffeeDispositivoTest` |
 
 ---
 
@@ -87,10 +95,15 @@ trilhas do living-docs (`git checkout aula-11`) e está resolvido em §5.2.
 
 | # | Decisão | Alternativa descartada |
 |---|---|---|
-| 1 | **Construir do zero**: o aluno digita o código, saindo de `base-app` até chegar em `main` | Criar branches por aula no printec (exigiria reescrever o repo em fatias); leitura guiada da `main` (o aluno lê em vez de construir) |
+| 1 | **Construir do zero**: o aluno digita o código, saindo de `base-app` até chegar em `main` | Criar branches por aula no printec; leitura guiada da `main` |
 | 2 | **App Printec inteiro**: inclui UI Compose completa, preview WYSIWYG e persistência SQLDelight | Só o caminho de impressão; versão enxuta de 5 aulas |
 | 3 | **Apagar de vez** o conteúdo atual do LDM e renomear a trilha | Manter o rótulo antigo; arquivar em `_arquivo/` |
-| 4 | **Fatia vertical primeiro**: papel saindo na aula 3, refatoração em camadas daí em diante | Bottom-up por camada (só imprime na aula 8); UI primeiro (inverte a dependência do preview) |
+| 4 | **Zero código inventado + resultado visível em toda aula**: ordem ditada pelo grafo de dependências dos arquivos reais, com o teste real da `main` como resultado de cada aula | Fatia vertical com papel na aula 3 — exigia código intermediário que não existe em branch nenhuma |
+
+A decisão 4 substitui uma escolha anterior de "fatia vertical primeiro". As duas
+são incompatíveis: imprimir na aula 3 só era possível escrevendo uma versão
+tosca e provisória do transporte, que é exatamente o que a decisão 4 proíbe. O
+custo aceito: **papel sai na aula 13**, não na 3.
 
 ---
 
@@ -144,7 +157,42 @@ Cada aula abre com o bloco que substitui o "branch da aula" das outras trilhas:
 :::
 ```
 
-### 5.3 Anatomia de uma aula
+### 5.3 Fidelidade ao código — regra dura
+
+**Nenhum bloco de código do material é escrito por quem redige a aula.** Todo
+bloco é copiado literalmente de uma das duas branches:
+
+- `git show base-app:<arquivo>` — só na aula 01, para o scaffold de partida
+- `git show main:<arquivo>` — todo o resto
+
+Consequências que o design assume:
+
+- **Não há versões intermediárias.** Um arquivo aparece uma vez, completo, na
+  aula em que suas dependências já existem. Nenhuma aula mostra "uma versão
+  simplificada por enquanto".
+- **Os arquivos de build crescem por adição.** Cada aula acrescenta a
+  `gradle/libs.versions.toml` e `shared/build.gradle.kts` exatamente as linhas
+  da `main` que aquela camada exige — nunca linhas reescritas. Assim o projeto
+  compila em todo estágio sem que nada seja inventado.
+- **Os comentários do código original são preservados.** Eles explicam o porquê
+  de cada decisão a partir do sintoma real que a motivou (o título que borra em
+  2x, a cauda do documento descartada, `SecurityException` em `bondedDevices`) —
+  são a melhor parte do material didático.
+
+### 5.4 Ordem das aulas — teste real primeiro
+
+Cada aula da fundação até a máquina de estados segue o mesmo ciclo:
+
+1. A aula mostra o **arquivo de teste real** da `main` (ex.: `Pc860Test.kt`)
+2. O aluno roda o Gradle: **vermelho** (a classe ainda não existe)
+3. A aula mostra o **arquivo de produção real** da `main` (ex.: `Pc860.kt`)
+4. O aluno roda de novo: **verde** — este é o resultado visível da aula
+
+Os exercícios "Mão na Massa" seguem a mesma regra: pedem que o aluno escreva o
+código que faz um teste real passar, ou que estenda um teste real. Nunca pedem
+para inventar uma API que não existe no projeto.
+
+### 5.5 Anatomia de uma aula
 
 Herdada do template que a trilha já usava:
 
@@ -152,64 +200,67 @@ Herdada do template que a trilha já usava:
 2. `:::info 🔀 Código da Aula` (§5.2)
 3. `## 📖 Conceito` — o problema antes da solução
 4. `## 🗂️ Estrutura de Arquivos` — árvore com comentários `←`
-5. `## Passo N — …` — código em blocos com `title="caminho/real.kt"` e `highlight-start`
-6. `## ⚠️ Atenção` — a armadilha real da aula
-7. `## ▶️ Como Executar` — comando Gradle e o que se espera ver
-8. `## 💻 Mão na Massa` — 2 a 3 exercícios em `<Tabs>`
+5. `## 🔴 O Teste` — teste real, e o comando que o deixa vermelho (§5.4)
+6. `## Passo N — …` — código com `title="caminho/real.kt"` e `highlight-start`
+7. `## ⚠️ Atenção` — a armadilha real da aula
+8. `## ▶️ Como Executar` — comando Gradle e o que se espera ver (verde)
+9. `## 💻 Mão na Massa` — 2 a 3 exercícios em `<Tabs>`
 
-### 5.4 Fidelidade ao código
-
-Todo bloco de código sai de `git show main:<arquivo>` do printec — nunca
-inventado. Onde a aula mostra uma versão intermediária simplificada (aulas 3 e
-9), o texto diz explicitamente que é provisória e em qual aula ela vira o código
-final. Comentários de "porquê" do código original são preservados: são a melhor
-parte do material didático.
+As aulas 13 a 15 trocam `🔴 O Teste` por `▶️ Como Executar` com o app na tela,
+porque ali o resultado visível é o app rodando e a etiqueta no papel.
 
 ---
 
 ## 6. Mapa das aulas
 
-### Módulo 1 — Do zero ao primeiro papel
+### Módulo 1 — Fundação
 
-| # | Título | Cobre | Entregável |
+| # | Título | Arquivos reais introduzidos | Resultado visível |
 |---|---|---|---|
-| 01 | Setup KMP: Android e Desktop rodando | `settings.gradle.kts`, `shared/build.gradle.kts`, targets `jvm()`/`android {}`, source sets, `expect`/`actual` | Os dois apps abrindo a tela do scaffold |
-| 02 | ESC/POS na mão | Autoteste da impressora, `ESC @`, `ESC t 3`, texto+LF, `GS ! n`, `ESC J n` | `olaMundo(): ByteArray` + teste em `commonTest` |
-| 03 | Papel saindo: Bluetooth e COM | Pareamento pelo SO, RFCOMM/SPP, `BLUETOOTH_CONNECT`, jSerialComm | Botão "Imprimir OLÁ" funcionando nas duas plataformas |
-
-A aula 3 escreve código deliberadamente tosco — um arquivo, exceção crua — e diz isso.
+| 01 | Setup KMP: os dois apps rodando | `settings.gradle.kts`, `build.gradle.kts`, `shared/build.gradle.kts`, `libs.versions.toml` (base) | Android e Desktop abrindo a tela do scaffold |
+| 02 | Largura, colunas e quebra de linha | `Impressora`, `QuebraDeLinha` + `QuebraDeLinhaTest` | Teste verde |
+| 03 | Acentuação: a code page PC860 | `Pc860` + `Pc860Test` | Teste verde |
 
 ### Módulo 2 — O documento e os bytes
 
-| # | Título | Cobre | Entregável |
+| # | Título | Arquivos reais introduzidos | Resultado visível |
 |---|---|---|---|
-| 04 | `LabelDocument` e `Bloco` | Sealed interface, `Titulo`/`Linha`/`Qr`/`Avanco`, `normalizado()` e o borrão do negrito em 2x | Modelo puro, sem Compose e sem plataforma |
-| 05 | `QuebraDeLinha` | 32 colunas, escala divide colunas, quebra por palavra, palavra maior que a linha | Objeto + suíte de testes (TDD) |
-| 06 | `Pc860` | Tabela própria vs. `Charset.forName("cp860")` no Android, `codificar`/`decodificar`, substituições contadas | Codificação testada sem hardware |
-| 07 | `EscPosRenderer` | Source set `jvmCommonMain`, renderização completa, QR na mão via `GS ( k` | `LabelDocument` → `ByteArray` |
+| 04 | O documento da etiqueta | `LabelDocument`, `EtiquetaDeTeste` + `EtiquetaDeTesteTest` | Teste verde |
+| 05 | Renderizar ESC/POS | `EscPosRenderer` (`jvmCommonMain`) + `EscPosRendererTest`, `EscPosCoffeeVivoTest` | Bytes ESC/POS conferidos byte a byte |
+| 06 | O contrato de saída | `PrinterTransport`, `ErroImpressao`, `EscritaEmBlocos` + `EscritaEmBlocosTest` | Teste verde |
 
 ### Módulo 3 — Bluetooth e Impressora
 
-| # | Título | Cobre | Entregável |
+| # | Título | Arquivos reais introduzidos | Resultado visível |
 |---|---|---|---|
-| 08 | `PrinterTransport` e erros tipados | Interface, `PrinterTarget`, `ErroImpressao`, abrir/escrever/fechar por trabalho | Contrato comum às duas plataformas |
-| 09 | `AndroidBluetoothTransport` | Pareados em vez de descoberta, Bluetooth desligado ≠ não pareada, `SecurityException` em `bondedDevices`, permissão em runtime | A aula 3 refatorada em transporte de verdade |
-| 10 | Desktop: USB, serial e `EscritaEmBlocos` | `DesktopUsbTransport`, `DesktopSerialTransport`, roteamento por prefixo `usb:`/`serial:`, 256 B + 20 ms + 600 ms | Transporte do desktop completo |
+| 07 | Bluetooth SPP no Android | `AndroidBluetoothTransport` + `AndroidBluetoothTransportTest` | `:shared:testAndroidHostTest` verde |
+| 08 | USB e serial no Desktop | `DesktopUsbTransport`, `DesktopSerialTransport`, `TransporteDesktop` + `TransporteDesktopTest`, `DesktopUsbTransportTest` | Teste verde; lista de portas COM da máquina |
 
-### Módulo 4 — Estado, telas e preview
+### Módulo 4 — Estado e persistência
 
-| # | Título | Cobre | Entregável |
+| # | Título | Arquivos reais introduzidos | Resultado visível |
 |---|---|---|---|
-| 11 | `EtiquetaViewModel` | Máquina de estados, guarda de reentrância, retry único, nada não-tipado escapa | Estado de impressão observável |
-| 12 | Telas Compose e navegação | Compor, Etiquetas, Ajustes, `StatusImpressao` com ação por erro | App navegável nas duas plataformas |
-| 13 | Preview WYSIWYG | `PreviewEtiqueta` reusando `QuebraDeLinha`; o teste que prova que preview e renderer quebram igual | Pré-visualização fiel |
+| 09 | Banco nas duas plataformas | `Printec.sq`, `LabelStore`, `FabricaDeDriver`, `Relogio.android`/`Relogio.jvm`, `DriverAndroid`, `DriverDesktop` + `DriverDesktopTest` | `printec.db` criado em `%APPDATA%\Printec` |
+| 10 | O store SQLDelight | `LabelStoreSqlDelight` + `LabelStoreTest` | Teste verde |
+| 11 | A máquina de estados da impressão | `EtiquetaViewModel` + `EtiquetaViewModelTest` | Teste verde (o maior da suíte) |
 
-### Módulo 5 — Persistência e entrega
+### Módulo 5 — Telas, papel e entrega
 
-| # | Título | Cobre | Entregável |
+| # | Título | Arquivos reais introduzidos | Resultado visível |
 |---|---|---|---|
-| 14 | SQLDelight nas duas plataformas | `Printec.sq`, driver por `expect`/`actual`, rascunho, etiquetas salvas, configurações | Persistência funcionando |
-| 15 | Calibração e entrega | `etiquetaDeCalibracao()`, confirmar 384 dots em papel, fiação final, builds, troubleshooting | App completo rodando em Android e Desktop |
+| 12 | Preview fiel à impressora | `FormularioEtiqueta`, `PreviewEtiqueta` + `FormularioEtiquetaTest`, `LinhasDePreviewTest`, `RendererIgualAoPreviewTest` | O teste que prova que preview e impressora quebram linha igual |
+| 13 | O app Desktop | `StatusImpressao`, `TelaCompor`, `TelaEtiquetas`, `TelaConfiguracoes`, `Navegacao`, `desktopApp/main.kt` | **App na tela e etiqueta no papel** |
+| 14 | O app Android | `PrintecApp`, `MainActivity`, `AndroidManifest.xml` | **App no celular, papel por Bluetooth** |
+| 15 | Calibração e entrega | `etiquetaDeCalibracao()` em papel, `SharedCommonTest` e afins, builds de entrega | Etiqueta de calibração no papel, suíte inteira verde |
+
+Notas de conteúdo que o plano deve respeitar:
+
+- `expect`/`actual` só existe em um lugar na `main` (`agoraEmMillis()`, na aula
+  09). `FabricaDeDriver` é **interface, não `expect`/`actual`** — e o próprio
+  código explica por quê: o Android precisa de `Context` no construtor e o
+  Desktop de um caminho de arquivo. Isso é conteúdo da aula 09, não da 01.
+- A aula 13 introduz as três telas de uma vez porque `AppEtiquetas` referencia
+  as três. Não há como rodar o app com um subconjunto delas.
 
 ---
 
@@ -218,18 +269,24 @@ A aula 3 escreve código deliberadamente tosco — um arquivo, exceção crua �
 - `npm run build` do Docusaurus passa sem link quebrado e sem aviso novo
 - Preview local: sidebar com os 5 módulos, as 15 aulas navegáveis, nenhuma
   página órfã da trilha antiga
-- Cada bloco de código conferido contra `git show main:<arquivo>` do printec
+- Cada bloco de código conferido byte a byte contra
+  `git show main:<arquivo>` (ou `base-app`, na aula 01)
 
 ---
 
 ## 8. Riscos e pontos em aberto
 
-- **Aulas intermediárias divergem do repo.** As aulas 3 e 9 mostram código que
-  não existe em nenhuma branch do printec. Mitigação: marcar como provisório e
-  apontar a aula que chega no código final.
-- **Sem hardware, o aluno trava na aula 3.** Mitigação: as aulas 2 e 4–7
-  funcionam inteiramente por teste; a aula 3 traz uma seção sobre o que fazer
-  sem impressora à mão.
+- **Papel só na aula 13.** É consequência direta da regra de fidelidade: o
+  único ponto de entrada real que imprime é o app montado. Mitigação: as aulas
+  02 a 12 entregam teste verde, e a 09 entrega um arquivo de banco no disco.
+- **A aula 13 é a mais longa da trilha** — cinco arquivos de UI mais o
+  `main.kt`. Mitigação: dividir em muitos "Passo N", um por tela.
+- **Sem hardware o aluno para na aula 13.** As aulas 01 a 12 rodam inteiramente
+  sem impressora. A aula 13 precisa dizer isso na abertura.
 - **`DesktopSerialTransport` é específico do Windows.** A porta COM virtual é o
   caminho do Windows; em Linux/macOS o dispositivo aparece com outro nome. A
-  aula 10 registra isso em vez de fingir portabilidade.
+  aula 08 registra isso em vez de fingir portabilidade.
+- **A aula 01 aplica o plugin do SQLDelight antes de existir `.sq`.** Por isso
+  os arquivos de build crescem por adição (§5.3): a aula 01 leva só o que o
+  scaffold precisa, e o bloco `sqldelight { }` entra na aula 09, junto com o
+  `Printec.sq`. O plano deve verificar em qual aula cada linha de build entra.
