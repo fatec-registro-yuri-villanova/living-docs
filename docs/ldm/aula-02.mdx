@@ -183,11 +183,7 @@ object QuebraDeLinha {
 
 ## ⚠️ Atenção
 
-A janela usada para procurar o espaço de corte é `colunas + 1` caracteres — **não** `colunas`. Repare na linha:
-
-```kotlin
-val janela = restante.substring(0, colunas + 1)
-```
+A janela usada para procurar o espaço de corte é `colunas + 1` caracteres — **não** `colunas`. Repare na linha (já mostrada no Passo 2 acima): `val janela = restante.substring(0, colunas + 1)`.
 
 O `+ 1` existe para cobrir o caso em que o espaço cai exatamente na fronteira da coluna 32. Se a janela fosse só `colunas` caracteres, um espaço na posição 32 nunca apareceria nela — a busca `lastIndexOf(' ')` não o enxergaria, e a função cairia no caso de "palavra maior que a linha", cortando no meio de uma palavra que na verdade termina exatamente ali. Trocar `colunas + 1` por `colunas` faz o texto perder efetivamente uma coluna de conteúdo útil toda vez que uma quebra cai bem na borda da linha — um bug sutil, porque a maioria dos textos de teste não bate exatamente no limite.
 
