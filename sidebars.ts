@@ -121,7 +121,7 @@ const sidebars: SidebarsConfig = {
         {
             type: "category",
             label: "Módulo 2 — O documento e os bytes",
-            items: ["ldm/aula-04"],
+            items: ["ldm/aula-04", "ldm/aula-05"],
         },
     ],
 };
