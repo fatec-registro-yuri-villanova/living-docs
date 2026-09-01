@@ -1,0 +1,235 @@
+---
+sidebar_position: 2
+title: "Aula 02: Largura, colunas e quebra de linha"
+description: "32 colunas, 384 dots e a regra de quebra que preview e impressora precisam dividir."
+---
+
+# Aula 02: Largura, colunas e quebra de linha
+
+## 📖 Conceito
+
+A impressora não sabe o que é uma "palavra". Ela recebe uma sequência de caracteres e imprime até a linha acabar — aí corta, no meio de qualquer coisa, sem aviso. Quem decide *onde* quebrar o texto antes de mandar para o hardware é o app.
+
+De onde vêm os 32 caracteres por linha? A Lintian LT-8359 imprime com a Font A, cujos glifos padrão medem 12×24 dots. A largura útil do papel é 384 dots:
+
+```
+384 dots ÷ 12 dots/caractere = 32 caracteres por linha
+```
+
+`Impressora.DOTS_LARGURA = 384` é uma inferência a partir dessa conta, não um valor lido de datasheet — a aula 15 confirma o número em papel com uma etiqueta de calibração impressa na própria impressora. Até lá, 384 é a melhor estimativa disponível.
+
+Escala também entra na conta. Se o texto imprime em escala 2 (glifo com o dobro da largura), cabem só 16 caracteres na mesma linha física — a metade. `QuebraDeLinha.colunasPara(escala)` existe para essa divisão: `colunasPara(1)` devolve 32, `colunasPara(2)` devolve 16.
+
+### Por que a regra mora num objeto isolado
+
+`QuebraDeLinha` não faz parte do renderizador ESC/POS nem da tela. Ela é um objeto `commonMain` só com essas duas funções, sem dependência de nada. O motivo aparece só na aula 12: lá, um preview na tela vai mostrar ao usuário exatamente como a etiqueta vai sair impressa, quebrando o texto do mesmo jeito que a impressora quebra. Se a lógica de quebra do preview divergir um caractere sequer da lógica de quebra do renderizador, o preview passa a mentir — o que aparece na tela não é o que sai no papel. Colocar as duas em `QuebraDeLinha.quebrar()` e chamar essa única função dos dois lugares é o que impede a divergência.
+
+## 🗂️ Estrutura de Arquivos
+
+```
+shared/src/
+├── commonMain/kotlin/com/fatec/printec/etiqueta/
+│   ├── Impressora.kt        ← constantes físicas: colunas, dots, dots/mm
+│   └── QuebraDeLinha.kt     ← regra de quebra compartilhada
+└── commonTest/kotlin/com/fatec/printec/etiqueta/
+    └── QuebraDeLinhaTest.kt
+```
+
+## 🔴 O Teste
+
+```kotlin title="shared/src/commonTest/kotlin/com/fatec/printec/etiqueta/QuebraDeLinhaTest.kt"
+package com.fatec.printec.etiqueta
+
+import kotlin.test.Test
+import kotlin.test.assertEquals
+
+class QuebraDeLinhaTest {
+
+    @Test
+    fun `texto menor que a largura fica em uma linha`() {
+        assertEquals(listOf("bancada A"), QuebraDeLinha.quebrar("bancada A", 32))
+    }
+
+    @Test
+    fun `texto com exatamente 32 caracteres nao quebra`() {
+        val texto = "a".repeat(32)
+        assertEquals(listOf(texto), QuebraDeLinha.quebrar(texto, 32))
+    }
+
+    @Test
+    fun `texto com 33 caracteres quebra em duas linhas`() {
+        val texto = "a".repeat(33)
+        assertEquals(listOf("a".repeat(32), "a"), QuebraDeLinha.quebrar(texto, 32))
+    }
+
+    @Test
+    fun `quebra preferencialmente no espaco entre palavras`() {
+        val texto = "peca de reposicao para bancada central"
+        assertEquals(
+            listOf("peca de reposicao para bancada", "central"),
+            QuebraDeLinha.quebrar(texto, 32),
+        )
+    }
+
+    @Test
+    fun `palavra maior que a linha e cortada em vez de sumir`() {
+        val texto = "b".repeat(40)
+        assertEquals(listOf("b".repeat(32), "b".repeat(8)), QuebraDeLinha.quebrar(texto, 32))
+    }
+
+    @Test
+    fun `acentos contam como um caractere`() {
+        // Na PC860 cada acentuada ocupa 1 byte, entao conta 1 coluna.
+        val texto = "ação não coração"  // 16 caracteres
+        assertEquals(listOf(texto), QuebraDeLinha.quebrar(texto, 16))
+    }
+
+    @Test
+    fun `texto vazio produz uma linha vazia`() {
+        assertEquals(listOf(""), QuebraDeLinha.quebrar("", 32))
+    }
+
+    @Test
+    fun `escala dobrada reduz as colunas pela metade`() {
+        assertEquals(32, QuebraDeLinha.colunasPara(1))
+        assertEquals(16, QuebraDeLinha.colunasPara(2))
+        assertEquals(8, QuebraDeLinha.colunasPara(4))
+    }
+}
+```
+
+Rode:
+
+```bash
+./gradlew :shared:jvmTest --tests "com.fatec.printec.etiqueta.QuebraDeLinhaTest"
+```
+
+Esperado: **falha de compilação** — `Unresolved reference: QuebraDeLinha`. Isso não é um assert vermelho, é o compilador recusando o arquivo: a classe `QuebraDeLinha` ainda não existe, então o Kotlin nem consegue gerar o bytecode do teste. Em Kotlin, a primeira rodada do ciclo teste-primeiro quase sempre falha assim — compilação, não asserção. Só depois que o tipo existe é que faz sentido falar em teste vermelho ou verde.
+
+## Passo 1 — Impressora
+
+```kotlin title="shared/src/commonMain/kotlin/com/fatec/printec/etiqueta/Impressora.kt"
+package com.fatec.printec.etiqueta
+
+/**
+ * Constantes físicas da Lintian LT-8359, apuradas pelo autoteste da impressora.
+ * DOTS_LARGURA é inferência (32 colunas x 12 dots da Font A) até ser confirmada
+ * em papel pela etiqueta de calibração.
+ */
+object Impressora {
+    const val COLUNAS_BASE = 32
+    const val DOTS_LARGURA = 384
+    const val DOTS_POR_MM = 8
+}
+```
+
+`Impressora` é só constantes: `COLUNAS_BASE` (32), `DOTS_LARGURA` (384) e `DOTS_POR_MM` (8, usado a partir da aula 05 para converter milímetros em dots ao avançar o papel). O comentário no topo do arquivo já registra a ressalva da seção anterior — `DOTS_LARGURA` é inferência até a calibração da aula 15.
+
+Rode o teste de novo:
+
+```bash
+./gradlew :shared:jvmTest --tests "com.fatec.printec.etiqueta.QuebraDeLinhaTest"
+```
+
+Ainda falha — `Impressora` existe agora, mas `QuebraDeLinha` continua sem definição.
+
+## Passo 2 — QuebraDeLinha
+
+```kotlin title="shared/src/commonMain/kotlin/com/fatec/printec/etiqueta/QuebraDeLinha.kt"
+package com.fatec.printec.etiqueta
+
+/**
+ * Regra de quebra COMPARTILHADA entre o preview e o renderizador ESC/POS.
+ * Se as duas divergirem, o WYSIWYG vira mentira — por isso mora num lugar só.
+ */
+object QuebraDeLinha {
+
+    fun colunasPara(escala: Int): Int = Impressora.COLUNAS_BASE / escala.coerceAtLeast(1)
+
+    fun quebrar(texto: String, colunas: Int): List<String> {
+        if (texto.isEmpty()) return listOf("")
+
+        val linhas = mutableListOf<String>()
+        var restante = texto
+
+        while (restante.isNotEmpty()) {
+            if (restante.length <= colunas) {
+                linhas += restante
+                break
+            }
+            val janela = restante.substring(0, colunas + 1)
+            val corte = janela.lastIndexOf(' ')
+            if (corte <= 0) {
+                // Palavra maior que a linha: corta na largura em vez de descartar.
+                linhas += restante.substring(0, colunas)
+                restante = restante.substring(colunas)
+            } else {
+                linhas += restante.substring(0, corte)
+                restante = restante.substring(corte + 1)
+            }
+        }
+        return linhas
+    }
+}
+```
+
+`quebrar()` percorre o texto em loop, cortando uma linha por vez, e cada volta cai em um de três casos:
+
+- **Cabe na linha** — `restante.length <= colunas`: o resto inteiro vira a última linha e o loop termina.
+- **Quebra no último espaço da janela** — quando não cabe, pega uma janela de `colunas + 1` caracteres, procura o último espaço nela (`lastIndexOf(' ')`) e corta ali, descartando o espaço.
+- **Palavra maior que a linha** — se a janela não tem espaço nenhum (`corte <= 0`), não há onde quebrar por palavra. Em vez de descartar o excesso, o código corta exatamente na largura (`restante.substring(0, colunas)`) e continua processando o resto na próxima linha — nenhum caractere se perde.
+
+`colunasPara(escala)` é a função que a seção anterior descreveu: `Impressora.COLUNAS_BASE / escala.coerceAtLeast(1)`. O `coerceAtLeast(1)` evita divisão por zero (ou resultado negativo) se algum chamador passar `escala <= 0` — a função se protege sozinha em vez de confiar que quem chama nunca vai errar.
+
+## ⚠️ Atenção
+
+A janela usada para procurar o espaço de corte é `colunas + 1` caracteres — **não** `colunas`. Repare na linha:
+
+```kotlin
+val janela = restante.substring(0, colunas + 1)
+```
+
+O `+ 1` existe para cobrir o caso em que o espaço cai exatamente na fronteira da coluna 32. Se a janela fosse só `colunas` caracteres, um espaço na posição 32 nunca apareceria nela — a busca `lastIndexOf(' ')` não o enxergaria, e a função cairia no caso de "palavra maior que a linha", cortando no meio de uma palavra que na verdade termina exatamente ali. Trocar `colunas + 1` por `colunas` faz o texto perder efetivamente uma coluna de conteúdo útil toda vez que uma quebra cai bem na borda da linha — um bug sutil, porque a maioria dos textos de teste não bate exatamente no limite.
+
+## ▶️ Como Executar
+
+```bash
+./gradlew :shared:jvmTest --tests "com.fatec.printec.etiqueta.QuebraDeLinhaTest"
+```
+
+Esperado: `BUILD SUCCESSFUL`, todos os testes da classe verdes — os oito casos do arquivo de teste, incluindo o de acentos, o de texto vazio e o de escala. Esse é o resultado desta aula: a mesma regra de quebra que o preview vai usar na aula 12 já está testada e funcionando, isolada de qualquer coisa que dependa de tela ou de hardware.
+
+## 💻 Mão na Massa
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+<Tabs>
+  <TabItem value="ex1" label="Exercício 1 — Escreva antes de olhar" default>
+
+### Reescreva `QuebraDeLinha.kt` do zero
+
+Apague o conteúdo de `QuebraDeLinha.kt`, deixando só a declaração do `object`. Sem olhar o gabarito acima, reescreva `colunasPara` e `quebrar` olhando *só* para `QuebraDeLinhaTest.kt` — os nomes dos testes e os `assertEquals` dizem o que a função precisa fazer.
+
+Rode até ficar verde:
+
+```bash
+./gradlew :shared:jvmTest --tests "com.fatec.printec.etiqueta.QuebraDeLinhaTest"
+```
+
+Não precisa bater linha por linha com o original — só precisa passar em todos os oito casos.
+
+  </TabItem>
+  <TabItem value="ex2" label="Exercício 2 — O caso que falta">
+
+### Espaços nas bordas
+
+Acrescente a `QuebraDeLinhaTest.kt` dois casos novos:
+
+1. Um texto que **termina em espaço** (por exemplo, `"bancada A "`, com 32+ caracteres de forma que force quebra).
+2. Um texto com **dois espaços seguidos** no meio.
+
+Rode o teste. Se passar, releia `quebrar()` e explique, em prosa, por que o comportamento atual já cobre esse caso. Se falhar, você encontrou um limite real da implementação atual — descreva-o em uma frase (o que exatamente ela faz de errado com espaços duplicados ou finais).
+
+  </TabItem>
+</Tabs>
