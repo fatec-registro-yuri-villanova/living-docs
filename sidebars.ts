@@ -118,6 +118,11 @@ const sidebars: SidebarsConfig = {
             collapsed: false,
             items: ["ldm/aula-01", "ldm/aula-02", "ldm/aula-03"],
         },
+        {
+            type: "category",
+            label: "Módulo 2 — O documento e os bytes",
+            items: ["ldm/aula-04"],
+        },
     ],
 };
 
