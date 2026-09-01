@@ -1,0 +1,256 @@
+---
+sidebar_position: 6
+title: "Aula 06: O contrato de saída"
+description: "Erros tipados porque falhar é rotina, e por que escrever tudo de uma vez perde o fim da etiqueta."
+---
+
+# Aula 06: O contrato de saída
+
+## 📖 Conceito
+
+Até aqui, tudo o que o projeto construiu vive dentro do próprio Kotlin: `LabelDocument` (aula 04) e os bytes ESC/POS que `EscPosRenderer` produz a partir dele (aula 05) não tocam hardware nenhum. Esta aula é onde isso muda — `PrinterTransport` é o contrato entre esses bytes e a impressora de verdade, e a Lintian LT-8359 dita as duas ideias que moldam esse contrato.
+
+A primeira: **falha de impressora não é exceção rara, é fluxo normal**. A LT-8359 hiberna sozinha em 10 minutos — se o aluno for imprimir de novo depois de uma pausa qualquer, ela pode simplesmente não estar lá. Por isso cada erro é um tipo, e cada tipo vira uma mensagem com uma ação concreta na UI (a aula 13 monta essa tela). O alternativo seria uma `Exception` genérica, que só permitiria dizer "algo deu errado" — sem dizer o quê, nem o que fazer a respeito.
+
+A segunda: a impressora aceita pelo enlace Bluetooth muito mais rápido do que o cabeçote térmico imprime. Quando o buffer de entrada dela lota, ela não segura o remetente — descarta o excedente em silêncio. O sintoma não é um erro: é uma etiqueta sutilmente errada, com comandos comidos no meio e, pior, o fim do documento perdido, que é justamente onde mora o avanço final. Daí os três números de `EscritaEmBlocos`: 256 bytes por bloco, 20 ms de pausa entre blocos, e 600 ms de drenagem no fim — porque quem chama fecha a conexão logo depois de escrever, e fechar em cima de bytes ainda não consumidos pela impressora os joga fora.
+
+Repare na assinatura de `escrever`: ela recebe `pausar` e `escrever` como parâmetros, funções, não como chamadas diretas a um socket ou a uma porta serial. É isso que permite a política de vazão inteira viver em `commonMain` e ser testada com um espião simples, sem depender de nenhuma implementação real de transporte.
+
+## 🗂️ Estrutura de Arquivos
+
+```
+shared/src/
+├── commonMain/kotlin/com/fatec/printec/impressao/
+│   ├── PrinterTransport.kt   ← PrinterTarget, ErroImpressao, PrinterTransport
+│   └── EscritaEmBlocos.kt
+└── commonTest/kotlin/com/fatec/printec/impressao/
+    └── EscritaEmBlocosTest.kt
+```
+
+## 🔴 O Teste
+
+```kotlin title="shared/src/commonTest/kotlin/com/fatec/printec/impressao/EscritaEmBlocosTest.kt"
+package com.fatec.printec.impressao
+
+import kotlinx.coroutines.test.runTest
+import kotlin.test.Test
+import kotlin.test.assertContentEquals
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
+
+/**
+ * A LT-8359 nao segura o remetente quando seu buffer de entrada lota: ela
+ * descarta o excedente em silencio. Como o avanco final sao os ULTIMOS bytes
+ * do payload, era exatamente ele que sumia — junto com as escalas grandes do
+ * fim da etiqueta. Estes testes fixam a politica de vazao que evita isso.
+ */
+class EscritaEmBlocosTest {
+
+    private class Espiao {
+        val blocos = mutableListOf<ByteArray>()
+        val pausas = mutableListOf<Long>()
+        fun escrever(b: ByteArray) { blocos += b }
+        suspend fun pausar(ms: Long) { pausas += ms }
+        fun tudoQueFoiEscrito(): ByteArray =
+            blocos.fold(ByteArray(0)) { acc, b -> acc + b }
+    }
+
+    private fun payload(tamanho: Int) = ByteArray(tamanho) { (it % 251).toByte() }
+
+    @Test
+    fun `payload maior que o bloco sai fatiado, na ordem, sem perder byte`() = runTest {
+        val espiao = Espiao()
+        val original = payload(EscritaEmBlocos.BYTES_POR_BLOCO * 2 + 7)
+
+        EscritaEmBlocos.escrever(original, espiao::pausar, espiao::escrever)
+
+        assertEquals(3, espiao.blocos.size, "esperava 3 blocos, veio ${espiao.blocos.size}")
+        assertContentEquals(original, espiao.tudoQueFoiEscrito())
+    }
+
+    @Test
+    fun `depois do ultimo bloco pausa para a impressora drenar`() = runTest {
+        val espiao = Espiao()
+
+        EscritaEmBlocos.escrever(payload(10), espiao::pausar, espiao::escrever)
+
+        // Um bloco so, e ainda assim uma pausa: e ela que da a impressora tempo
+        // de consumir o buffer ANTES de quem chamou fechar o socket. Sem esta
+        // pausa o avanco final -- os ultimos bytes -- morre no fechamento.
+        assertEquals(1, espiao.blocos.size)
+        assertEquals(listOf(EscritaEmBlocos.DRENAGEM_FINAL_MS), espiao.pausas)
+    }
+
+    @Test
+    fun `pausa entre os blocos, para o buffer nao lotar no meio da etiqueta`() = runTest {
+        val espiao = Espiao()
+
+        EscritaEmBlocos.escrever(
+            payload(EscritaEmBlocos.BYTES_POR_BLOCO * 3),
+            espiao::pausar,
+            espiao::escrever,
+        )
+
+        // Tres blocos => duas pausas no meio, e a drenagem por ultimo. Sem as
+        // pausas do meio a impressora recebe mais rapido do que imprime e
+        // descarta o excedente: foi assim que as escalas 6x-8x se perderam.
+        assertEquals(3, espiao.blocos.size)
+        assertEquals(
+            listOf(
+                EscritaEmBlocos.PAUSA_ENTRE_BLOCOS_MS,
+                EscritaEmBlocos.PAUSA_ENTRE_BLOCOS_MS,
+                EscritaEmBlocos.DRENAGEM_FINAL_MS,
+            ),
+            espiao.pausas,
+        )
+    }
+}
+```
+
+Rode:
+
+```bash
+./gradlew :shared:jvmTest --tests "com.fatec.printec.impressao.EscritaEmBlocosTest"
+```
+
+Esperado: falha de compilação — `Unresolved reference: EscritaEmBlocos`. Nenhum dos dois arquivos deste capítulo existe ainda.
+
+## Passo 1 — PrinterTransport e ErroImpressao
+
+```kotlin title="shared/src/commonMain/kotlin/com/fatec/printec/impressao/PrinterTransport.kt"
+package com.fatec.printec.impressao
+
+data class PrinterTarget(val id: String, val nome: String)
+
+/**
+ * Falha de impressora e fluxo normal neste app, nao excecao rara: a LT-8359
+ * hiberna sozinha em 10 minutos. Por isso os erros sao tipados — cada um vira
+ * uma mensagem com uma acao concreta na UI.
+ */
+sealed class ErroImpressao(mensagem: String) : Exception(mensagem) {
+    data object NaoPareada : ErroImpressao("Impressora não pareada")
+    data object PermissaoNegada : ErroImpressao("Permissão de Bluetooth necessária")
+    data object NenhumaImpressoraSelecionada : ErroImpressao("Escolha uma impressora")
+    data class FalhaAoConectar(val causa: String) : ErroImpressao(
+        "A impressora pode estar desligada — ela hiberna após 10 minutos",
+    )
+    data class FalhaAoEscrever(val causa: String) : ErroImpressao(
+        "A conexão caiu durante a impressão",
+    )
+    /** Falha ANTES de falar com a impressora: renderizar, salvar rascunho. */
+    data class FalhaAoPreparar(val causa: String) : ErroImpressao(
+        "Não foi possível preparar a etiqueta",
+    )
+}
+
+interface PrinterTransport {
+    suspend fun listarDestinos(): List<PrinterTarget>
+
+    /** Abre, escreve e fecha. Nunca mantém a conexão aberta entre trabalhos. */
+    suspend fun imprimir(destino: PrinterTarget, bytes: ByteArray)
+}
+```
+
+`ErroImpressao` é `sealed`, a mesma técnica que a aula 04 usou em `Bloco`: a lista de subtipos é fechada, e um `when` que os trate todos não precisa de `else`. São seis casos, cada um cobrindo um jeito diferente de a impressão falhar — três sem dado nenhum (`NaoPareada`, `PermissaoNegada`, `NenhumaImpressoraSelecionada`, todos `data object` porque não carregam informação além do próprio tipo) e três que guardam a `causa` original (`FalhaAoConectar`, `FalhaAoEscrever`, `FalhaAoPreparar`). A mensagem de cada um já nasce em português, pronta para chegar à UI sem tradução — é a aula 13 que vai pegar esse texto e desenhar a ação ao lado dele.
+
+O comentário sobre `imprimir` merece atenção: **abre, escreve e fecha; nunca mantém a conexão aberta entre trabalhos**. Isso não é um detalhe de implementação incidental — é uma decisão de design que evita que o app fique segurando um socket Bluetooth ocioso enquanto o usuário decide o que imprimir a seguir, e que evita também o cenário em que a impressora hiberna com uma conexão pendurada do lado do app, que então precisa detectar e descartar essa conexão morta antes de tentar de novo. Cada chamada a `imprimir` é uma transação completa e independente.
+
+## Passo 2 — EscritaEmBlocos
+
+```kotlin title="shared/src/commonMain/kotlin/com/fatec/printec/impressao/EscritaEmBlocos.kt"
+package com.fatec.printec.impressao
+
+/**
+ * Politica de vazao para escrever um payload ESC/POS numa impressora que NAO
+ * faz controle de fluxo.
+ *
+ * A LT-8359 aceita pelo enlace Bluetooth muito mais rapido do que o cabecote
+ * termico imprime. Quando o buffer de entrada dela lota, ela nao segura o
+ * remetente: descarta o excedente em silencio. O sintoma nao e um erro, e uma
+ * etiqueta subtilmente errada -- comandos comidos no meio (as escalas grandes
+ * saiam em 1x) e, pior, o fim do documento perdido, que e justamente onde mora
+ * o avanco final.
+ *
+ * Por isso a escrita e fatiada com pausa entre os blocos, e termina com uma
+ * pausa de drenagem: quem chama fecha a conexao logo depois, e fechar em cima
+ * de bytes ainda nao consumidos os joga fora.
+ */
+object EscritaEmBlocos {
+
+    const val BYTES_POR_BLOCO = 256
+
+    const val PAUSA_ENTRE_BLOCOS_MS = 20L
+
+    /**
+     * Cobre o maior avanco configuravel (30 mm a ~50 mm/s na LT-8359) com folga.
+     * E este o numero a aumentar se a cauda da impressao voltar a sumir.
+     */
+    const val DRENAGEM_FINAL_MS = 600L
+
+    suspend fun escrever(
+        bytes: ByteArray,
+        pausar: suspend (Long) -> Unit,
+        escrever: (ByteArray) -> Unit,
+    ) {
+        var inicio = 0
+        while (inicio < bytes.size) {
+            if (inicio > 0) pausar(PAUSA_ENTRE_BLOCOS_MS)
+            val fim = minOf(inicio + BYTES_POR_BLOCO, bytes.size)
+            escrever(bytes.copyOfRange(inicio, fim))
+            inicio = fim
+        }
+        pausar(DRENAGEM_FINAL_MS)
+    }
+}
+```
+
+O laço fatia `bytes` em pedaços de até `BYTES_POR_BLOCO`, chamando `escrever` uma vez por pedaço. A pausa de `PAUSA_ENTRE_BLOCOS_MS` só acontece **entre** blocos — `if (inicio > 0)` pula a pausa antes do primeiro, porque não há nada anterior para a impressora drenar ainda. Depois que o laço termina, uma última `pausar(DRENAGEM_FINAL_MS)` acontece sempre, mesmo quando o payload inteiro coube num bloco só: é essa pausa final, não as do meio, que garante que os últimos bytes — inclusive o avanço final do documento — cheguem à impressora antes de quem chamou fechar a conexão.
+
+Note que nem `pausar` nem `escrever` sabem nada de Bluetooth, socket ou porta serial — são só funções. É essa indireção que deixa a política de vazão inteira em `commonMain`, testável com o `Espiao` do teste acima, sem que este arquivo dependa de nenhuma implementação real de transporte.
+
+## ⚠️ Atenção
+
+`DRENAGEM_FINAL_MS = 600` não é um número arredondado por conveniência: ele cobre o maior avanço configurável da LT-8359 — 30 mm a uma velocidade de cabeçote de cerca de 50 mm/s — com folga. É este o número a aumentar se, um dia, a cauda da impressão voltar a sumir. E não é preciso vasculhar um changelog para descobrir isso: o comentário ao lado da constante, no próprio código, diz exatamente isso — porque é para quem for depurar esse sintoma daqui a um ano, sem contexto nenhum além do arquivo aberto na tela.
+
+## ▶️ Como Executar
+
+```bash
+./gradlew :shared:jvmTest --tests "com.fatec.printec.impressao.EscritaEmBlocosTest"
+```
+
+Esperado: `BUILD SUCCESSFUL`, os três testes verdes — o payload fatiado sem perder byte, a pausa de drenagem mesmo com um bloco só, e as duas pausas entre blocos mais a drenagem final quando o payload ocupa exatamente três blocos.
+
+Repare no que esta aula **não** fez: nenhum dos dois arquivos depende de nada construído até aqui, e nenhum dos dois fala com um socket, uma porta serial ou qualquer API de Bluetooth de verdade. `PrinterTransport` é só o contrato — a definição de erro e a política de vazão ficam prontas antes de existir uma única implementação capaz de satisfazê-las. Isso é proposital: são as aulas 07 (Android, via Bluetooth) e 08 (Desktop) que escrevem essas implementações, a aula 11 quem captura os `ErroImpressao` no `ViewModel`, e a aula 13 quem transforma cada tipo numa mensagem com ação na tela.
+
+## 💻 Mão na Massa
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+<Tabs>
+  <TabItem value="ex1" label="Exercício 1 — Conte as pausas" default>
+
+### Quantas pausas, e de quanto tempo, para 700 bytes?
+
+Escreva um teste que chame `EscritaEmBlocos.escrever` passando um payload de 700 bytes, acumulando numa lista as durações recebidas por `pausar` (o mesmo padrão do `Espiao` do teste desta aula).
+
+Antes de rodar, calcule à mão: com `BYTES_POR_BLOCO = 256`, em quantos blocos 700 bytes se dividem? Verifique que a lista de pausas capturada é `[20, 20, 600]`.
+
+Depois, explique em uma frase por que a primeira pausa não acontece antes do primeiro bloco — releia o `if (inicio > 0)` do laço de `escrever`.
+
+  </TabItem>
+  <TabItem value="ex2" label="Exercício 2 — O erro certo">
+
+### Qual `ErroImpressao` para cada situação?
+
+Para cada situação abaixo, diga qual subtipo de `ErroImpressao` o app deve produzir, e justifique em uma linha:
+
+1. O usuário nunca escolheu uma impressora nas configurações.
+2. A impressora escolhida está desligada (ou hibernou).
+3. A permissão de Bluetooth foi negada no Android.
+4. Falha ao gravar o rascunho da etiqueta no banco, antes de sequer tentar imprimir.
+
+Releia os comentários de `PrinterTransport.kt` — em especial o de `FalhaAoPreparar`, que distingue falhas antes de falar com a impressora das falhas durante a conversa com ela — antes de responder.
+
+  </TabItem>
+</Tabs>
