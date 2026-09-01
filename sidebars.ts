@@ -123,6 +123,11 @@ const sidebars: SidebarsConfig = {
             label: "Módulo 2 — O documento e os bytes",
             items: ["ldm/aula-04", "ldm/aula-05", "ldm/aula-06"],
         },
+        {
+            type: "category",
+            label: "Módulo 3 — Bluetooth e Impressora",
+            items: ["ldm/aula-07"],
+        },
     ],
 };
 

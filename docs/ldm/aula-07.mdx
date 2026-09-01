@@ -1,0 +1,226 @@
+---
+sidebar_position: 7
+title: "Aula 07: Bluetooth SPP no Android"
+description: "RFCOMM sobre dispositivos pareados, e as três armadilhas que derrubam o app."
+---
+
+# Aula 07: Bluetooth SPP no Android
+
+## 📖 Conceito
+
+Esta aula abre o **Módulo 3 — Bluetooth e Impressora**, o módulo que dá nome à trilha. As aulas 04 a 06 construíram tudo em Kotlin puro: um documento, os bytes ESC/POS que o representam, e o contrato `PrinterTransport` que promete entregar esses bytes a uma impressora de verdade. Esta aula escreve a primeira implementação desse contrato — a do Android, sobre Bluetooth clássico.
+
+Bluetooth clássico tem um perfil chamado **SPP — Serial Port Profile**: ele expõe um socket RFCOMM que se comporta como um fluxo de bytes, exatamente como uma porta serial. Não há comandos especiais nem protocolo próprio para descobrir — depois de conectado, escrever no socket é escrever na impressora. O UUID que identifica esse perfil, `00001101-0000-1000-8000-00805F9B34FB`, não é uma escolha do app: é o identificador padrão do SPP, o mesmo em qualquer dispositivo do mundo que fale esse perfil.
+
+Repare no que esta classe **não** faz: ela não descobre dispositivos, e não pareia nada. Isso é proposital, por dois motivos que o próprio código registra em comentário:
+
+1. Descoberta de dispositivos na API 28 exigiria permissão de localização em runtime — pedir "localização" para imprimir uma etiqueta é uma permissão que não faz sentido nenhum aos olhos de quem usa o app.
+2. A LT-8359 hiberna sozinha em 10 minutos. Uma impressora dormindo não aparece numa varredura Bluetooth — mas continua aparecendo na lista de dispositivos já pareados, porque o pareamento é um estado salvo pelo sistema operacional, não uma resposta em tempo real do rádio.
+
+Por isso quem pareia é o sistema operacional, uma vez, nas configurações do aparelho — o app só lê essa lista pronta.
+
+O modelo de permissão muda de acordo com a versão do Android. Até a API 30, `BLUETOOTH` e `BLUETOOTH_ADMIN` são permissões concedidas na instalação — o usuário nunca vê um diálogo, o Manifest já basta. Da API 31 (`Build.VERSION_CODES.S`) em diante, o acesso a dispositivos pareados passou a exigir `BLUETOOTH_CONNECT`, uma permissão de runtime — o app precisa pedi-la explicitamente, e o usuário pode negar. O Manifest com as duas declarações e o código que pede `BLUETOOTH_CONNECT` em tela ficam para a aula 14, que também é quem instancia `AndroidBluetoothTransport` dentro de `PrintecApp`. Aqui a aula trata só da classe: como ela reage a cada versão, sem mostrar o XML por trás.
+
+## 🗂️ Estrutura de Arquivos
+
+```
+shared/src/
+├── androidMain/kotlin/com/fatec/printec/impressao/
+│   └── AndroidBluetoothTransport.kt
+└── androidHostTest/kotlin/com/fatec/printec/impressao/
+    └── AndroidBluetoothTransportTest.kt
+```
+
+`androidHostTest` é um source set novo nesta trilha: ele roda os testes na JVM da própria máquina, sem precisar de aparelho nem de emulador — rápido, do mesmo jeito que `commonTest` e `jvmCommonTest` das aulas anteriores. O outro lado, `androidDeviceTest`, existe para o que só faz sentido rodando dentro de um Android de verdade (ou um emulador que simule um); este projeto não usa esse source set até a aula 14, onde o app é instalado e o papel finalmente sai da impressora.
+
+## 🔴 O Teste
+
+```kotlin title="shared/src/androidHostTest/kotlin/com/fatec/printec/impressao/AndroidBluetoothTransportTest.kt"
+package com.fatec.printec.impressao
+
+import kotlin.test.Test
+import kotlin.test.assertEquals
+
+class AndroidBluetoothTransportTest {
+
+    @Test
+    fun `o UUID de porta serial e o padrao SPP`() {
+        assertEquals(
+            "00001101-0000-1000-8000-00805F9B34FB",
+            AndroidBluetoothTransport.UUID_SPP.toString().uppercase(),
+        )
+    }
+}
+```
+
+Rode:
+
+```bash
+./gradlew :shared:testAndroidHostTest
+```
+
+**Atenção ao comando** — é diferente de todas as aulas anteriores. Do módulo 1 ao 2, o comando sempre foi `./gradlew :shared:jvmTest`, porque tudo vivia em `commonTest` ou `jvmCommonTest`. Este teste vive em `androidHostTest`, um source set próprio do target Android; `:shared:jvmTest` simplesmente não o executa — ele não falha, não aparece nada de errado, só não roda, o que é mais confuso do que um erro. Quem digitar o comando velho por hábito vai ver "tudo passou" sem perceber que o teste novo nunca foi.
+
+Esperado com o comando certo: falha de compilação — `Unresolved reference: AndroidBluetoothTransport`. A classe ainda não existe.
+
+## Passo 1 — AndroidBluetoothTransport
+
+```kotlin title="shared/src/androidMain/kotlin/com/fatec/printec/impressao/AndroidBluetoothTransport.kt"
+package com.fatec.printec.impressao
+
+import android.Manifest
+import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothManager
+import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+import java.util.UUID
+
+/**
+ * Bluetooth clássico (SPP) sobre dispositivos JA PAREADOS.
+ *
+ * Nao ha descoberta nem pareamento no app, de proposito: descoberta na API 28
+ * exigiria permissao de localizacao em runtime, e a impressora — que hiberna em
+ * 10 minutos — nao aparece na varredura quando esta dormindo. A lista de
+ * pareados a mostra mesmo desligada.
+ */
+class AndroidBluetoothTransport(private val context: Context) : PrinterTransport {
+
+    private val adaptador: BluetoothAdapter?
+        get() = (context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager)?.adapter
+
+    override suspend fun listarDestinos(): List<PrinterTarget> = withContext(Dispatchers.IO) {
+        exigirPermissao()
+        val adaptador = adaptador ?: return@withContext emptyList()
+        if (!adaptador.isEnabled) return@withContext emptyList()
+        dispositivosPareados(adaptador).map { PrinterTarget(it.address, it.name ?: it.address) }
+    }
+
+    override suspend fun imprimir(destino: PrinterTarget, bytes: ByteArray) =
+        withContext(Dispatchers.IO) {
+            exigirPermissao()
+            val adaptador = adaptador ?: throw ErroImpressao.FalhaAoConectar("Bluetooth indisponível")
+            // Bluetooth desligado e um diagnostico diferente de "impressora nao
+            // pareada": pareamento sobrevive ao desligar o radio, entao sem esta
+            // checagem o usuario veria "nao pareada" com a impressora pareada
+            // havia meses, so porque o Bluetooth do aparelho esta desligado.
+            if (!adaptador.isEnabled) throw ErroImpressao.FalhaAoConectar("Bluetooth desligado")
+            val dispositivo = dispositivosPareados(adaptador)
+                .firstOrNull { it.address == destino.id }
+                ?: throw ErroImpressao.NaoPareada
+
+            val socket = try {
+                dispositivo.createRfcommSocketToServiceRecord(UUID_SPP)
+            } catch (e: Exception) {
+                throw ErroImpressao.FalhaAoConectar(e.message.orEmpty())
+            }
+
+            try {
+                socket.connect()
+            } catch (e: Exception) {
+                runCatching { socket.close() }
+                throw ErroImpressao.FalhaAoConectar(e.message.orEmpty())
+            }
+
+            try {
+                socket.outputStream.use { saida ->
+                    // Nao basta um write() unico: a impressora nao faz controle
+                    // de fluxo e descarta o que nao couber no buffer dela.
+                    EscritaEmBlocos.escrever(bytes, ::delay) { bloco ->
+                        saida.write(bloco)
+                        saida.flush()
+                    }
+                }
+            } catch (e: Exception) {
+                throw ErroImpressao.FalhaAoEscrever(e.message.orEmpty())
+            } finally {
+                runCatching { socket.close() }
+            }
+        }
+
+    // Isolado porque bondedDevices pode lancar SecurityException em alguns
+    // fabricantes mesmo com a permissao concedida (checagem de permissao e
+    // acesso de fato nao sao atomicos) -- sem este try/catch, essa excecao
+    // nao tipada derrubava o app.
+    private fun dispositivosPareados(adaptador: BluetoothAdapter) = try {
+        adaptador.bondedDevices.orEmpty()
+    } catch (e: SecurityException) {
+        throw ErroImpressao.FalhaAoConectar(e.message.orEmpty())
+    }
+
+    private fun exigirPermissao() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return  // API 28: permissao de instalacao
+        // Context.checkSelfPermission existe desde a API 23 e este ramo so roda
+        // na API 31+, entao nao ha motivo para depender do androidx-core so por
+        // causa do ContextCompat.
+        val concedida = context.checkSelfPermission(
+            Manifest.permission.BLUETOOTH_CONNECT,
+        ) == PackageManager.PERMISSION_GRANTED
+        if (!concedida) throw ErroImpressao.PermissaoNegada
+    }
+
+    companion object {
+        val UUID_SPP: UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
+    }
+}
+```
+
+`AndroidBluetoothTransport` implementa `PrinterTransport` (aula 06) sobre o `Context` do Android, recebido no construtor. `adaptador` é uma propriedade calculada, não um campo guardado: cada leitura pede o serviço de sistema de novo, porque o adaptador Bluetooth pode mudar de estado (ou até desaparecer, em aparelhos sem rádio) entre uma chamada e outra.
+
+Siga o fluxo de `imprimir`, que é onde as decisões desta aula se encontram:
+
+1. **`exigirPermissao()`** — primeira linha, antes de tocar em qualquer API de Bluetooth. Lança `ErroImpressao.PermissaoNegada` (aula 06) se a permissão de runtime faltar.
+2. **`adaptador`** — se `null`, o aparelho não tem Bluetooth; `ErroImpressao.FalhaAoConectar("Bluetooth indisponível")`.
+3. **`adaptador.isEnabled`** — verifica se o rádio está ligado, distinto de a impressora estar pareada (a primeira armadilha, abaixo).
+4. **Achar o pareado** — `dispositivosPareados(adaptador).firstOrNull { it.address == destino.id }`; se não achar, `ErroImpressao.NaoPareada`.
+5. **Criar o socket** — `createRfcommSocketToServiceRecord(UUID_SPP)`, dentro de um `try` próprio, porque a própria criação do socket pode falhar.
+6. **`socket.connect()`** — bloqueante, também isolado em seu próprio `try`, porque uma falha aqui já produziu um socket que precisa ser fechado antes de propagar o erro.
+7. **Escrever em blocos** — `EscritaEmBlocos.escrever` (aula 06) recebe `::delay` como a função de pausar e uma lambda que escreve e dá `flush()` no `OutputStream` do socket como a função de escrever. A mesma política de vazão da aula 06, agora com um socket de verdade do outro lado.
+8. **Fechar sempre** — o `finally` externo fecha o socket com `runCatching { socket.close() }` depois de escrever, com sucesso ou não.
+
+## ⚠️ Atenção
+
+Três armadilhas reais, cada uma com o comentário que ficou no código como cicatriz de quem já caiu nela:
+
+1. **Bluetooth desligado não é a mesma coisa que impressora não pareada.** O pareamento é um estado salvo pelo sistema operacional; ele sobrevive a desligar o rádio. Sem a checagem de `adaptador.isEnabled` antes de procurar o dispositivo, o usuário veria "impressora não pareada" com uma impressora pareada havia meses — só porque esqueceu de ligar o Bluetooth do celular.
+2. **`bondedDevices` pode lançar `SecurityException` mesmo com a permissão concedida**, em alguns fabricantes — checar a permissão e acessar de fato a lista não são operações atômicas. É por isso que `dispositivosPareados` isola o acesso num `try/catch` próprio, convertendo a exceção não tipada em `ErroImpressao.FalhaAoConectar`. Sem esse `catch`, essa exceção pulava por cima de tudo e derrubava o app.
+3. **Fechar o socket no `finally`, sempre — inclusive quando `connect()` falha.** Repare que há dois pontos de fechamento: um `runCatching { socket.close() }` logo depois de `connect()` falhar (o socket foi criado, mas nunca chegou a conectar) e outro no `finally` que envolve a escrita. Um socket vazado — nunca fechado depois de uma falha — pode impedir a próxima tentativa de conexão de sequer começar.
+
+## ▶️ Como Executar
+
+```bash
+./gradlew :shared:testAndroidHostTest
+```
+
+Esperado: `BUILD SUCCESSFUL`. Vale deixar explícito o que esse teste **não** faz: ele não fala com nenhum hardware, não abre socket nenhum, não precisa de Bluetooth ligado nem de aparelho pareado. Ele só confere que `UUID_SPP` é, byte a byte, o UUID padrão do perfil SPP — uma decisão da classe, não um comportamento de runtime. Papel só sai da impressora na aula 14.
+
+## 💻 Mão na Massa
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+<Tabs>
+  <TabItem value="ex1" label="Exercício 1 — O UUID" default>
+
+### Por que `00001101-…` é "o UUID do SPP"?
+
+Pesquise por que `00001101-0000-1000-8000-00805F9B34FB` é conhecido como o UUID do Serial Port Profile — ele faz parte de uma faixa reservada pela especificação Bluetooth para perfis padronizados (os "Bluetooth Base UUIDs").
+
+Escreva duas linhas explicando o que aconteceria se `AndroidBluetoothTransport` usasse outro UUID qualquer, inventado, no lugar desse — o socket ainda conectaria? Pense no que `createRfcommSocketToServiceRecord` faz do outro lado, na impressora.
+
+  </TabItem>
+  <TabItem value="ex2" label="Exercício 2 — A permissão que falta">
+
+### O que o teste atual protege — e o que ele não protege
+
+Remova temporariamente a chamada a `exigirPermissao()` de dentro de `listarDestinos()` e rode `./gradlew :shared:testAndroidHostTest`.
+
+Nada quebra — e isso é o ponto do exercício, não uma falha sua. `AndroidBluetoothTransportTest.kt` hoje tem um único teste, e ele confere apenas o valor de `UUID_SPP`; nenhum teste neste arquivo chama `listarDestinos()` ou `imprimir()`, então nenhum exercita `exigirPermissao()`. Restaure a linha antes de continuar.
+
+Em duas linhas, diga: por que testar `listarDestinos()` de verdade exigiria mais do que este arquivo tem hoje (pense no que a classe precisa para existir — um `Context` de Android) e o que isso significa sobre a cobertura atual da checagem de permissão no primeiro uso do app.
+
+  </TabItem>
+</Tabs>
