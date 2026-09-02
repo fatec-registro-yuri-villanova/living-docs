@@ -131,7 +131,7 @@ const sidebars: SidebarsConfig = {
         {
             type: "category",
             label: "Módulo 4 — Estado e persistência",
-            items: ["ldm/aula-09"],
+            items: ["ldm/aula-09", "ldm/aula-10"],
         },
     ],
 };
