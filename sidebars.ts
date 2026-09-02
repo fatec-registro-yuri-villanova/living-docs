@@ -128,6 +128,11 @@ const sidebars: SidebarsConfig = {
             label: "Módulo 3 — Bluetooth e Impressora",
             items: ["ldm/aula-07", "ldm/aula-08"],
         },
+        {
+            type: "category",
+            label: "Módulo 4 — Estado e persistência",
+            items: ["ldm/aula-09"],
+        },
     ],
 };
 

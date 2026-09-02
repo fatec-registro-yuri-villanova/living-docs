@@ -1,0 +1,428 @@
+---
+sidebar_position: 9
+title: "Aula 09: Banco nas duas plataformas"
+description: "SQLDelight, o schema da etiqueta e a única vez que este projeto usa expect/actual."
+---
+
+# Aula 09: Banco nas duas plataformas
+
+## 📖 Conceito
+
+Esta aula abre o **Módulo 4 — Estado e persistência**. Até aqui a trilha construiu um documento (aula 04), os bytes que o representam (aula 05) e dois jeitos de entregar esses bytes a uma impressora (aulas 07 e 08). Nada disso sobrevive ao fechar o app — não há onde guardar uma etiqueta feita, nem a impressora escolhida da última vez. É isso que este módulo resolve, e o banco começa aqui.
+
+SQLDelight parte do SQL, não do Kotlin: você escreve o schema e as queries num arquivo `.sq`, e a ferramenta gera classes Kotlin tipadas a partir disso — uma função por query nomeada, um tipo de linha por tabela. O que muda de uma plataforma para outra **não é o SQL** — o schema e as queries são um arquivo só, compartilhado. O que muda é o **driver**: a peça que abre a conexão de verdade com o SQLite de cada sistema operacional.
+
+Apresentando o schema em `Printec.sq`: a tabela `etiqueta` guarda uma etiqueta salva, e a coluna `eh_rascunho` é o que faz o rascunho em andamento ser apenas uma linha marcada nessa mesma tabela, em vez de precisar de uma tabela própria — salvar e recarregar o rascunho usa exatamente as mesmas queries que salvar e recarregar uma etiqueta de verdade. A tabela `bloco` guarda os blocos de uma etiqueta, com `ON DELETE CASCADE` em `etiqueta_id` — apagar a etiqueta apaga os blocos junto, sem precisar de uma segunda query — e um índice em `(etiqueta_id, ordem)`, porque toda leitura de blocos é "os blocos desta etiqueta, na ordem". A tabela `configuracao` guarda uma linha só — a impressora escolhida e o perfil de mídia — e o `CHECK (id = 0)` no lugar da chave primária é o que garante isso no próprio schema: não há como inserir uma segunda linha, o banco recusa.
+
+Agora a decisão que este arquivo documenta no próprio comentário, e que contraria a expectativa depois da aula 01: **`FabricaDeDriver` é uma interface, não um par `expect`/`actual`.** A aula 01 mostrou o scaffold do KMP inteiro construído em cima de `expect`/`actual` — `Platform.kt` declarava o contrato, cada plataforma respondia o seu. O motivo de o driver não seguir o mesmo caminho está escrito na classe: `expect`/`actual` exige a **mesma assinatura** nas duas plataformas, e aqui as assinaturas não têm como ser iguais — o Android precisa de um `Context` no construtor para abrir o banco, o Desktop precisa de um caminho de arquivo. Uma interface não tem esse problema: cada app monta a implementação que faz sentido para si (`DriverAndroid(context)`, `DriverDesktop(diretorio)`) e injeta onde for preciso, sem que `commonMain` precise saber qual construtor cada uma usa.
+
+Isso não quer dizer que este projeto abandonou `expect`/`actual` — quer dizer que ele usa a ferramenta certa para cada problema. Existe um único par `expect`/`actual` de verdade neste app (os três do scaffold da aula 01 são exemplo, não produção), e ele aparece na aula 10, ao lado do arquivo que declara o `expect`: ali as assinaturas nas duas plataformas **são** idênticas, e é exatamente por isso que `expect`/`actual` é a escolha certa lá — o oposto do que acontece aqui.
+
+## 🗂️ Estrutura de Arquivos
+
+```
+shared/src/
+├── commonMain/
+│   ├── sqldelight/com/fatec/printec/db/
+│   │   └── Printec.sq
+│   └── kotlin/com/fatec/printec/dados/
+│       ├── LabelStore.kt
+│       └── FabricaDeDriver.kt
+├── androidMain/kotlin/com/fatec/printec/dados/
+│   └── DriverAndroid.kt
+├── jvmMain/kotlin/com/fatec/printec/dados/
+│   └── DriverDesktop.kt
+└── jvmTest/kotlin/com/fatec/printec/dados/
+    └── DriverDesktopTest.kt
+```
+
+## 🔴 O Teste
+
+```kotlin title="shared/src/jvmTest/kotlin/com/fatec/printec/dados/DriverDesktopTest.kt"
+package com.fatec.printec.dados
+
+import app.cash.sqldelight.db.QueryResult
+import com.fatec.printec.db.PrintecDatabase
+import com.fatec.printec.etiqueta.Bloco
+import com.fatec.printec.etiqueta.LabelDocument
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.test.runTest
+import kotlin.io.path.createTempDirectory
+import kotlin.test.Test
+import kotlin.test.assertEquals
+
+class DriverDesktopTest {
+
+    @Test
+    fun `banco pre-existente com user_version 0 abre sem recriar as tabelas`() = runTest {
+        // Todo printec.db criado antes desta classe gravar user_version tem
+        // versao 0 E tabelas ja populadas -- e exatamente o cenario que
+        // quebrava com "table etiqueta already exists" (Printec.sq nao usa
+        // IF NOT EXISTS). Este teste simula esse arquivo: cria um banco de
+        // verdade, zera user_version na mao (imitando o arquivo antigo que
+        // nunca chegou a gravar a pragma) e reabre pelo mesmo DriverDesktop.
+        val diretorio = createTempDirectory("printec-migracao-").toFile()
+        try {
+            val documento = LabelDocument(blocos = listOf(Bloco.Titulo("Bancada A")), copias = 1)
+
+            val driver1 = DriverDesktop(diretorio).criar()
+            val id = LabelStoreSqlDelight(driver1).salvarEtiqueta("Modelo 1", documento)
+            driver1.execute(null, "PRAGMA user_version = 0;", 0)
+            driver1.close()
+
+            // A abertura em si nao pode lancar -- antes da correcao, isto
+            // jogava SQLiteException "table etiqueta already exists".
+            val driver2 = DriverDesktop(diretorio).criar()
+            try {
+                val versao = driver2.executeQuery(
+                    identifier = null,
+                    sql = "PRAGMA user_version;",
+                    mapper = { cursor ->
+                        QueryResult.Value(if (cursor.next().value) cursor.getLong(0) ?: 0L else 0L)
+                    },
+                    parameters = 0,
+                ).value
+                assertEquals(PrintecDatabase.Schema.version, versao)
+
+                // E as linhas gravadas antes de "reabrir" tem que ter sobrevivido --
+                // um create() bem sucedido contra tabelas vazias novas passaria
+                // aqui igual, entao so a versao carimbada nao provaria nada.
+                val linha = PrintecDatabase(driver2).printecQueries
+                    .blocosDe(id).executeAsList().single()
+                assertEquals("Bancada A", linha.conteudo)
+
+                val salva = LabelStoreSqlDelight(driver2).etiquetasSalvas().first().single()
+                assertEquals(id, salva.id)
+                assertEquals(documento, salva.documento)
+            } finally {
+                driver2.close()
+            }
+        } finally {
+            diretorio.deleteRecursively()
+        }
+    }
+}
+```
+
+Vale ler o comentário de topo antes de rodar qualquer coisa: o teste não confere só que reabrir o banco não estoura. Ele salva uma linha antes de zerar `user_version`, reabre, e confere que a linha **continua lá** — um `create()` bem-sucedido contra tabelas vazias recém-criadas passaria pela primeira checagem igualzinho, então só a versão carimbada de volta não provaria que a migração pegou o caminho certo. É a leitura de `blocosDe(id)` e de `etiquetasSalvas()` depois da reabertura que prova que as tabelas antigas foram preservadas, não recriadas por cima.
+
+Repare também que este teste chama `LabelStoreSqlDelight`, uma classe que ainda não existe — ela é o assunto da aula 10, a implementação de `LabelStore` sobre as queries geradas por `Printec.sq`. Isso é proposital: `DriverDesktopTest` é o teste que prova a migração fim a fim, e prová-la fim a fim exige gravar e reler dados de verdade, não só abrir e fechar um driver vazio. Rode agora:
+
+```bash
+./gradlew :shared:jvmTest --tests "com.fatec.printec.dados.DriverDesktopTest"
+```
+
+Esperado: falha de compilação. Nenhum arquivo desta aula existe ainda — nem `Printec.sq`, nem `LabelStore`, nem `FabricaDeDriver`, nem `DriverDesktop`.
+
+## Passo 1 — O schema
+
+```sql title="shared/src/commonMain/sqldelight/com/fatec/printec/db/Printec.sq"
+CREATE TABLE etiqueta (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  nome          TEXT,
+  eh_rascunho   INTEGER NOT NULL DEFAULT 0,
+  copias        INTEGER NOT NULL DEFAULT 1,
+  criada_em     INTEGER NOT NULL,
+  atualizada_em INTEGER NOT NULL
+);
+
+CREATE TABLE bloco (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  etiqueta_id INTEGER NOT NULL REFERENCES etiqueta(id) ON DELETE CASCADE,
+  ordem       INTEGER NOT NULL,
+  tipo        TEXT    NOT NULL,
+  conteudo    TEXT,
+  escala      INTEGER NOT NULL DEFAULT 1,
+  alinhamento TEXT    NOT NULL DEFAULT 'ESQUERDA',
+  negrito     INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX idx_bloco_etiqueta ON bloco(etiqueta_id, ordem);
+
+CREATE TABLE configuracao (
+  id              INTEGER PRIMARY KEY CHECK (id = 0),
+  impressora_id   TEXT,
+  impressora_nome TEXT,
+  perfil_midia    TEXT    NOT NULL DEFAULT 'CONTINUO',
+  avanco_final_mm INTEGER NOT NULL DEFAULT 3
+);
+
+garantirConfiguracao:
+INSERT OR IGNORE INTO configuracao (id) VALUES (0);
+
+lerConfiguracao:
+SELECT * FROM configuracao WHERE id = 0;
+
+atualizarConfiguracao:
+UPDATE configuracao
+SET impressora_id = ?, impressora_nome = ?, perfil_midia = ?, avanco_final_mm = ?
+WHERE id = 0;
+
+inserirEtiqueta:
+INSERT INTO etiqueta (nome, eh_rascunho, copias, criada_em, atualizada_em)
+VALUES (?, ?, ?, ?, ?);
+
+ultimoId:
+SELECT last_insert_rowid();
+
+inserirBloco:
+INSERT INTO bloco (etiqueta_id, ordem, tipo, conteudo, escala, alinhamento, negrito)
+VALUES (?, ?, ?, ?, ?, ?, ?);
+
+listarEtiquetas:
+SELECT * FROM etiqueta WHERE eh_rascunho = 0 ORDER BY atualizada_em DESC;
+
+lerRascunho:
+SELECT * FROM etiqueta WHERE eh_rascunho = 1 LIMIT 1;
+
+blocosDe:
+SELECT * FROM bloco WHERE etiqueta_id = ? ORDER BY ordem;
+
+excluirEtiqueta:
+DELETE FROM etiqueta WHERE id = ?;
+
+excluirRascunhos:
+DELETE FROM etiqueta WHERE eh_rascunho = 1;
+
+contarBlocos:
+SELECT count(*) FROM bloco;
+```
+
+Cada bloco de SQL nomeado (`garantirConfiguracao:`, `lerConfiguracao:`, ...) vira uma função Kotlin com o mesmo nome na classe gerada `PrintecDatabase(driver).printecQueries` — `lerConfiguracao()` devolve o tipo de linha gerado a partir do `SELECT * FROM configuracao`, com uma propriedade por coluna. Ninguém deste projeto escreve essas classes à mão; SQLDelight as gera a partir deste arquivo a cada build.
+
+Duas queries merecem atenção antes de seguir. `inserirEtiqueta` grava a linha da etiqueta, e `ultimoId` lê `last_insert_rowid()` logo em seguida — é assim que o código (aula 10) descobre o `id` recém-gerado para inserir os blocos vinculados a ele, na mesma transação. E `garantirConfiguracao` usa `INSERT OR IGNORE`: como só existe uma linha de configuração possível (o `CHECK (id = 0)` do schema garante isso), inserir de novo quando ela já existe não deve ser um erro — deve simplesmente não fazer nada, e é isso que `OR IGNORE` faz.
+
+## Passo 2 — LabelStore e FabricaDeDriver
+
+```kotlin title="shared/src/commonMain/kotlin/com/fatec/printec/dados/LabelStore.kt"
+package com.fatec.printec.dados
+
+import com.fatec.printec.etiqueta.LabelDocument
+import kotlinx.coroutines.flow.Flow
+
+enum class PerfilMidia { CONTINUO, GAP }
+
+data class Configuracoes(
+    val impressoraId: String? = null,
+    val impressoraNome: String? = null,
+    val perfilMidia: PerfilMidia = PerfilMidia.CONTINUO,
+    val avancoFinalMm: Int = 3,
+)
+
+data class EtiquetaSalva(
+    val id: Long,
+    val nome: String,
+    val documento: LabelDocument,
+)
+
+interface LabelStore {
+    fun configuracoes(): Flow<Configuracoes>
+    fun etiquetasSalvas(): Flow<List<EtiquetaSalva>>
+    suspend fun salvarConfiguracoes(configuracoes: Configuracoes)
+    suspend fun salvarEtiqueta(nome: String, documento: LabelDocument): Long
+    suspend fun excluirEtiqueta(id: Long)
+    suspend fun salvarRascunho(documento: LabelDocument)
+    suspend fun carregarRascunho(): LabelDocument?
+}
+```
+
+```kotlin title="shared/src/commonMain/kotlin/com/fatec/printec/dados/FabricaDeDriver.kt"
+package com.fatec.printec.dados
+
+import app.cash.sqldelight.db.SqlDriver
+
+/**
+ * Interface em vez de expect/actual: o Android precisa de Context no construtor
+ * e o Desktop de um caminho de arquivo. Cada app monta o seu e injeta.
+ */
+interface FabricaDeDriver {
+    fun criar(): SqlDriver
+}
+```
+
+`LabelStore` é a interface que o resto do app vai enxergar — `EtiquetaViewModel` (aula 11) fala com ela, não com SQLDelight diretamente. `LabelDocument` (aula 04) é o tipo que atravessa a fronteira: `EtiquetaSalva.documento` e o retorno de `carregarRascunho()` são o mesmo documento que o editor de etiquetas manipula, não uma representação própria do banco. `FabricaDeDriver` é o contrato mínimo que qualquer plataforma precisa cumprir para entregar um `SqlDriver` pronto — o comentário no arquivo já resume a decisão da seção anterior.
+
+## Passo 3 — Os drivers
+
+```kotlin title="shared/src/androidMain/kotlin/com/fatec/printec/dados/DriverAndroid.kt"
+package com.fatec.printec.dados
+
+import android.content.Context
+import androidx.sqlite.db.SupportSQLiteDatabase
+import app.cash.sqldelight.db.SqlDriver
+import app.cash.sqldelight.driver.android.AndroidSqliteDriver
+import com.fatec.printec.db.PrintecDatabase
+
+class DriverAndroid(private val context: Context) : FabricaDeDriver {
+    // O SQLite ignora ON DELETE CASCADE sem esta pragma, e ela e por conexao.
+    // `.also { it.execute(...) }` so alcancaria a conexao de abertura; o
+    // AndroidSqliteDriver reabre conexoes por baixo, entao a via suportada e o
+    // callback onConfigure, que roda a cada conexao nova.
+    override fun criar(): SqlDriver = AndroidSqliteDriver(
+        schema = PrintecDatabase.Schema,
+        context = context,
+        name = "printec.db",
+        callback = object : AndroidSqliteDriver.Callback(PrintecDatabase.Schema) {
+            override fun onConfigure(db: SupportSQLiteDatabase) {
+                super.onConfigure(db)
+                db.setForeignKeyConstraintsEnabled(true)
+            }
+        },
+    )
+}
+```
+
+```kotlin title="shared/src/jvmMain/kotlin/com/fatec/printec/dados/DriverDesktop.kt"
+package com.fatec.printec.dados
+
+import app.cash.sqldelight.db.QueryResult
+import app.cash.sqldelight.db.SqlDriver
+import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
+import com.fatec.printec.db.PrintecDatabase
+import java.io.File
+
+class DriverDesktop(private val diretorio: File = diretorioPadrao()) : FabricaDeDriver {
+
+    override fun criar(): SqlDriver {
+        diretorio.mkdirs()
+        val arquivo = File(diretorio, "printec.db")
+        // Para um banco em arquivo, o JdbcSqliteDriver abre e fecha uma conexao
+        // por statement — "PRAGMA foreign_keys=ON;" executado uma vez so vale
+        // para a conexao que morre em seguida. A propriedade de conexao do
+        // driver JDBC do SQLite e aplicada a TODA conexao nova, inclusive as
+        // que os DELETEs subsequentes abrem.
+        val driver = JdbcSqliteDriver(
+            "jdbc:sqlite:${arquivo.absolutePath}",
+            java.util.Properties().apply { put("foreign_keys", "true") },
+        )
+
+        // "arquivo.exists()" nao diz nada sobre em qual versao de schema o
+        // arquivo esta -- inclusive cobre o arquivo criado pela metade, que
+        // existe mas nunca chegou a gravar user_version. PRAGMA user_version
+        // e a fonte da verdade: 0 e banco novo (ou incompleto), qualquer coisa
+        // abaixo da versao do Schema precisa migrar antes de ser usado.
+        //
+        // Mas versao 0 tambem e o que TODO printec.db criado antes desta
+        // classe gravar user_version tem -- e esses arquivos ja tem as
+        // tabelas populadas. Sem distinguir os dois casos, Schema.create()
+        // roda contra tabelas que ja existem (Printec.sq nao usa
+        // "IF NOT EXISTS") e todo banco pre-existente passa a falhar no
+        // proximo lancamento do app com "table etiqueta already exists".
+        val versaoNoArquivo = lerUserVersion(driver)
+        when {
+            versaoNoArquivo == 0L && !tabelaEtiquetaExiste(driver) -> {
+                PrintecDatabase.Schema.create(driver)
+                gravarUserVersion(driver, PrintecDatabase.Schema.version)
+            }
+            versaoNoArquivo == 0L -> {
+                // Banco pre-existente sem user_version gravado: as tabelas ja
+                // estao la, so falta carimbar a versao para nao cair aqui de
+                // novo no proximo lancamento.
+                gravarUserVersion(driver, PrintecDatabase.Schema.version)
+            }
+            versaoNoArquivo < PrintecDatabase.Schema.version -> {
+                PrintecDatabase.Schema.migrate(driver, versaoNoArquivo, PrintecDatabase.Schema.version)
+                gravarUserVersion(driver, PrintecDatabase.Schema.version)
+            }
+        }
+        return driver
+    }
+
+    private fun lerUserVersion(driver: SqlDriver): Long = driver.executeQuery(
+        identifier = null,
+        sql = "PRAGMA user_version;",
+        mapper = { cursor -> QueryResult.Value(if (cursor.next().value) cursor.getLong(0) ?: 0L else 0L) },
+        parameters = 0,
+    ).value
+
+    private fun tabelaEtiquetaExiste(driver: SqlDriver): Boolean = driver.executeQuery(
+        identifier = null,
+        sql = "SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'etiqueta';",
+        mapper = { cursor -> QueryResult.Value(if (cursor.next().value) (cursor.getLong(0) ?: 0L) > 0L else false) },
+        parameters = 0,
+    ).value
+
+    private fun gravarUserVersion(driver: SqlDriver, versao: Long) {
+        // PRAGMA nao aceita parametro bind; a versao vem do proprio Schema, nao
+        // de entrada do usuario, entao a interpolacao aqui e segura.
+        driver.execute(null, "PRAGMA user_version = $versao;", 0)
+    }
+
+    companion object {
+        fun diretorioPadrao(): File {
+            val appData = System.getenv("APPDATA")
+            return if (appData != null) File(appData, "Printec")
+            else File(System.getProperty("user.home"), ".printec")
+        }
+    }
+}
+```
+
+`DriverAndroid` monta um `AndroidSqliteDriver` de fábrica — a parte que exige atenção é o `callback`. `AndroidSqliteDriver` reabre conexões por baixo dos panos, então ligar `foreign_keys` uma vez só, logo após criar o driver, não bastaria: a próxima conexão reaberta voltaria com a pragma desligada. `onConfigure` é o gancho que o próprio callback do SQLDelight expõe para rodar a cada conexão nova — é ali, e só ali, que `db.setForeignKeyConstraintsEnabled(true)` tem efeito garantido, inclusive sobre o `ON DELETE CASCADE` de `bloco`.
+
+`DriverDesktop` é o assunto da próxima seção — a parte mais sutil desta aula.
+
+## ⚠️ Atenção
+
+A migração dentro de `DriverDesktop.criar()` é o trecho mais delicado da aula, e os comentários do próprio código contam a história inteira. `arquivo.exists()` não diz nada sobre em qual versão de schema o arquivo está — cobre inclusive o arquivo criado pela metade, que existe no disco mas nunca chegou a gravar `user_version`. Por isso a fonte da verdade é `PRAGMA user_version`, não a existência do arquivo.
+
+O ponto sutil é que `PRAGMA user_version = 0` significa **duas coisas diferentes**, e o código precisa distingui-las:
+
+1. Um banco **novo de verdade** — arquivo acabou de ser criado, sem tabela nenhuma.
+2. Um banco **pré-existente**, criado antes de esta classe começar a gravar `user_version` — que já tem as tabelas, populadas com dados reais, só nunca carimbou a versão.
+
+Sem separar os dois casos, `Schema.create()` rodaria contra tabelas que já existem — `Printec.sq` não usa `IF NOT EXISTS` em nenhum `CREATE TABLE` — e todo banco pré-existente passaria a falhar no próximo lançamento do app com `"table etiqueta already exists"`. É para isso que serve `tabelaEtiquetaExiste`: ela é o que diferencia "não tem tabela, pode criar" de "já tem tabela, só falta carimbar a versão" dentro do primeiro dois ramos do `when`. O terceiro ramo, `versaoNoArquivo < Schema.version`, é a migração de verdade — um banco que já foi carimbado numa versão anterior do schema.
+
+Vale reparar também em como `foreign_keys` é ligado aqui, porque é diferente do Android: em vez de um `PRAGMA foreign_keys = ON;` executado uma vez, ele é passado como **propriedade de conexão** no `Properties` do `JdbcSqliteDriver`. O motivo está no comentário: para um banco em arquivo, o `JdbcSqliteDriver` abre e fecha uma conexão por statement — um PRAGMA executado uma vez valeria só para a conexão que morre logo em seguida, e a próxima operação (um `DELETE`, por exemplo) abriria outra conexão sem a pragma. A propriedade de conexão do driver JDBC do SQLite, em contraste, é aplicada a toda conexão nova que ele abrir — o mesmo problema do `onConfigure` do Android, resolvido de outro jeito porque a API deste driver é outra.
+
+## ▶️ Como Executar
+
+```bash
+./gradlew :shared:jvmTest --tests "com.fatec.printec.dados.DriverDesktopTest"
+```
+
+Esperado: ainda falha de compilação — mas agora por um motivo só, `Unresolved reference: LabelStoreSqlDelight`. Os Passos 1 a 3 desta aula bastam para o schema e os dois drivers compilarem; a peça que falta é `LabelStoreSqlDelight`, a implementação de `LabelStore` que só chega na aula 10. Este teste específico fecha o verde lá — ele foi mostrado aqui porque é a prova fim a fim da migração que `DriverDesktop.criar()` acabou de implementar, não porque deveria passar hoje.
+
+Para ver o mecanismo desta aula funcionando sozinho, sem esperar a aula 10, escreva um `fun main()` de rascunho (o mesmo truque da aula 08) que chame `DriverDesktop().criar()`, feche o driver, e chame de novo. Rode e confira dois resultados: nenhuma exceção nas duas chamadas, e o arquivo existe de verdade:
+
+```bash
+dir %APPDATA%\Printec
+```
+
+O aluno vê `printec.db` no disco. Em Linux e macOS o caminho é outro — `~/.printec` — conforme o `else` de `diretorioPadrao()`, que cai para `System.getProperty("user.home")` quando a variável de ambiente `APPDATA` não existe.
+
+## 💻 Mão na Massa
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+<Tabs>
+  <TabItem value="ex1" label="Exercício 1 — Abra o banco" default>
+
+### O que tem dentro do arquivo
+
+Abra `printec.db` (o caminho da seção anterior) num visualizador de SQLite — o DB Browser for SQLite serve bem, e é gratuito. Confira que existem as três tabelas do schema (`etiqueta`, `bloco`, `configuracao`) e o índice `idx_bloco_etiqueta`.
+
+Depois, na aba de "Execute SQL" do visualizador (ou em qualquer cliente que aceite SQL cru), rode:
+
+```sql
+PRAGMA user_version;
+```
+
+Compare o número que voltou com `PrintecDatabase.Schema.version` — é o mesmo valor que `DriverDesktop.criar()` grava em `gravarUserVersion` assim que termina de criar (ou migrar) o schema.
+
+  </TabItem>
+  <TabItem value="ex2" label="Exercício 2 — O caso do banco antigo">
+
+### Simule o banco pré-existente
+
+Escreva um teste (pode viver junto de `DriverDesktopTest`, num diretório temporário próprio) que:
+
+1. Crie o banco chamando `DriverDesktop(diretorio).criar()` uma vez, e feche o driver.
+2. Zere a versão gravada com `PRAGMA user_version = 0;` — sem tocar em mais nada.
+3. Chame `DriverDesktop(diretorio).criar()` de novo, no mesmo diretório.
+
+Verifique que a segunda chamada não estoura exceção nenhuma. Depois, em duas linhas, explique: qual dos três ramos do `when` dentro de `criar()` foi o que tratou essa segunda chamada, e por que não foi o primeiro ramo — mesmo `versaoNoArquivo` valendo `0L` nos dois casos.
+
+  </TabItem>
+</Tabs>

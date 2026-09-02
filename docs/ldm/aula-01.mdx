@@ -295,7 +295,7 @@ actual fun getPlatform(): Platform = AndroidPlatform()
 
 Cada `actual` mora no source set que sabe respondê-lo: `JVMPlatform` lê `System.getProperty("java.version")` (só existe na JVM), `AndroidPlatform` lê `Build.VERSION.SDK_INT` (só existe no Android SDK). Nenhum dos dois compilaria em `commonMain`.
 
-Esses três arquivos são scaffold — o exemplo genérico que todo projeto KMP nasce com. Eles vão sumir ao longo da trilha: o app final usa `expect`/`actual` de verdade em um lugar só, e a Aula 09 mostra qual e por quê.
+Esses três arquivos são scaffold — o exemplo genérico que todo projeto KMP nasce com. Eles vão sumir ao longo da trilha: o app final usa `expect`/`actual` de verdade em um lugar só, e a Aula 10 mostra qual e por quê.
 
 ## ⚠️ Atenção
 
