@@ -124,9 +124,9 @@ veja a cor encolher numa caixa e o texto se afastar na outra.">
 
 (Só o `pdmiiSidebar` muda; `pdmiSidebar` e `ldmSidebar` ficam intactos.)
 
-**`docs/pdmii/_category_.json`:** `label` e `description` atualizados para o playground (ex.: label "PDM II — Compose do Zero", descrição "Playground interativo de Jetpack Compose — 19 lições, do primeiro @Composable ao ViewModel").
+**`docs/pdmii/_category_.json`:** `label` vira **"PDM II"** puro (sem "Android Nativo"/"MergeSkills"/"Compose do Zero" — decisão do parceiro). A `description` passa a refletir o playground: "Playground interativo de Jetpack Compose — 19 lições, do primeiro @Composable ao ViewModel".
 
-**`docusaurus.config.ts`:** o link do navbar aponta para `/pdmii/aula-01` (continua válido). O label "PDMII — Android Nativo" pode ficar ou ser ajustado — decisão pequena, tratada no plano (default: manter o rótulo do curso "PDM II").
+**`docusaurus.config.ts`:** o link do navbar aponta para `/pdmii/aula-01` (continua válido). O label do navbar "PDMII — Android Nativo" vira **"PDM II"** puro, coerente com o `_category_`.
 
 ## Verificação
 
