@@ -56,7 +56,7 @@ const config: Config = {
                     type: "docSidebar",
                     sidebarId: "pdmiiSidebar",
                     position: "left",
-                    label: "PDMII — Android Nativo",
+                    label: "PDM II",
                 },
                 {
                     type: "docSidebar",
@@ -83,7 +83,7 @@ const config: Config = {
                 {
                     title: "Disciplinas",
                     items: [
-                        { label: "PDMII — Android Nativo", to: "/pdmii/aula-01" },
+                        { label: "PDM II", to: "/pdmii/aula-01" },
                         { label: "PDMI — React Native", to: "/pdmi/aula-01" },
                         { label: "LDM — Backend & CMS", to: "/ldm/aula-01" },
                     ],

@@ -1,131 +1,64 @@
 ---
 sidebar_position: 9
-title: "Aula 09: Repositórios e Koin"
-description: "Padrão Repository para abstração de dados e injeção de dependência com Koin."
+title: "Aula 09: Button"
+description: "Variantes, enabled e contagem de cliques."
 ---
 
-# Aula 09: Repositórios e Koin
+# Aula 09: Button
 
-:::info 🔀 Branch da Aula
-Esta aula refere-se à branch: **`aula-09`**
+:::info 📂 Código da Aula
+Esta aula é a lição **Button** do playground, no repositório `compose-intro` (branch `app-final`):
+
+- Arquivo: `app/src/main/java/com/fatec/composeintro/ui/lessons/L09Button.kt`
+- No app: abra o catálogo → módulo **Componentes Material3** → **Button**
+
 ```bash
-git checkout aula-09
+git clone https://github.com/fatec-registro-yuri-villanova/compose-intro
+git checkout app-final
 ```
 :::
 
 ## 📖 Conceito
 
-O **Repository Pattern** é uma camada de abstração entre os ViewModels e as fontes de dados (API, banco local, cache). O **Koin** é um framework de injeção de dependência leve e idiomático para Kotlin.
+`Button` é o componente de ação do Material3. Ele vem em variantes — preenchido (`Button`), contornado (`OutlinedButton`) e de texto (`TextButton`) — para sinalizar quão importante é a ação.
 
-### Por que Repository?
+O `LoginButton` original deste projeto tinha o `onClick` fixo, com um `println` escrito por dentro. Isso servia para uma tela só. Um botão de verdade recebe `onClick` como **parâmetro** e deixa quem o usa decidir o que acontece — aqui, incrementar um contador que mora na lição.
 
-```
-ViewModel → Repository → DataSource (API / DB / Cache)
-```
-
-- O ViewModel **não sabe** de onde os dados vêm
-- Facilita testes: mock do Repository = ViewModel testável
-- Centraliza lógica de cache e fallback
-
-### Koin — Injeção de Dependência
-
-```kotlin
-// 1. Defina os módulos
-val appModule = module {
-    // Singleton
-    single { KtorClient.httpClient }
-
-    // Factory (nova instância a cada pedido)
-    factory { CourseRepository(get()) }
-
-    // ViewModel
-    viewModel { HomeViewModel(get()) }
-    viewModel { (courseId: String) ->
-        CourseDetailViewModel(courseId, get())
-    }
-}
-
-// 2. Inicialize no Application
-class MergeSkillsApp : Application() {
-    override fun onCreate() {
-        super.onCreate()
-        startKoin {
-            androidContext(this@MergeSkillsApp)
-            modules(appModule)
-        }
-    }
-}
-
-// 3. Use no Compose
-@Composable
-fun HomeScreen(
-    viewModel: HomeViewModel = koinViewModel()
-) { /* ... */ }
-```
+:::caution Armadilha
+`enabled = false` não é só cosmético. Um botão desabilitado ignora o clique inteiro — o `onClick` nem roda. Desligue o switch e veja o contador parar.
+:::
 
 ## 💻 Código de Referência
 
-```kotlin title="di/AppModule.kt"
-val networkModule = module {
-    single {
-        HttpClient(CIO) {
-            install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
-            install(DefaultRequest) {
-                url(ApiConfig.BASE_URL)
-                header("X-Timezone", TimeZone.getDefault().id)
-            }
+```kotlin title="ui/lessons/L09Button.kt"
+private enum class ButtonVariant(val label: String) {
+    FILLED("Filled"),
+    OUTLINED("Outlined"),
+    TEXT("Text")
+}
+
+@Composable
+private fun ButtonDemo(variant: ButtonVariant, enabled: Boolean, clicks: Int, onClick: () -> Unit) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        when (variant) {
+            ButtonVariant.FILLED -> Button(onClick = onClick, enabled = enabled) { Text("Entrar") }
+            ButtonVariant.OUTLINED -> OutlinedButton(onClick = onClick, enabled = enabled) { Text("Entrar") }
+            ButtonVariant.TEXT -> TextButton(onClick = onClick, enabled = enabled) { Text("Entrar") }
         }
+        Text(
+            text = "cliques: $clicks",
+            style = MaterialTheme.typography.titleMedium
+        )
     }
 }
-
-val repositoryModule = module {
-    factory { CourseRepository(get()) }
-    factory { ProgressRepository(get()) }
-}
-
-val viewModelModule = module {
-    viewModel { HomeViewModel(get()) }
-    viewModel { (courseId: String) -> CourseDetailViewModel(courseId, get()) }
-}
-
-val appModules = listOf(networkModule, repositoryModule, viewModelModule)
 ```
 
-## 💻 Mão na Massa
+## 🧪 Experimente
 
-import Tabs from '@theme/Tabs';
-import TabItem from '@theme/TabItem';
-
-<Tabs>
-  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
-
-### Configure o Koin no projeto
-
-Adicione a dependência do Koin no `build.gradle.kts` e crie a classe `MergeSkillsApp` com `startKoin`. Registre-a no `AndroidManifest.xml`.
-
-**Critério:** O app deve iniciar sem erros e os ViewModels devem ser injetados via `koinViewModel()`.
-
-  </TabItem>
-  <TabItem value="ex2" label="Exercício 2 — Aplicação">
-
-### Crie o `ProgressRepository`
-
-Implemente um `ProgressRepository` que tenha:
-- `getHistory(userId: String): List<ProgressDto>` — `GET /progress/history/{userId}`
-- `submitAnswer(request: SubmitRequest): SubmitResponse` — `POST /progress/submit`
-
-Registre no `repositoryModule` do Koin.
-
-  </TabItem>
-  <TabItem value="ex3" label="Exercício 3 — Desafio">
-
-### Integre Repository + ViewModel + Navegação
-
-Refatore toda a cadeia usando Koin:
-1. `HomeViewModel` recebe `CourseRepository` via construtor (injetado pelo Koin)
-2. `CourseDetailViewModel` recebe `courseId` + `CourseRepository`
-3. Remove qualquer instanciação manual (`= CourseRepository()`)
-4. Teste navegando entre Home → Curso → Lições usando dados reais da API
-
-  </TabItem>
-</Tabs>
+- Abra o app e vá em **Componentes Material3 → Button**.
+- Toque no botão e veja o contador de cliques subir.
+- Troque a **variante** entre Filled, Outlined e Text e compare o peso visual de cada uma.
+- Desligue o switch **enabled** e repare que o clique passa a ser ignorado — o contador para.

@@ -1,120 +1,77 @@
 ---
 sidebar_position: 19
-title: "Aula 19: Performance e Estabilidade"
-description: "Debugging, profiling, correção de Memory Leaks e otimização de recomposições."
+title: "Aula 19: ViewModel"
+description: "Estado e regra fora da UI, com StateFlow."
 ---
 
-# Aula 19: Performance e Estabilidade
+# Aula 19: ViewModel
 
-:::info 🔀 Branch da Aula
-Esta aula refere-se à branch: **`aula-19`**
+:::info 📂 Código da Aula
+Esta aula é a lição **ViewModel** do playground, no repositório `compose-intro` (branch `app-final`):
+
+- Arquivo: `app/src/main/java/com/fatec/composeintro/ui/lessons/L19ViewModel.kt`
+- No app: abra o catálogo → módulo **Estado avançado** → **ViewModel**
+
 ```bash
-git checkout aula-19
+git clone https://github.com/fatec-registro-yuri-villanova/compose-intro
+git checkout app-final
 ```
 :::
 
 ## 📖 Conceito
 
-Um app que funciona não é suficiente — ele precisa funcionar **rápido**. L latência mata a experiência do usuário. Nesta aula, aprendemos a identificar e corrigir gargalos.
+Um `ViewModel` guarda o estado num `StateFlow` e expõe funções para mudá-lo. A tela obtém o ViewModel com `viewModel()` e observa o estado com `collectAsStateWithLifecycle`.
 
-### Recomposição desnecessária
+Esta lição fecha a trilha do estado que o curso vem seguindo desde o Módulo 4: na aula 13 (`remember`), o estado morava *por dentro* do componente. Na aula 15 (state hoisting), ele foi *içado* para a função da tela — mas ainda morria quando o processo era recriado, e a regra de negócio ficava misturada com a UI. Aqui, com o ViewModel, o estado e a decisão saem da tela de vez: o `LoginViewModel` sobrevive à recriação da Activity e concentra toda a lógica, o que o torna testável sem subir tela nenhuma.
 
-O maior problema de performance em Compose é a **recomposição excessiva**:
-
-```kotlin
-// ❌ RUIM: lambda recriada a cada recomposição
-LazyColumn {
-    items(courses) { course ->
-        CourseCard(onClick = { viewModel.select(course.id) }) // Nova referência!
-    }
-}
-
-// ✅ BOM: lambda estável com remember
-LazyColumn {
-    items(courses, key = { it.id }) { course ->
-        val onClick = remember(course.id) { { viewModel.select(course.id) } }
-        CourseCard(onClick = onClick)
-    }
-}
-```
-
-### Ferramentas de Debug
-
-| Ferramenta | Uso |
-|-----------|-----|
-| Layout Inspector | Visualizar árvore de Composables |
-| Profiler (CPU) | Identificar funções lentas |
-| Profiler (Memory) | Detectar memory leaks |
-| `@Stable` / `@Immutable` | Dicas para o compilador Compose |
-| StrictMode | Detectar operações no main thread |
-
-### derivedStateOf
-
-```kotlin
-// Evita recomposições quando o valor calculado não muda
-val showCompletionBanner by remember {
-    derivedStateOf { uiState.courses.all { it.isCompleted } }
-}
-```
+:::caution Armadilha
+Não guarde `viewModel()` numa variável fora da composição nem crie o ViewModel na mão dentro da tela (por exemplo chamando o construtor diretamente). Use sempre `viewModel()`, que devolve o MESMO ViewModel entre recomposições e o liga ao ciclo de vida.
+:::
 
 ## 💻 Código de Referência
 
-```kotlin title="Otimização de LazyColumn"
+```kotlin title="ui/lessons/L19ViewModel.kt"
+data class LoginUiState(
+    val email: String = "",
+    val password: String = "",
+    val emailValid: Boolean = false,
+    val canLogin: Boolean = false
+)
+
+class LoginViewModel : ViewModel() {
+    private val _uiState = MutableStateFlow(LoginUiState())
+    val uiState: StateFlow<LoginUiState> = _uiState.asStateFlow()
+
+    fun onEmailChange(value: String) = _uiState.update { atual ->
+        val valido = value.contains("@") && value.contains(".")
+        atual.copy(email = value, emailValid = valido, canLogin = valido && atual.password.length >= 6)
+    }
+
+    fun onPasswordChange(value: String) = _uiState.update { atual ->
+        atual.copy(password = value, canLogin = atual.emailValid && value.length >= 6)
+    }
+}
+
 @Composable
-fun OptimizedCourseList(
-    courses: List<Course>,
-    onCourseClick: (String) -> Unit
-) {
-    LazyColumn(
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+fun L19ViewModel(onBack: () -> Unit) {
+    val vm: LoginViewModel = viewModel()
+    val estado by vm.uiState.collectAsStateWithLifecycle()
+
+    LessonScaffold(
+        title = "ViewModel",
+        notice = "O botão só mostra 'Entrar' quando a validação passa: e-mail com @ e ., " +
+            "senha de 6+. Toda essa regra de decisão vive fora da tela, não aqui.",
+        onBack = onBack
     ) {
-        items(
-            items = courses,
-            key = { it.id },          // Identidade estável
-            contentType = { "course" } // Otimiza pool de composables
-        ) { course ->
-            // remember evita realocação da lambda
-            val onClick = remember(course.id) { { onCourseClick(course.id) } }
-            StitchCard(
-                title = course.title,
-                subtitle = "${course.completedLessons}/${course.totalLessons}",
-                modifier = Modifier.clickable(onClick = onClick)
-            )
-        }
+        // ... campos de e-mail e senha lendo `estado` e chamando
+        // vm::onEmailChange / vm::onPasswordChange
     }
 }
 ```
 
-## 💻 Mão na Massa
+## 🧪 Experimente
 
-import Tabs from '@theme/Tabs';
-import TabItem from '@theme/TabItem';
-
-<Tabs>
-  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
-
-### Adicione `key` em todas as LazyColumns
-
-Revise o projeto e garanta que toda `LazyColumn` com `items()` usa o parâmetro `key` com um identificador estável.
-
-  </TabItem>
-  <TabItem value="ex2" label="Exercício 2 — Aplicação">
-
-### Use o Layout Inspector
-
-Abra o **Layout Inspector** no Android Studio e identifique pelo menos 2 Composables que recompõem desnecessariamente. Corrija-os usando `remember` ou `derivedStateOf`.
-
-  </TabItem>
-  <TabItem value="ex3" label="Exercício 3 — Desafio">
-
-### Profiling e Memory Leaks
-
-Use o **Memory Profiler** para:
-1. Navegar entre Home → Curso → Quiz → Home repetidamente
-2. Capturar um heap dump e verificar se há objetos retidos
-3. Corrigir qualquer leak encontrado (geralmente Coroutines não canceladas ou referências a Context)
-4. Documentar as correções feitas
-
-  </TabItem>
-</Tabs>
+- Abra o app e vá em **Estado avançado → ViewModel**.
+- Digite um e-mail sem `@` ou sem `.`: o aviso "e-mail inválido" aparece e o botão continua "Preencha os campos".
+- Complete um e-mail válido e uma senha com 6 ou mais caracteres: o botão muda para "Entrar".
+- No código, note que `L19ViewModel` (o composable) não guarda nenhum estado próprio nem decide a validação — ele só lê `estado` e chama `vm::onEmailChange`/`vm::onPasswordChange`. Toda a regra mora no `LoginViewModel`, que dá para testar isoladamente (veja `LoginViewModelTest` no repositório).

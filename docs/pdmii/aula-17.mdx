@@ -1,143 +1,94 @@
 ---
 sidebar_position: 17
-title: "Aula 17: Testes Unitários"
-description: "Testando ViewModels e Repositórios com JUnit, MockK e Coroutines de teste."
+title: "Aula 17: derivedStateOf"
+description: "Valor derivado de outro estado, recalculado só quando muda."
 ---
 
-# Aula 17: Testes Unitários
+# Aula 17: derivedStateOf
 
-:::info 🔀 Branch da Aula
-Esta aula refere-se à branch: **`aula-17`**
+:::info 📂 Código da Aula
+Esta aula é a lição **derivedStateOf** do playground, no repositório `compose-intro` (branch `app-final`):
+
+- Arquivo: `app/src/main/java/com/fatec/composeintro/ui/lessons/L17DerivedState.kt`
+- No app: abra o catálogo → módulo **Estado avançado** → **derivedStateOf**
+
 ```bash
-git checkout aula-17
+git clone https://github.com/fatec-registro-yuri-villanova/compose-intro
+git checkout app-final
 ```
 :::
 
 ## 📖 Conceito
 
-Testes são a rede de segurança do seu código. No Android, testamos **ViewModels** e **Repositórios** com **JUnit 5**, **MockK** (mocking Kotlin-first) e o **TestDispatcher** para Coroutines.
+`derivedStateOf` cria um estado cujo valor é DERIVADO de outros estados. Ele recalcula só quando as fontes mudam, e só avisa quem o lê quando o RESULTADO muda.
 
-### Estrutura de Teste — AAA
+Sem ele, você recalcularia o valor derivado a cada recomposição, e recomporia quem o lê mesmo quando o resultado não mudou. Para uma soma leve a diferença é pequena; para um cálculo caro sobre uma lista grande, é o que evita trabalho repetido.
 
-```kotlin
-@Test
-fun `loadCourses should update state with courses on success`() {
-    // ARRANGE — prepare o cenário
-    val fakeCourses = listOf(Course("1", "Kotlin", 10, 3))
-    coEvery { repository.getCourses() } returns fakeCourses
-
-    // ACT — execute a ação
-    viewModel.onAction(HomeAction.LoadCourses)
-
-    // ASSERT — verifique o resultado
-    val state = viewModel.uiState.value
-    assertEquals(false, state.isLoading)
-    assertEquals(fakeCourses, state.courses)
-}
-```
-
-### MockK para Kotlin
-
-```kotlin
-// Crie mocks do repositório
-val repository = mockk<CourseRepository>()
-
-// Defina comportamento para funções suspend
-coEvery { repository.getCourses() } returns listOf(...)
-
-// Verifique chamadas
-coVerify { repository.getCourses() }
-```
-
-### TestDispatcher para Coroutines
-
-```kotlin
-@OptIn(ExperimentalCoroutinesApi::class)
-class HomeViewModelTest {
-    private val testDispatcher = UnconfinedTestDispatcher()
-
-    @BeforeEach
-    fun setup() {
-        Dispatchers.setMain(testDispatcher)
-    }
-
-    @AfterEach
-    fun tearDown() {
-        Dispatchers.resetMain()
-    }
-}
-```
+:::caution Armadilha
+`derivedStateOf` também precisa de `remember`, senão é recriado a cada recomposição e perde a graça. Na demo, a lista de tarefas é o estado-fonte; o "total" é derivado dela. Adicione e remova itens e veja o total acompanhar.
+:::
 
 ## 💻 Código de Referência
 
-```kotlin title="test/viewmodel/HomeViewModelTest.kt"
-@OptIn(ExperimentalCoroutinesApi::class)
-class HomeViewModelTest {
-    private val testDispatcher = UnconfinedTestDispatcher()
-    private val repository = mockk<CourseRepository>()
-    private lateinit var viewModel: HomeViewModel
+```kotlin title="ui/lessons/L17DerivedState.kt"
+@Composable
+fun L17DerivedState(onBack: () -> Unit) {
+    var tarefas by remember { mutableStateOf(listOf("Estudar Compose", "Fazer o exercício")) }
+    var nova by remember { mutableStateOf("") }
+    val total by remember { derivedStateOf { tarefas.size } }
 
-    @BeforeEach
-    fun setup() {
-        Dispatchers.setMain(testDispatcher)
-        viewModel = HomeViewModel(repository)
-    }
+    LessonScaffold(
+        title = "derivedStateOf",
+        notice = "O 'total' é derivado da lista, não guardado à parte. Adicione e " +
+            "remova tarefas: o total é recalculado a partir do estado-fonte.",
+        onBack = onBack
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text("total de tarefas: $total", style = MaterialTheme.typography.titleMedium)
 
-    @AfterEach
-    fun tearDown() { Dispatchers.resetMain() }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OutlinedTextField(
+                    value = nova,
+                    onValueChange = { nova = it },
+                    label = { Text("nova tarefa") },
+                    singleLine = true,
+                    modifier = Modifier.weight(1f)
+                )
+                Button(
+                    onClick = {
+                        if (nova.isNotBlank()) {
+                            tarefas = tarefas + nova.trim()
+                            nova = ""
+                        }
+                    }
+                ) { Text("add") }
+            }
 
-    @Test
-    fun `initial state should be loading`() {
-        coEvery { repository.getCourses() } returns emptyList()
-        val vm = HomeViewModel(repository)
-        // Initial load triggers in init
-        assertEquals(false, vm.uiState.value.isLoading)
-    }
-
-    @Test
-    fun `loadCourses error should set error message`() = runTest {
-        coEvery { repository.getCourses() } throws Exception("Network error")
-
-        viewModel.onAction(HomeAction.LoadCourses)
-
-        assertEquals("Network error", viewModel.uiState.value.error)
-        assertEquals(false, viewModel.uiState.value.isLoading)
+            tarefas.forEach { tarefa ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(text = tarefa, modifier = Modifier.padding(vertical = 4.dp))
+                    TextButton(onClick = { tarefas = tarefas - tarefa }) { Text("remover") }
+                }
+            }
+        }
     }
 }
 ```
 
-## 💻 Mão na Massa
+## 🧪 Experimente
 
-import Tabs from '@theme/Tabs';
-import TabItem from '@theme/TabItem';
-
-<Tabs>
-  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
-
-### Configure o ambiente de testes
-
-Adicione as dependências de teste (`junit`, `mockk`, `coroutines-test`) e crie um teste simples que valide que `HomeUiState()` tem `isLoading = false` por padrão.
-
-  </TabItem>
-  <TabItem value="ex2" label="Exercício 2 — Aplicação">
-
-### Teste o `AuthViewModel`
-
-Crie testes para o fluxo de login:
-1. Login com sucesso atualiza o estado com o User
-2. Login com senha errada retorna erro
-3. Estado de loading é true durante a chamada
-
-  </TabItem>
-  <TabItem value="ex3" label="Exercício 3 — Desafio">
-
-### Teste o fluxo completo do quiz
-
-Teste o `QuizViewModel` (Aulas 11-12):
-1. `SelectOption` atualiza o `selectedOptionId`
-2. `Submit` chama `ProgressRepository.submitAnswer()`
-3. Resposta correta: `showFeedback = true`, `lastAnswerCorrect = true`
-4. `NextQuestion` avança o índice da questão
-
-  </TabItem>
-</Tabs>
+- Abra o app e vá em **Estado avançado → derivedStateOf**.
+- Digite uma tarefa e toque em "add": o total sobe sem que você guarde esse número em lugar nenhum.
+- Toque em "remover" numa tarefa e veja o total descer junto — ele é sempre recalculado a partir da lista, nunca guardado à parte.
+- No código, repare que `total` só existe dentro do `remember { derivedStateOf { ... } } `: tirar o `remember` faria o derivado ser recriado a cada recomposição.

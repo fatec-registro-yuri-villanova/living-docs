@@ -1,145 +1,89 @@
 ---
 sidebar_position: 4
-title: "Aula 04: Navegação entre Telas"
-description: "Navigation Compose com NavHost, composable routes e navegação programática entre Home e Detalhes."
+title: "Aula 04: Modifier"
+description: "A corrente de instruções — e por que a ordem importa."
 ---
 
-# Aula 04: Navegação entre Telas
+# Aula 04: Modifier
 
-:::info 🔀 Branch da Aula
-Esta aula refere-se à branch: **`aula-04`**
+:::info 📂 Código da Aula
+Esta aula é a lição **Modifier** do playground, no repositório `compose-intro` (branch `app-final`):
+
+- Arquivo: `app/src/main/java/com/fatec/composeintro/ui/lessons/L04Modifier.kt`
+- No app: abra o catálogo → módulo **Fundamentos** → **Modifier**
+
 ```bash
-git checkout aula-04
+git clone https://github.com/fatec-registro-yuri-villanova/compose-intro
+git checkout app-final
 ```
 :::
 
 ## 📖 Conceito
 
-A **Navigation Compose** permite criar fluxos de telas sem Activities múltiplas. Cada tela é uma `composable` route dentro de um `NavHost`, e a navegação acontece via `NavController`.
+Um `Modifier` é um objeto que você pendura num composable para dizer como ele deve se comportar: tamanho, espaçamento, fundo, cliques, borda.
 
-### Design Tokens (Color.kt desta branch)
+Em vez de cada componente ter dezenas de parâmetros (`padding`, `margin`, `background`, `width`...), o Compose tira tudo isso para um objeto só, que funciona igual em qualquer composable. Aprendeu `Modifier` uma vez, serve para o resto do curso.
 
-```kotlin title="ui/theme/Color.kt"
-val StitchGreen = Color(0xFF4CDF20)
-val StitchGreenDark = Color(0xFF36A015)
-val StitchGreenContainer = Color(0xFF1B4D0B)
+:::caution Armadilha
+E é a maior armadilha desta aula: a **ordem** importa. `Modifier` é uma corrente lida da esquerda para a direita, e cada elo trabalha sobre o resultado do anterior.
 
-val Background = Color(0xFF0F0F0F)
-val Surface = Color(0xFF1C1C1E)
-val SurfaceVariant = Color(0xFF2C2C2E)
-val OnSurface = Color(0xFFE5E5E5)
-val StitchError = Color(0xFFFF453A)
-```
+- `padding(16.dp).background(azul)` → afasta primeiro, pinta o que sobrou: a cor NÃO ocupa a margem.
+- `background(azul).padding(16.dp)` → pinta primeiro, afasta depois: a cor ocupa tudo e é o texto que se afasta.
 
-### Arquivos novos nesta branch
-
-| Arquivo | Descrição |
-|---------|-----------|
-| `ui/screens/aula04/Aula04Screen.kt` | Duas telas: Home e Detail com navegação |
+As duas caixas do demo têm exatamente os mesmos elos, só na ordem trocada.
+:::
 
 ## 💻 Código de Referência
 
-### Telas de Navegação — Home e Detail
-
-```kotlin title="ui/screens/aula04/Aula04Screen.kt"
+```kotlin title="ui/lessons/L04Modifier.kt"
 @Composable
-fun Aula04HomeScreen(onNavigateToDetails: () -> Unit) {
-    Column(
-        modifier = Modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text(
-            text = "Tela Inicial (Home)",
-            style = MaterialTheme.typography.headlineLarge,
-            color = MaterialTheme.colorScheme.primary
-        )
+private fun ModifierOrderDemo(padding: Dp, fillWidth: Boolean) {
+    val color = MaterialTheme.colorScheme.primaryContainer
 
-        Button(onClick = onNavigateToDetails) {
-            Text("Ir para Detalhes")
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceEvenly,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(
+            modifier = Modifier.weight(1f),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = "padding → background",
+                style = MaterialTheme.typography.labelSmall
+            )
+            Text(
+                text = "caixa",
+                modifier = Modifier
+                    .then(if (fillWidth) Modifier.fillMaxWidth(0.4f) else Modifier)
+                    .padding(padding)
+                    .background(color)
+            )
+        }
+
+        Column(
+            modifier = Modifier.weight(1f),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = "background → padding",
+                style = MaterialTheme.typography.labelSmall
+            )
+            Text(
+                text = "caixa",
+                modifier = Modifier
+                    .then(if (fillWidth) Modifier.fillMaxWidth(0.4f) else Modifier)
+                    .background(color)
+                    .padding(padding)
+            )
         }
     }
 }
-
-@Composable
-fun Aula04DetailScreen(onNavigateBack: () -> Unit) {
-    Column(
-        modifier = Modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text(
-            text = "Detalhes do Curso",
-            style = MaterialTheme.typography.headlineLarge,
-            color = MaterialTheme.colorScheme.secondary
-        )
-
-        Button(onClick = onNavigateBack) {
-            Text("Voltar")
-        }
-    }
-}
 ```
 
-### Configuração do NavHost (na MainActivity)
+## 🧪 Experimente
 
-```kotlin title="MainActivity.kt (trecho de navegação)"
-val navController = rememberNavController()
-
-NavHost(navController = navController, startDestination = "home") {
-    composable("home") {
-        Aula04HomeScreen(
-            onNavigateToDetails = { navController.navigate("details") }
-        )
-    }
-    composable("details") {
-        Aula04DetailScreen(
-            onNavigateBack = { navController.popBackStack() }
-        )
-    }
-}
-```
-
-:::tip Padrão de callbacks
-Note que as telas **não recebem o NavController diretamente**. Elas recebem lambdas (`onNavigateToDetails`, `onNavigateBack`). Isso mantém as telas **testáveis** e **desacopladas** da navegação.
-:::
-
-## 💻 Mão na Massa
-
-import Tabs from '@theme/Tabs';
-import TabItem from '@theme/TabItem';
-
-<Tabs>
-  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
-
-### Adicione uma terceira tela
-
-Crie `Aula04SettingsScreen` e adicione à rota `"settings"` no NavHost. Na Home, adicione um segundo botão que navegue para Settings.
-
-  </TabItem>
-  <TabItem value="ex2" label="Exercício 2 — Aplicação">
-
-### Navegação com argumentos
-
-Modifique a rota de detalhes para receber um `courseId`:
-```kotlin
-composable("details/{courseId}") { backStackEntry ->
-    val courseId = backStackEntry.arguments?.getString("courseId")
-    // Exiba o courseId na tela de detalhes
-}
-```
-Na Home, navegue com `navController.navigate("details/kotlin-101")`.
-
-  </TabItem>
-  <TabItem value="ex3" label="Exercício 3 — Desafio">
-
-### Navegação completa tipo app real
-
-Implemente o fluxo: **Splash → Login → Home (Tabs)** onde:
-1. Splash navega para Login após 2 segundos
-2. Login navega para Home limpando o back stack (`popUpTo(0)`)
-3. Home tem 2 tabs simuladas: "Cursos" e "Perfil"
-4. Use os Design Tokens do `Color.kt` para estilizar tudo
-
-  </TabItem>
-</Tabs>
+- Abra o app e vá em **Fundamentos → Modifier**.
+- Aumente o **padding** e repare: na caixa da esquerda (`padding → background`) a cor encolhe para dentro; na da direita (`background → padding`) a cor fica no tamanho total e é o texto que se afasta dela.
+- Ligue **fillMaxWidth()** e veja que a ordem também entra na definição do tamanho da caixa, não só no espaçamento.

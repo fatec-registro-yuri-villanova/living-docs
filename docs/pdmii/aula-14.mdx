@@ -1,115 +1,63 @@
 ---
 sidebar_position: 14
-title: "Aula 14: Perfil do Usuário"
-description: "Tela de perfil, consumo de dados do usuário logado e edição de informações."
+title: "Aula 14: Recomposição"
+description: "O que recompõe quando o estado muda."
 ---
 
-# Aula 14: Perfil do Usuário
+# Aula 14: Recomposição
 
-:::info 🔀 Branch da Aula
-Esta aula refere-se à branch: **`aula-14`**
+:::info 📂 Código da Aula
+Esta aula é a lição **Recomposição** do playground, no repositório `compose-intro` (branch `app-final`):
+
+- Arquivo: `app/src/main/java/com/fatec/composeintro/ui/lessons/L14Recomposition.kt`
+- No app: abra o catálogo → módulo **Estado** → **Recomposição**
+
 ```bash
-git checkout aula-14
+git clone https://github.com/fatec-registro-yuri-villanova/compose-intro
+git checkout app-final
 ```
 :::
 
 ## 📖 Conceito
 
-A tela de perfil exibe os dados do usuário autenticado e permite edição de informações pessoais. Os dados vêm do modelo `User` retornado pelo servidor.
+Recompor é o Compose re-executar as funções que **leem** um estado que mudou — e só essas. Cada região da demo conta quantas vezes ela mesma recompôs.
 
-### Modelo User
+Você não redesenha a tela na mão. Muda o estado, e o Compose recompõe só o pedaço que depende dele. Saber qual pedaço recompõe é o que separa uma tela fluida de uma que reprocessa tudo à toa.
 
-```kotlin
-@Serializable
-data class User(
-    val id: String,
-    val username: String,
-    val email: String,
-    @SerialName("avatar_url") val avatarUrl: String? = null,
-    @SerialName("streak_count") val streakCount: Int = 0,
-    @SerialName("longest_streak") val longestStreak: Int = 0,
-    @SerialName("streak_freezes") val streakFreezes: Int = 0
-)
-```
-
-### ProfileScreen com dados reais
-
-```kotlin
-@Composable
-fun ProfileScreen(viewModel: ProfileViewModel = koinViewModel()) {
-    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val user = uiState.user
-
-    LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        item {
-            // Avatar
-            AsyncImage(
-                model = user?.avatarUrl,
-                contentDescription = "Avatar",
-                modifier = Modifier.size(80.dp).clip(CircleShape)
-            )
-            Spacer(modifier = Modifier.height(16.dp))
-            Text(text = user?.username ?: "", style = MaterialTheme.typography.headlineMedium)
-            Text(text = user?.email ?: "", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-    }
-}
-```
+:::caution Armadilha
+Recomposição é **escopada**. Toque no botão da região A e veja o contador de recomposições de A subir enquanto o de B fica parado — porque só A lê o estado que mudou. Se todo o estado morasse num lugar só, lido por todos, tudo recomporia junto.
+:::
 
 ## 💻 Código de Referência
 
-```kotlin title="viewmodel/ProfileViewModel.kt"
-class ProfileViewModel(
-    private val authRepository: AuthRepository
-) : ViewModel() {
+```kotlin title="ui/lessons/L14Recomposition.kt"
+@Composable
+private fun Regiao(nome: String) {
+    var valor by remember { mutableStateOf(0) }
+    // Contador de recomposições: um holder comum (não é State), então escrever nele
+    // não dispara nova recomposição — ele só registra quantas já aconteceram.
+    val recomposicoes = remember { intArrayOf(-1) }
+    recomposicoes[0]++
 
-    data class UiState(
-        val user: User? = null,
-        val isLoading: Boolean = false
-    )
-
-    private val _uiState = MutableStateFlow(UiState())
-    val uiState = _uiState.asStateFlow()
-
-    init { loadProfile() }
-
-    private fun loadProfile() {
-        viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true) }
-            val result = authRepository.getCurrentUser()
-            if (result is Result.Success) {
-                _uiState.update { it.copy(user = result.data, isLoading = false) }
-            }
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Text(text = nome, style = MaterialTheme.typography.titleMedium)
+            Text(text = "valor: $valor")
+            Text(text = "recompôs ${recomposicoes[0]}x")
+            Button(onClick = { valor++ }) { Text("mudar valor") }
         }
     }
 }
 ```
 
-## 💻 Mão na Massa
+## 🧪 Experimente
 
-import Tabs from '@theme/Tabs';
-import TabItem from '@theme/TabItem';
-
-<Tabs>
-  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
-
-### Exiba as estatísticas de streak
-
-Na `ProfileScreen`, adicione uma `Row` com 3 cards: 🔥 `streak_count` (Ofensiva Atual), 🏆 `longest_streak` (Maior Ofensiva), 🧊 `streak_freezes` (Congelamentos).
-
-  </TabItem>
-  <TabItem value="ex2" label="Exercício 2 — Aplicação">
-
-### Implemente a edição de perfil
-
-Crie um botão "Editar Perfil" que abre um diálogo com campos editáveis para `username`. Ao salvar, atualize via API e reflita no estado.
-
-  </TabItem>
-  <TabItem value="ex3" label="Exercício 3 — Desafio">
-
-### Botão de logout funcional
-
-Adicione um botão "Sair" na `ProfileScreen` que chame `authRepository.logout()` (limpa DataStore), navegue para a tela de Login usando `navController.navigate("login") { popUpTo(0) }`, e integre com o fluxo de auth da **Aula 13**.
-
-  </TabItem>
-</Tabs>
+- Abra o app e vá em **Estado → Recomposição**.
+- Toque em "mudar valor" na **Região A** e observe o contador "recompôs Nx" dela subir.
+- Repare que o contador da **Região B** fica parado — ela não lê o estado que mudou, então não recompõe.

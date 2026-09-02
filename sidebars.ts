@@ -4,54 +4,29 @@ const sidebars: SidebarsConfig = {
     pdmiiSidebar: [
         {
             type: "category",
-            label: "Módulo 1 — UI Declarativa e Kotlin",
+            label: "Módulo 1 — Fundamentos",
             collapsed: false,
-            items: [
-                "pdmii/aula-01",
-                "pdmii/aula-02",
-                "pdmii/aula-03",
-                "pdmii/aula-04",
-            ],
+            items: ["pdmii/aula-01", "pdmii/aula-02", "pdmii/aula-03", "pdmii/aula-04"],
         },
         {
             type: "category",
-            label: "Módulo 2 — State Management e Networking",
-            items: [
-                "pdmii/aula-05",
-                "pdmii/aula-06",
-                "pdmii/aula-07",
-                "pdmii/aula-08",
-            ],
+            label: "Módulo 2 — Layout",
+            items: ["pdmii/aula-05", "pdmii/aula-06", "pdmii/aula-07", "pdmii/aula-08"],
         },
         {
             type: "category",
-            label: "Módulo 3 — Quiz Flow e Progresso",
-            items: [
-                "pdmii/aula-09",
-                "pdmii/aula-10",
-                "pdmii/aula-11",
-                "pdmii/aula-12",
-            ],
+            label: "Módulo 3 — Componentes Material3",
+            items: ["pdmii/aula-09", "pdmii/aula-10", "pdmii/aula-11", "pdmii/aula-12"],
         },
         {
             type: "category",
-            label: "Módulo 4 — Auth e Gamificação",
-            items: [
-                "pdmii/aula-13",
-                "pdmii/aula-14",
-                "pdmii/aula-15",
-                "pdmii/aula-16",
-            ],
+            label: "Módulo 4 — Estado",
+            items: ["pdmii/aula-13", "pdmii/aula-14", "pdmii/aula-15", "pdmii/aula-16"],
         },
         {
             type: "category",
-            label: "Módulo 5 — Finalização e DevOps",
-            items: [
-                "pdmii/aula-17",
-                "pdmii/aula-18",
-                "pdmii/aula-19",
-                "pdmii/aula-20",
-            ],
+            label: "Módulo 5 — Estado avançado",
+            items: ["pdmii/aula-17", "pdmii/aula-18", "pdmii/aula-19"],
         },
     ],
 

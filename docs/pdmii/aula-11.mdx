@@ -1,158 +1,79 @@
 ---
 sidebar_position: 11
-title: "Aula 11: Tela de Quiz e Questões"
-description: "Renderização dinâmica de perguntas, opções de resposta e blocos de código no quiz."
+title: "Aula 11: Card e Surface"
+description: "Elevação, cor e divisores."
 ---
 
-# Aula 11: Tela de Quiz e Questões
+# Aula 11: Card e Surface
 
-:::info 🔀 Branch da Aula
-Esta aula refere-se à branch: **`aula-11`**
+:::info 📂 Código da Aula
+Esta aula é a lição **Card e Surface** do playground, no repositório `compose-intro` (branch `app-final`):
+
+- Arquivo: `app/src/main/java/com/fatec/composeintro/ui/lessons/L11CardSurface.kt`
+- No app: abra o catálogo → módulo **Componentes Material3** → **Card e Surface**
+
 ```bash
-git checkout aula-11
+git clone https://github.com/fatec-registro-yuri-villanova/compose-intro
+git checkout app-final
 ```
 :::
 
 ## 📖 Conceito
 
-O coração do MergeSkills é o **Quiz**. Cada lição contém perguntas com opções de resposta e, frequentemente, blocos de código que o aluno precisa analisar.
+Um `Card` é uma superfície elevada, com cantos arredondados e sombra, que junta informações relacionadas num bloco. Dentro dele cabem `Icon` (um símbolo), `Text` e `HorizontalDivider` (uma linha que separa seções).
 
-### Modelo de Questão
+Cartões são a unidade visual do Material — cada item do catálogo desta app é um `Card`. A `elevation` (a sombra) comunica que o bloco está "acima" do fundo e é tocável.
 
-```kotlin
-@Serializable
-data class QuestionDto(
-    val id: String,
-    val prompt: String,
-    @SerialName("code_block")
-    val codeBlock: String? = null,  // Pode ter código ou não
-    val options: List<OptionDto>
-)
+`Card` é uma `Surface` especializada: já vem com elevação e forma prontas. O selo colorido dentro do card, no código abaixo, é uma `Surface` "nua" — só cor e forma, sem sombra — para mostrar a peça que o `Card` empacota.
 
-@Serializable
-data class OptionDto(
-    val id: String,
-    val text: String
-    // ⚠️ NÃO existe "isCorrect" no cliente! Segurança: validação é no servidor
-)
-```
-
-:::danger Regra de Segurança
-**Nunca exponha `correct_answer` no cliente.** O app envia apenas o `optionId` selecionado para o servidor via `POST /progress/submit`. O servidor retorna se está correto ou não.
+:::caution Armadilha
+Elevação **não** é margem. Ela adiciona sombra, não espaço — a sombra dá a impressão de profundidade, mas o card ocupa o mesmo lugar. Suba o slider e repare que é a sombra que cresce, não o tamanho.
 :::
-
-### Renderização de Código
-
-Para exibir blocos de código no quiz, use texto com fonte monospace:
-
-```kotlin
-@Composable
-fun CodeBlock(code: String, modifier: Modifier = Modifier) {
-    Surface(
-        modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        color = Color(0xFF1A1A2E)
-    ) {
-        Text(
-            text = code,
-            modifier = Modifier.padding(16.dp),
-            fontFamily = FontFamily.Monospace,
-            fontSize = 14.sp,
-            color = Color(0xFFE0E0E0),
-            lineHeight = 20.sp
-        )
-    }
-}
-```
 
 ## 💻 Código de Referência
 
-```kotlin title="screens/QuizScreen.kt"
+```kotlin title="ui/lessons/L11CardSurface.kt"
+private enum class AccentOption(val label: String) { PRIMARY("Primary"), TERTIARY("Tertiary"), ERROR("Error") }
+
 @Composable
-fun QuizScreen(
-    lessonId: String,
-    viewModel: QuizViewModel = koinViewModel { parametersOf(lessonId) }
-) {
-    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val currentQuestion = uiState.currentQuestion
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp)
+private fun CardDemo(elevation: Dp, accent: AccentOption) {
+    val cor: Color = when (accent) {
+        AccentOption.PRIMARY -> MaterialTheme.colorScheme.primary
+        AccentOption.TERTIARY -> MaterialTheme.colorScheme.tertiary
+        AccentOption.ERROR -> MaterialTheme.colorScheme.error
+    }
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        elevation = CardDefaults.cardElevation(defaultElevation = elevation)
     ) {
-        // Progresso
-        LinearProgressIndicator(
-            progress = { uiState.progress },
-            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(4.dp)),
-            color = MaterialTheme.colorScheme.primary
-        )
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        if (currentQuestion != null) {
-            // Pergunta
-            Text(
-                text = currentQuestion.prompt,
-                style = MaterialTheme.typography.titleMedium
-            )
-
-            // Bloco de código (se houver)
-            currentQuestion.codeBlock?.let { code ->
-                Spacer(modifier = Modifier.height(16.dp))
-                CodeBlock(code = code)
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(imageVector = Icons.Filled.Star, contentDescription = null, tint = cor)
+                Text("Favorito", style = MaterialTheme.typography.titleMedium)
             }
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // Opções de resposta
-            currentQuestion.options.forEach { option ->
-                OptionButton(
-                    text = option.text,
-                    isSelected = uiState.selectedOptionId == option.id,
-                    onClick = { viewModel.onAction(QuizAction.SelectOption(option.id)) }
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = cor)
+            Text("Conteúdo do card, agrupado numa superfície elevada.")
+            Surface(
+                modifier = Modifier.padding(top = 8.dp),
+                color = cor,
+                shape = MaterialTheme.shapes.small
+            ) {
+                Text(
+                    text = "Selo (Surface simples)",
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                    style = MaterialTheme.typography.labelSmall
                 )
-                Spacer(modifier = Modifier.height(8.dp))
             }
         }
-
-        Spacer(modifier = Modifier.weight(1f))
-
-        // Botão de confirmar
-        StitchButton(
-            text = "Confirmar",
-            onClick = { viewModel.onAction(QuizAction.Submit) },
-            enabled = uiState.selectedOptionId != null
-        )
     }
 }
 ```
 
-## 💻 Mão na Massa
+## 🧪 Experimente
 
-import Tabs from '@theme/Tabs';
-import TabItem from '@theme/TabItem';
-
-<Tabs>
-  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
-
-### Estilize o `OptionButton`
-
-Crie um `OptionButton` que mude de cor ao ser selecionado: **Não selecionado** → borda cinza, fundo transparente. **Selecionado** → borda `StitchGreen`, fundo com opacidade verde.
-
-  </TabItem>
-  <TabItem value="ex2" label="Exercício 2 — Aplicação">
-
-### Implemente o `QuizViewModel`
-
-Crie o ViewModel com `UiState` (questão atual, opção selecionada, progresso), `Actions` (`SelectOption(id)`, `Submit`, `NextQuestion`) e lógica de avançar para a próxima questão após submissão.
-
-  </TabItem>
-  <TabItem value="ex3" label="Exercício 3 — Desafio">
-
-### Quiz com submissão ao servidor
-
-Integre o `QuizViewModel` com o `ProgressRepository` (Aula 09). Ao confirmar, envie `POST /progress/submit` com `{ lessonId, questionId, optionId }`. Receba a resposta do servidor indicando se está correto. Mostre feedback visual (verde para acerto, vermelho para erro). Use o `CodeBlock` para questões que contêm código.
-
-  </TabItem>
-</Tabs>
+- Abra o app e vá em **Componentes Material3 → Card e Surface**.
+- Aumente o slider de **elevation** e veja a sombra sob o card crescer — sem o card mudar de tamanho.
+- Troque a **cor de destaque** e veja o ícone, o divisor e o selo (a `Surface` nua) mudarem juntos.

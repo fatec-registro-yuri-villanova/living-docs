@@ -1,129 +1,79 @@
 ---
 sidebar_position: 18
-title: "Aula 18: Animações em Compose"
-description: "AnimatedVisibility, animateAsState, transições de tela e micro-interações."
+title: "Aula 18: LaunchedEffect"
+description: "Trabalho assíncrono amarrado à composição."
 ---
 
-# Aula 18: Animações em Compose
+# Aula 18: LaunchedEffect
 
-:::info 🔀 Branch da Aula
-Esta aula refere-se à branch: **`aula-18`**
+:::info 📂 Código da Aula
+Esta aula é a lição **LaunchedEffect** do playground, no repositório `compose-intro` (branch `app-final`):
+
+- Arquivo: `app/src/main/java/com/fatec/composeintro/ui/lessons/L18LaunchedEffect.kt`
+- No app: abra o catálogo → módulo **Estado avançado** → **LaunchedEffect**
+
 ```bash
-git checkout aula-18
+git clone https://github.com/fatec-registro-yuri-villanova/compose-intro
+git checkout app-final
 ```
 :::
 
 ## 📖 Conceito
 
-Animações transformam uma interface funcional em uma experiência encantadora. O Compose oferece APIs de animação declarativas que são simples de usar mas poderosas.
+`LaunchedEffect(chave)` lança uma corrotina quando entra na tela (e de novo sempre que a `chave` muda). Quando sai da tela, a corrotina é cancelada sozinha. É onde vão chamadas de rede, timers, `delay` — coisas suspensas.
 
-### Tipos de Animação
+Você NÃO pode chamar código suspenso direto no corpo de um `@Composable` — ele roda muitas vezes por segundo. O `LaunchedEffect` dá um lugar seguro, com começo, fim e cancelamento automáticos.
 
-| API | Uso | Complexidade |
-|-----|-----|-------------|
-| `animateXxxAsState` | Propriedade única (cor, tamanho, opacidade) | Simples |
-| `AnimatedVisibility` | Aparecer/desaparecer componentes | Simples |
-| `AnimatedContent` | Trocar um conteúdo por outro | Média |
-| `Animatable` | Controle total sobre animação | Avançado |
-| `InfiniteTransition` | Loops contínuos | Média |
-
-### Exemplos Práticos
-
-```kotlin
-// Cor animada no botão de opção
-val backgroundColor by animateColorAsState(
-    targetValue = if (isSelected)
-        Color(0xFF4CDF20).copy(alpha = 0.15f)
-    else
-        Color.Transparent,
-    animationSpec = tween(300),
-    label = "optionBg"
-)
-
-// Visibilidade com animação
-AnimatedVisibility(
-    visible = showBanner,
-    enter = slideInVertically() + fadeIn(),
-    exit = slideOutVertically() + fadeOut()
-) {
-    ErrorBanner(message = errorMessage)
-}
-```
+:::caution Armadilha
+A `chave` controla tudo. Toque em "buscar" enquanto uma busca está em andamento: a chave muda, o Compose CANCELA a busca anterior e começa outra. Se a chave fosse fixa, o efeito rodaria só uma vez e ignoraria os cliques seguintes.
+:::
 
 ## 💻 Código de Referência
 
-```kotlin title="components/AnimatedOptionButton.kt"
+```kotlin title="ui/lessons/L18LaunchedEffect.kt"
 @Composable
-fun AnimatedOptionButton(
-    text: String,
-    isSelected: Boolean,
-    isCorrect: Boolean?,
-    onClick: () -> Unit
-) {
-    val borderColor by animateColorAsState(
-        targetValue = when {
-            isCorrect == true -> Color(0xFF4CDF20)
-            isCorrect == false -> Color(0xFFFF453A)
-            isSelected -> Color(0xFF4CDF20)
-            else -> Color(0xFF333333)
-        },
-        animationSpec = tween(300),
-        label = "border"
-    )
+fun L18LaunchedEffect(onBack: () -> Unit) {
+    var buscaId by remember { mutableIntStateOf(0) }
+    var carregando by remember { mutableStateOf(false) }
+    var resultado by remember { mutableStateOf("") }
 
-    val scale by animateFloatAsState(
-        targetValue = if (isSelected) 1.02f else 1f,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
-        label = "scale"
-    )
+    // Roda a cada mudança de buscaId. buscaId == 0 é o estado inicial: não busca.
+    LaunchedEffect(buscaId) {
+        if (buscaId > 0) {
+            carregando = true
+            resultado = ""
+            delay(1500)
+            resultado = "Resultado da busca #$buscaId"
+            carregando = false
+        }
+    }
 
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .graphicsLayer { scaleX = scale; scaleY = scale }
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(12.dp),
-        border = BorderStroke(2.dp, borderColor),
-        color = borderColor.copy(alpha = 0.08f)
+    LessonScaffold(
+        title = "LaunchedEffect",
+        notice = "Toque em 'buscar' para simular uma chamada com 1,5s de espera. " +
+            "Toque de novo durante a espera: a busca anterior é cancelada e recomeça.",
+        onBack = onBack
     ) {
-        Text(
-            text = text,
-            modifier = Modifier.padding(16.dp),
-            style = MaterialTheme.typography.bodyLarge
-        )
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Button(onClick = { buscaId++ }) { Text("buscar") }
+
+            when {
+                carregando -> CircularProgressIndicator()
+                resultado.isNotBlank() -> Text(resultado, style = MaterialTheme.typography.titleMedium)
+                else -> Text("nenhuma busca ainda", style = MaterialTheme.typography.bodyMedium)
+            }
+        }
     }
 }
 ```
 
-## 💻 Mão na Massa
+## 🧪 Experimente
 
-import Tabs from '@theme/Tabs';
-import TabItem from '@theme/TabItem';
-
-<Tabs>
-  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
-
-### Anime a barra de progresso do quiz
-
-Use `animateFloatAsState` para que a `LinearProgressIndicator` do quiz (Aula 11) transite suavemente entre valores.
-
-  </TabItem>
-  <TabItem value="ex2" label="Exercício 2 — Aplicação">
-
-### AnimatedContent para troca de questões
-
-Use `AnimatedContent` no `QuizScreen` para que a transição entre questões tenha um efeito de slide horizontal.
-
-  </TabItem>
-  <TabItem value="ex3" label="Exercício 3 — Desafio">
-
-### Micro-interações completas
-
-Adicione animações em todo o app:
-1. `AnimatedVisibility` no `ErrorBanner` (Aula 05)
-2. `animateColorAsState` nos `OptionButton` do quiz (Aula 11)
-3. Transição de `fadeIn` + `slideIn` no `FeedbackBottomSheet` (Aula 12)
-4. Pulse animation no `StreakBadge` (Aula 15)
-
-  </TabItem>
-</Tabs>
+- Abra o app e vá em **Estado avançado → LaunchedEffect**.
+- Toque em "buscar" e observe o indicador de progresso por 1,5s até o resultado aparecer.
+- Toque em "buscar" de novo bem no meio da espera: a busca anterior some e uma nova de 1,5s começa — é a chave (`buscaId`) mudando e cancelando o efeito anterior.
+- No código, note que o corpo do `LaunchedEffect` só roda quando `buscaId > 0`: o estado inicial (`0`) não dispara busca nenhuma.

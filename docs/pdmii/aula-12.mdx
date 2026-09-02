@@ -1,125 +1,72 @@
 ---
 sidebar_position: 12
-title: "Aula 12: Feedback Visual de Quiz"
-description: "ModalBottomSheet para feedback de acerto/erro, animações de resposta e transições."
+title: "Aula 12: Scaffold"
+description: "TopAppBar, FAB e a armadilha do innerPadding."
 ---
 
-# Aula 12: Feedback Visual de Quiz
+# Aula 12: Scaffold
 
-:::info 🔀 Branch da Aula
-Esta aula refere-se à branch: **`aula-12`**
+:::info 📂 Código da Aula
+Esta aula é a lição **Scaffold** do playground, no repositório `compose-intro` (branch `app-final`):
+
+- Arquivo: `app/src/main/java/com/fatec/composeintro/ui/lessons/L12Scaffold.kt`
+- No app: abra o catálogo → módulo **Componentes Material3** → **Scaffold**
+
 ```bash
-git checkout aula-12
+git clone https://github.com/fatec-registro-yuri-villanova/compose-intro
+git checkout app-final
 ```
 :::
 
 ## 📖 Conceito
 
-O feedback visual é crucial para a experiência de aprendizado. Após o aluno responder uma questão, um **ModalBottomSheet** aparece com resultado claro — verde para acerto, vermelho para erro.
+`Scaffold` é um layout pronto do Material que reserva os lugares certos para a barra de cima (`TopAppBar`), a barra de baixo (`BottomAppBar`) e o botão flutuante (FAB), deixando o miolo para o seu conteúdo. É o que a própria moldura destas lições usa.
 
-### ModalBottomSheet
+Sem ele, você posicionaria cada barra na mão e teria que calcular onde o conteúdo pode começar. O `Scaffold` entrega esse cálculo num `innerPadding`.
 
-```kotlin
+:::caution Armadilha
+Essa é a armadilha mais comum de todas: o `Scaffold` te dá um `innerPadding` e você **precisa** aplicá-lo no conteúdo. Se ignorar, o conteúdo desliza para trás da `TopAppBar` e some. Ligue o switch "ignorar innerPadding" e veja o texto se esconder atrás da barra.
+:::
+
+## 💻 Código de Referência
+
+```kotlin title="ui/lessons/L12Scaffold.kt"
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun FeedbackBottomSheet(
-    isCorrect: Boolean,
-    explanation: String,
-    onDismiss: () -> Unit
-) {
-    val sheetState = rememberModalBottomSheetState()
-
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        containerColor = if (isCorrect)
-            Color(0xFF4CDF20).copy(alpha = 0.15f)
-        else
-            Color(0xFFFF453A).copy(alpha = 0.15f)
-    ) {
-        Column(
-            modifier = Modifier.padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Icon(
-                imageVector = if (isCorrect) Icons.Default.CheckCircle
-                              else Icons.Default.Cancel,
-                contentDescription = null,
-                tint = if (isCorrect) Color(0xFF4CDF20) else Color(0xFFFF453A),
-                modifier = Modifier.size(48.dp)
-            )
-            Spacer(modifier = Modifier.height(16.dp))
+private fun ScaffoldDemo(showFab: Boolean, showBottomBar: Boolean, ignoreInnerPadding: Boolean) {
+    Scaffold(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.surface),
+        topBar = { TopAppBar(title = { Text("Minha tela") }) },
+        bottomBar = { if (showBottomBar) BottomAppBar { Text("barra de baixo", modifier = Modifier.padding(16.dp)) } },
+        floatingActionButton = {
+            if (showFab) FloatingActionButton(onClick = {}) {
+                Icon(Icons.Filled.Add, contentDescription = "Adicionar")
+            }
+        }
+    ) { innerPadding ->
+        val conteudoModifier = if (ignoreInnerPadding) {
+            Modifier.fillMaxSize()
+        } else {
+            Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+        }
+        Box(modifier = conteudoModifier) {
             Text(
-                text = if (isCorrect) "Correto! 🎉" else "Incorreto 😔",
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(text = explanation, style = MaterialTheme.typography.bodyMedium)
-            Spacer(modifier = Modifier.height(24.dp))
-            StitchButton(
-                text = "Continuar",
-                onClick = onDismiss
+                text = "conteúdo da tela",
+                modifier = Modifier
+                    .background(MaterialTheme.colorScheme.primaryContainer)
+                    .padding(8.dp)
             )
         }
     }
 }
 ```
 
-## 💻 Código de Referência
+## 🧪 Experimente
 
-```kotlin title="screens/QuizScreen.kt (atualizado com feedback)"
-@Composable
-fun QuizScreen(/* ... */) {
-    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-
-    // Conteúdo do quiz...
-    QuizContent(uiState = uiState, onAction = viewModel::onAction)
-
-    // Bottom Sheet de feedback
-    if (uiState.showFeedback) {
-        FeedbackBottomSheet(
-            isCorrect = uiState.lastAnswerCorrect,
-            explanation = uiState.feedbackExplanation,
-            onDismiss = { viewModel.onAction(QuizAction.NextQuestion) }
-        )
-    }
-}
-```
-
-## 💻 Mão na Massa
-
-import Tabs from '@theme/Tabs';
-import TabItem from '@theme/TabItem';
-
-<Tabs>
-  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
-
-### Customize as cores do BottomSheet
-
-Altere o `FeedbackBottomSheet` para usar as cores exatas do Design System:
-- Acerto: `StitchGreen (#4CDF20)` com alpha 0.15
-- Erro: `StitchError (#FF453A)` com alpha 0.15
-
-Use `MaterialTheme.colorScheme` em vez de cores hardcoded.
-
-  </TabItem>
-  <TabItem value="ex2" label="Exercício 2 — Aplicação">
-
-### Adicione animação no ícone
-
-Use `animateColorAsState` para que o ícone de resultado faça uma transição suave de cor. Adicione também um `AnimatedVisibility` para que o Sheet apareça com animação de slide-up.
-
-  </TabItem>
-  <TabItem value="ex3" label="Exercício 3 — Desafio">
-
-### Fluxo completo: Quiz → Feedback → Próxima questão
-
-Integre com o `QuizViewModel` da **Aula 11**:
-1. Após `Submit`, chame `POST /progress/submit`
-2. Exiba o `FeedbackBottomSheet` com o resultado
-3. Ao clicar "Continuar", avance para a próxima questão
-4. Ao finalizar todas as questões, navegue de volta com `navController.popBackStack()`
-
-  </TabItem>
-</Tabs>
+- Abra o app e vá em **Componentes Material3 → Scaffold**.
+- Ligue e desligue o **FAB** e a **barra de baixo** e veja o `Scaffold` reservar o espaço certo para cada um.
+- Ligue **"ignorar innerPadding"** e veja o conteúdo escorregar para trás da barra de cima.

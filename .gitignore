@@ -7,3 +7,5 @@ build/
 
 # Configuracao local do Claude Code
 .claude/
+
+.superpowers/

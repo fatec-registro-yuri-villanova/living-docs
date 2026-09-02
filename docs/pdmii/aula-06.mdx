@@ -1,264 +1,63 @@
 ---
 sidebar_position: 6
-title: "Aula 06: Telas de Autenticação"
-description: "SplashScreen, LoginScreen e RegisterScreen com AuthScreens.kt — fluxo visual completo de auth."
+title: "Aula 06: Box"
+description: "Sobreposição de elementos e contentAlignment."
 ---
 
-# Aula 06: Telas de Autenticação
+# Aula 06: Box
 
-:::info 🔀 Branch da Aula
-Esta aula refere-se à branch: **`aula-06`**
+:::info 📂 Código da Aula
+Esta aula é a lição **Box** do playground, no repositório `compose-intro` (branch `app-final`):
+
+- Arquivo: `app/src/main/java/com/fatec/composeintro/ui/lessons/L06Box.kt`
+- No app: abra o catálogo → módulo **Layout** → **Box**
+
 ```bash
-git checkout aula-06
+git clone https://github.com/fatec-registro-yuri-villanova/compose-intro
+git checkout app-final
 ```
 :::
 
 ## 📖 Conceito
 
-Nesta aula, criamos as **telas visuais** do fluxo de autenticação: Splash, Login e Registro. A lógica de rede será adicionada nas próximas aulas — aqui focamos na construção das telas usando Compose.
+`Box` é um container que empilha os filhos um sobre o outro, na mesma posição. Diferente de `Column` e `Row`, que colocam os filhos lado a lado, o `Box` deixa que eles se cruzem — como camadas.
 
-### Arquivos novos nesta branch
+É assim que se coloca um texto sobre uma imagem, um selo no canto de um card, um badge sobre um ícone. `contentAlignment` decide em que canto (ou centro) os filhos ficam.
 
-| Arquivo | Descrição |
-|---------|-----------|
-| `ui/screens/auth/AuthScreens.kt` | Contém `MergeSkillsLogo`, `SplashScreen`, `LoginScreen`, `RegisterScreen` |
+:::caution Armadilha
+Dentro de um `Box`, a ordem importa como camada — o último filho declarado fica por cima dos anteriores. No demo, ligar o switch faz a caixa menor aparecer SOBRE a maior, no alinhamento escolhido.
+:::
 
 ## 💻 Código de Referência
 
-### Logo da Marca
-
-```kotlin title="ui/screens/auth/AuthScreens.kt"
+```kotlin title="ui/lessons/L06Box.kt"
 @Composable
-fun MergeSkillsLogo() {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(
-            text = "M",
-            style = MaterialTheme.typography.displayLarge,
-            color = MaterialTheme.colorScheme.primary
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            text = "MergeSkills",
-            style = MaterialTheme.typography.headlineLarge,
-            color = MaterialTheme.colorScheme.onBackground
-        )
-    }
-}
-```
-
-### SplashScreen com LaunchedEffect
-
-```kotlin title="ui/screens/auth/AuthScreens.kt"
-@Composable
-fun SplashScreen(onSplashFinished: () -> Unit) {
-    LaunchedEffect(key1 = true) {
-        delay(2000)
-        onSplashFinished()
-    }
-
+private fun BoxDemo(alignment: Alignment, overlay: Boolean) {
     Box(
         modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
-        contentAlignment = Alignment.Center
-    ) {
-        MergeSkillsLogo()
-    }
-}
-```
-
-### LoginScreen
-
-```kotlin title="ui/screens/auth/AuthScreens.kt"
-@Composable
-fun LoginScreen(
-    viewModel: AuthViewModel,
-    onNavigateToRegister: () -> Unit,
-    onLoginSuccess: () -> Unit
-) {
-    var email by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-    val uiState by viewModel.uiState.collectAsState()
-
-    // Observa o sucesso da Autenticação
-    LaunchedEffect(uiState.isSuccess) {
-        if (uiState.isSuccess) { onLoginSuccess() }
-    }
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .padding(24.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
+            .size(160.dp)
+            .background(MaterialTheme.colorScheme.surfaceVariant),
+        contentAlignment = alignment
     ) {
         Text(
-            text = "Entrar",
-            style = MaterialTheme.typography.headlineLarge,
-            color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.padding(bottom = 32.dp)
+            text = "frente",
+            modifier = Modifier
+                .background(MaterialTheme.colorScheme.primaryContainer)
+                .padding(12.dp)
         )
-
-        OutlinedTextField(
-            value = email,
-            onValueChange = {
-                email = it
-                viewModel.resetError()
-            },
-            label = { Text("E-mail") },
-            leadingIcon = { Icon(Icons.Default.Person, contentDescription = null) },
-            shape = RoundedCornerShape(12.dp),
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true
-        )
-
-        OutlinedTextField(
-            value = password,
-            onValueChange = { password = it },
-            label = { Text("Senha") },
-            leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
-            visualTransformation = PasswordVisualTransformation(),
-            shape = RoundedCornerShape(12.dp),
-            modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
-            singleLine = true
-        )
-
-        if (uiState.errorMessage != null) {
-            Text(
-                text = uiState.errorMessage!!,
-                color = MaterialTheme.colorScheme.error,
-                modifier = Modifier.padding(top = 16.dp)
+        if (overlay) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .background(MaterialTheme.colorScheme.tertiary)
             )
         }
-
-        Button(
-            onClick = { viewModel.login(email, password) },
-            enabled = !uiState.isLoading,
-            modifier = Modifier.fillMaxWidth().padding(top = 32.dp)
-        ) {
-            if (uiState.isLoading) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(24.dp),
-                    color = MaterialTheme.colorScheme.onPrimary
-                )
-            } else {
-                Text("Acessar Plataforma")
-            }
-        }
-
-        TextButton(
-            onClick = onNavigateToRegister,
-            modifier = Modifier.padding(top = 16.dp)
-        ) {
-            Text("Não possui conta? Cadastre-se",
-                 color = MaterialTheme.colorScheme.onSurface)
-        }
     }
 }
 ```
 
-### RegisterScreen
+## 🧪 Experimente
 
-```kotlin title="ui/screens/auth/AuthScreens.kt"
-@Composable
-fun RegisterScreen(
-    viewModel: AuthViewModel,
-    onNavigateBack: () -> Unit
-) {
-    var name by remember { mutableStateOf("") }
-    var email by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-    val uiState by viewModel.uiState.collectAsState()
-
-    LaunchedEffect(uiState.isSuccess) {
-        if (uiState.isSuccess) {
-            viewModel.resetSuccess()
-            onNavigateBack()
-        }
-    }
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .padding(24.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
-    ) {
-        Text("Cadastrar",
-            style = MaterialTheme.typography.headlineLarge,
-            color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.padding(bottom = 32.dp))
-
-        OutlinedTextField(
-            value = name,
-            onValueChange = { name = it; viewModel.resetError() },
-            label = { Text("Nome Completo") },
-            shape = RoundedCornerShape(12.dp),
-            modifier = Modifier.fillMaxWidth(), singleLine = true)
-
-        OutlinedTextField(
-            value = email,
-            onValueChange = { email = it },
-            label = { Text("E-mail") },
-            shape = RoundedCornerShape(12.dp),
-            modifier = Modifier.fillMaxWidth().padding(top = 16.dp), singleLine = true)
-
-        OutlinedTextField(
-            value = password,
-            onValueChange = { password = it },
-            label = { Text("Senha") },
-            visualTransformation = PasswordVisualTransformation(),
-            shape = RoundedCornerShape(12.dp),
-            modifier = Modifier.fillMaxWidth().padding(top = 16.dp), singleLine = true)
-
-        Button(
-            onClick = { viewModel.register(name, email, password) },
-            enabled = !uiState.isLoading,
-            modifier = Modifier.fillMaxWidth().padding(top = 32.dp)
-        ) {
-            if (uiState.isLoading) CircularProgressIndicator(modifier = Modifier.size(24.dp))
-            else Text("Criar Conta")
-        }
-
-        TextButton(onClick = onNavigateBack, modifier = Modifier.padding(top = 16.dp)) {
-            Text("Voltar para o Login", color = MaterialTheme.colorScheme.onSurface)
-        }
-    }
-}
-```
-
-## 💻 Mão na Massa
-
-import Tabs from '@theme/Tabs';
-import TabItem from '@theme/TabItem';
-
-<Tabs>
-  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
-
-### Melhore o Logo
-
-Substitua a letra "M" do `MergeSkillsLogo()` por um `Icon` vetorial. Use `Icons.Default.Code` ou crie um ícone customizado.
-
-  </TabItem>
-  <TabItem value="ex2" label="Exercício 2 — Aplicação">
-
-### Validação visual nos campos
-
-Adicione validação visual nos `OutlinedTextField`:
-1. Email deve conter `@` — borda vermelha se inválido
-2. Senha deve ter pelo menos 6 caracteres — texto auxiliar "Mínimo 6 caracteres"
-3. Botão "Acessar" desabilitado até ambos serem válidos
-
-  </TabItem>
-  <TabItem value="ex3" label="Exercício 3 — Desafio">
-
-### Fluxo Splash → Login → Register no NavHost
-
-Configure o `NavHost` com 3 rotas:
-
-`"splash"` → `SplashScreen(onSplashFinished = { navController.navigate("login") })`, `"login"` → `LoginScreen(...)`, `"register"` → `RegisterScreen(...)`. Garanta que o back stack seja limpo ao navegar de Splash para Login.
-
-  </TabItem>
-</Tabs>
+- Abra o app e vá em **Layout → Box**.
+- Troque `contentAlignment` entre `TopStart`, `Center` e `BottomEnd` e veja a caixa "frente" se mover para o canto ou o centro escolhido.
+- Ligue **"sobrepor uma camada"** e veja uma segunda caixa aparecer por cima da primeira, no mesmo alinhamento — a ordem de declaração decide quem fica em cima.
