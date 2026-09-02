@@ -1,0 +1,508 @@
+---
+sidebar_position: 12
+title: "Aula 12: Preview fiel à impressora"
+description: "WYSIWYG de verdade — e o teste que prova que a tela e o papel quebram linha igual."
+---
+
+# Aula 12: Preview fiel à impressora
+
+Esta aula abre o **Módulo 5 — Telas, papel e entrega**.
+
+## 📖 Conceito
+
+O preview faz uma promessa ao usuário: o que aparece na tela é o que sai no papel. Essa promessa é frágil por um motivo estrutural — a tela e a impressora são desenhadas por códigos completamente diferentes. Um é `Text` do Compose, pintado em pixels, medido por um `TextMeasurer`. O outro é `EscPosRenderer` (aula 05), que escreve bytes ESC/POS que a Lintian LT-8359 interpreta com sua própria lógica interna de cabeça de impressão. Nada obriga esses dois caminhos a concordar. A única forma de sustentar a promessa é as duas pontas usarem a **mesma** regra de quebra de linha — a `QuebraDeLinha` da aula 02 — e existir um teste que prove, a cada mudança, que elas continuam usando essa mesma regra e não duas cópias que foram divergindo em silêncio.
+
+Esta aula entrega três peças. A primeira é `FormularioEtiqueta.kt`: não um Composable, mas o modelo de dados puro do formulário e a conversão entre ele e `LabelDocument` (aula 04). `CamposDoFormulario` guarda o que o usuário está preenchendo — título, linhas (cada uma com seu próprio alinhamento), conteúdo do QR e número de cópias — e `paraDocumento()` converte isso num `LabelDocument` pronto para ser renderizado ou pré-visualizado. `paraCampos()` faz o caminho inverso, para reabrir uma etiqueta salva na tela de composição. As telas que efetivamente desenham os campos de texto ficam para a aula 13; o que existe aqui é só o modelo e a conversão, sem nenhuma dependência de UI de formulário.
+
+A segunda peça é `PreviewEtiqueta.kt`, que tem duas responsabilidades. `linhasDePreview(documento)` normaliza cada `Bloco` (a mesma `normalizado()` da aula 04, que converte `Titulo` em `Linha` escala 2) e aplica `QuebraDeLinha.quebrar` — a exata mesma chamada que `EscPosRenderer.escreverLinha` faz — para produzir a lista de `LinhaDePreview` que a tela desenha. O Composable `PreviewEtiqueta` só itera essa lista e desenha cada `LinhaDePreview` com `Text`, sem decidir quebra nenhuma por conta própria: repare em `softWrap = false` e `maxLines = 1` no `Text` — o Compose está proibido de reflowar sozinho, porque se reflowasse (por exemplo, com uma fonte de acessibilidade grande), o preview quebraria diferente do papel em silêncio, exatamente para quem mais precisa que a tela seja fiel.
+
+A proporção que faz o texto caber na tela não vem dos 384 dots físicos declarados em `Impressora.DOTS_LARGURA` — essa constante é só a inferência física documentada em `Impressora.kt` (32 colunas × 12 dots da Font A) e não é lida em nenhum lugar deste arquivo. A proporção real vem de `corpoQueCabe`: ela mede, com `rememberTextMeasurer()`, a largura que `"M".repeat(Impressora.COLUNAS_BASE)` — 32 letras "M" em monoespaçada — ocupa a um tamanho de referência (`REFERENCIA = 20.sp`), e depois escala esse tamanho de referência pela razão entre a largura realmente disponível na tela e a largura medida, limitada entre `0,35` e `1,2` para não virar ilegível numa tela estreita nem inchar demais no desktop. É uma proporção em **colunas**, não em dots: o preview garante que exatamente `COLUNAS_BASE` caracteres monoespaçados cabem na largura disponível, e é justamente por medir de verdade em vez de supor um tamanho de fonte fixo que ele não mente sobre quanto texto cabe quando o usuário aumenta a fonte do sistema.
+
+## 🗂️ Estrutura de Arquivos
+
+```
+shared/src/
+├── commonMain/kotlin/com/fatec/printec/ui/
+│   ├── FormularioEtiqueta.kt
+│   └── PreviewEtiqueta.kt
+├── commonTest/kotlin/com/fatec/printec/ui/
+│   ├── FormularioEtiquetaTest.kt
+│   └── LinhasDePreviewTest.kt
+└── jvmCommonTest/kotlin/com/fatec/printec/impressao/
+    └── RendererIgualAoPreviewTest.kt
+```
+
+## 🔴 O Teste
+
+```kotlin title="shared/src/commonTest/kotlin/com/fatec/printec/ui/FormularioEtiquetaTest.kt"
+package com.fatec.printec.ui
+
+import com.fatec.printec.etiqueta.Alinhamento
+import com.fatec.printec.etiqueta.Bloco
+import com.fatec.printec.etiqueta.LabelDocument
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
+
+class FormularioEtiquetaTest {
+
+    @Test
+    fun `campos preenchidos viram titulo linhas e qr nesta ordem`() {
+        val campos = CamposDoFormulario(
+            titulo = "Bancada A",
+            linhas = listOf(LinhaDoFormulario("linha 1"), LinhaDoFormulario("linha 2")),
+            qr = "https://exemplo.com",
+            copias = 2,
+        )
+        val doc = campos.paraDocumento()
+        assertEquals(Bloco.Titulo("Bancada A"), doc.blocos[0])
+        assertEquals(Bloco.Linha("linha 1"), doc.blocos[1])
+        assertEquals(Bloco.Linha("linha 2"), doc.blocos[2])
+        assertEquals(Bloco.Qr("https://exemplo.com"), doc.blocos[3])
+        assertEquals(2, doc.copias)
+    }
+
+    @Test
+    fun `campos vazios nao viram blocos`() {
+        val doc = CamposDoFormulario("", listOf(LinhaDoFormulario(""), LinhaDoFormulario("  ")), "", 1).paraDocumento()
+        assertTrue(doc.blocos.isEmpty())
+    }
+
+    @Test
+    fun `ida e volta preserva o conteudo`() {
+        val campos = CamposDoFormulario("T", listOf(LinhaDoFormulario("a"), LinhaDoFormulario("b")), "q", 4)
+        assertEquals(campos, campos.paraDocumento().paraCampos())
+    }
+
+    @Test
+    fun `documento sem titulo volta com titulo vazio`() {
+        val doc = LabelDocument(listOf(Bloco.Linha("so uma linha")))
+        val campos = doc.paraCampos()
+        assertEquals("", campos.titulo)
+        assertEquals(listOf(LinhaDoFormulario("so uma linha")), campos.linhas)
+    }
+
+    @Test
+    fun `alinhamento escolhido na linha chega ao bloco`() {
+        val campos = CamposDoFormulario(
+            linhas = listOf(
+                LinhaDoFormulario("esquerda"),
+                LinhaDoFormulario("direita", Alinhamento.DIREITA),
+            ),
+        )
+
+        val linhas = campos.paraDocumento().blocos.filterIsInstance<Bloco.Linha>()
+
+        assertEquals(Alinhamento.ESQUERDA, linhas[0].alinhamento)
+        assertEquals(Alinhamento.DIREITA, linhas[1].alinhamento)
+    }
+
+    @Test
+    fun `etiqueta recarregada preserva o alinhamento de cada linha`() {
+        // O banco ja guardava a coluna `alinhamento`, mas paraCampos() lia so o
+        // texto: abrir uma etiqueta salva silenciosamente reendireitava tudo.
+        val doc = LabelDocument(
+            listOf(
+                Bloco.Linha("a", alinhamento = Alinhamento.CENTRO),
+                Bloco.Linha("b", alinhamento = Alinhamento.DIREITA),
+            ),
+        )
+
+        assertEquals(
+            listOf(Alinhamento.CENTRO, Alinhamento.DIREITA),
+            doc.paraCampos().linhas.map { it.alinhamento },
+        )
+    }
+}
+```
+
+```kotlin title="shared/src/commonTest/kotlin/com/fatec/printec/ui/LinhasDePreviewTest.kt"
+package com.fatec.printec.ui
+
+import com.fatec.printec.etiqueta.Alinhamento
+import com.fatec.printec.etiqueta.Bloco
+import com.fatec.printec.etiqueta.LabelDocument
+import kotlin.test.Test
+import kotlin.test.assertEquals
+
+class LinhasDePreviewTest {
+
+    @Test
+    fun `o preview quebra igual ao renderizador`() {
+        val doc = LabelDocument(listOf(Bloco.Linha("a".repeat(33))))
+        val linhas = linhasDePreview(doc)
+        assertEquals(2, linhas.size)
+        assertEquals(32, linhas[0].texto.length)
+    }
+
+    @Test
+    fun `titulo aparece em escala 2 centralizado`() {
+        val linhas = linhasDePreview(LabelDocument(listOf(Bloco.Titulo("Oi"))))
+        assertEquals(2, linhas.single().escala)
+        assertEquals(Alinhamento.CENTRO, linhas.single().alinhamento)
+    }
+
+    @Test
+    fun `titulo longo quebra em 16 colunas e nao em 32`() {
+        val linhas = linhasDePreview(LabelDocument(listOf(Bloco.Titulo("a".repeat(17)))))
+        assertEquals(2, linhas.size)
+        assertEquals(16, linhas[0].texto.length)
+    }
+
+    @Test
+    fun `caracteres nao suportados sao contados para o aviso`() {
+        val doc = LabelDocument(listOf(Bloco.Linha("preço €"), Bloco.Linha("ok 🎉")))
+        assertEquals(3, caracteresSubstituidos(doc))
+    }
+
+    @Test
+    fun `texto totalmente suportado nao gera aviso`() {
+        val doc = LabelDocument(listOf(Bloco.Linha("ação não coração")))
+        assertEquals(0, caracteresSubstituidos(doc))
+    }
+}
+```
+
+```kotlin title="shared/src/jvmCommonTest/kotlin/com/fatec/printec/impressao/RendererIgualAoPreviewTest.kt"
+package com.fatec.printec.impressao
+
+import com.fatec.printec.etiqueta.Bloco
+import com.fatec.printec.etiqueta.LabelDocument
+import com.fatec.printec.etiqueta.Pc860
+import com.fatec.printec.ui.linhasDePreview
+import kotlin.test.Test
+import kotlin.test.assertEquals
+
+/**
+ * S4 da onda de correcao: a promessa central da spec e "o preview mostra
+ * exatamente o que sai no papel". EscPosRenderer e PreviewEtiqueta.linhasDePreview
+ * compartilham QuebraDeLinha ha varias tarefas, mas ate este teste nenhum caso
+ * comparava a SAIDA de um caminho contra a do outro -- so a logica interna de
+ * cada um isoladamente. Nada falharia se os dois divergissem.
+ *
+ * Cada documento aqui tem UM Bloco.Linha so (sem Titulo/Qr/Avanco) e
+ * avancoFinalMm = 0: isso mantem a estrutura de bytes do renderizador
+ * previsivel o bastante para separar comando/texto sem duplicar QuebraDeLinha
+ * neste arquivo (ver [prefixoDaPrimeiraLinha]).
+ */
+class RendererIgualAoPreviewTest {
+
+    // ESC @ (2 bytes) + ESC t 3 (3 bytes) = preambulo fixo do documento.
+    // ESC a X (3) + GS ! X (3) + ESC E X (3) = comando fixo de UM Bloco.Linha,
+    // emitido uma vez so antes do texto (mesmo se o texto quebrar em varias
+    // linhas fisicas).
+    private val prefixoDaPrimeiraLinha = 5 + 9
+
+    private fun linhasRenderizadas(doc: LabelDocument): List<String> {
+        val bytes = EscPosRenderer.renderizar(doc, avancoFinalMm = 0)
+
+        val segmentos = mutableListOf<MutableList<Byte>>()
+        var atual = mutableListOf<Byte>()
+        for (b in bytes) {
+            if (b == 0x0A.toByte()) {
+                segmentos += atual
+                atual = mutableListOf()
+            } else {
+                atual += b
+            }
+        }
+        check(atual.isEmpty()) {
+            "bytes sobrando apos o ultimo LF -- documento de teste precisa ter " +
+                "avancoFinalMm = 0 e um unico Bloco.Linha: $atual"
+        }
+
+        return segmentos.mapIndexed { i, seg ->
+            val semComando = if (i == 0) seg.drop(prefixoDaPrimeiraLinha) else seg
+            Pc860.decodificar(semComando.toByteArray())
+        }
+    }
+
+    private fun verificarWysiwyg(doc: LabelDocument) {
+        val doRenderizador = linhasRenderizadas(doc)
+        val doPreview = linhasDePreview(doc).map { it.texto }
+        assertEquals(doPreview, doRenderizador, "preview e renderizador divergiram para: $doc")
+    }
+
+    @Test
+    fun `33 caracteres quebra igual nos dois caminhos`() {
+        verificarWysiwyg(LabelDocument(listOf(Bloco.Linha("z".repeat(33)))))
+    }
+
+    @Test
+    fun `palavra de 40 caracteres sem espaco quebra igual nos dois caminhos`() {
+        verificarWysiwyg(LabelDocument(listOf(Bloco.Linha("a".repeat(40)))))
+    }
+
+    @Test
+    fun `escala 2 quebra igual nos dois caminhos`() {
+        val texto = "linha razoavelmente comprida para escala dois"
+        verificarWysiwyg(LabelDocument(listOf(Bloco.Linha(texto, escala = 2))))
+    }
+
+    @Test
+    fun `acentos decodificam identicos ao texto original nos dois caminhos`() {
+        verificarWysiwyg(LabelDocument(listOf(Bloco.Linha("ação não coração Ângela"))))
+    }
+}
+```
+
+`FormularioEtiquetaTest` e `LinhasDePreviewTest` cobrem cada peça isolada — conversão de campos para blocos e de volta, e quebra do preview linha a linha — mas nenhum dos dois compara um caminho contra o outro. `RendererIgualAoPreviewTest` é o clímax da trilha inteira: é o único teste que realmente coloca o `EscPosRenderer` (aula 05) e o `linhasDePreview` lado a lado e verifica que produzem o mesmo texto. `linhasRenderizadas` chama `EscPosRenderer.renderizar`, corta os bytes resultantes em segmentos separados por `LF` (`0x0A`, o mesmo byte que `escreverLinha` escreve depois de cada linha quebrada), descarta o `prefixoDaPrimeiraLinha` — os 14 bytes de comando (`ESC @`, `ESC t 3`, `ESC a`, `GS !`, `ESC E`) que só aparecem uma vez, antes do primeiro segmento de texto — e decodifica cada segmento restante de volta para `String` com `Pc860.decodificar`. `verificarWysiwyg` compara essa lista com `linhasDePreview(doc).map { it.texto }`.
+
+O detalhe que sustenta o teste inteiro é decodificar pela **mesma** `Pc860` que `EscPosRenderer.escreverLinha` usa para codificar (via `Pc860.codificar`), em vez de manter uma tabela de decodificação paralela dentro do arquivo de teste. Se o teste tivesse sua própria cópia da tabela de acentuação, essa cópia poderia divergir da `Pc860` real sem que ninguém percebesse — e o teste continuaria verde mesmo com um bug de verdade, ou ficaria vermelho por um motivo que não tem nada a ver com o WYSIWYG. É exatamente o que a aula 03 previu ao introduzir `Pc860.decodificar`: ela não existe para nenhum consumidor de produção, existe só para este teste, e só faz sentido decodificando pela mesma `ALTOS`/`PARA_BYTE` que `codificar` usa.
+
+Rode agora:
+
+```bash
+./gradlew :shared:jvmTest --tests "com.fatec.printec.ui.*" --tests "com.fatec.printec.impressao.RendererIgualAoPreviewTest"
+```
+
+Esperado: falha de compilação. Nem `FormularioEtiqueta.kt` nem `PreviewEtiqueta.kt` existem ainda — `linhasDePreview`, `CamposDoFormulario` e `LinhaDoFormulario` são referências não resolvidas.
+
+## Passo 1 — FormularioEtiqueta
+
+```kotlin title="shared/src/commonMain/kotlin/com/fatec/printec/ui/FormularioEtiqueta.kt"
+package com.fatec.printec.ui
+
+import com.fatec.printec.etiqueta.Alinhamento
+import com.fatec.printec.etiqueta.Bloco
+import com.fatec.printec.etiqueta.LabelDocument
+
+/**
+ * Uma linha do formulario: o texto e como ele se posiciona no papel.
+ *
+ * O alinhamento precisa morar aqui, e nao so no Bloco.Linha, porque o
+ * formulario e o unico lugar onde ele pode ser escolhido. Enquanto `linhas` era
+ * List<String>, o banco persistia a coluna `alinhamento` e o renderizador sabia
+ * emitir ESC a -- mas nao havia como produzir nada diferente de ESQUERDA, e
+ * recarregar uma etiqueta salva reendireitava tudo em silencio.
+ */
+data class LinhaDoFormulario(
+    val texto: String = "",
+    val alinhamento: Alinhamento = Alinhamento.ESQUERDA,
+)
+
+data class CamposDoFormulario(
+    val titulo: String = "",
+    val linhas: List<LinhaDoFormulario> = listOf(LinhaDoFormulario()),
+    val qr: String = "",
+    val copias: Int = 1,
+)
+
+fun CamposDoFormulario.paraDocumento(): LabelDocument {
+    val blocos = buildList {
+        if (titulo.isNotBlank()) add(Bloco.Titulo(titulo))
+        linhas.filter { it.texto.isNotBlank() }
+            .forEach { add(Bloco.Linha(it.texto, alinhamento = it.alinhamento)) }
+        if (qr.isNotBlank()) add(Bloco.Qr(qr))
+    }
+    return LabelDocument(blocos, copias)
+}
+
+fun LabelDocument.paraCampos(): CamposDoFormulario = CamposDoFormulario(
+    titulo = blocos.filterIsInstance<Bloco.Titulo>().firstOrNull()?.texto.orEmpty(),
+    linhas = blocos.filterIsInstance<Bloco.Linha>()
+        .map { LinhaDoFormulario(it.texto, it.alinhamento) }
+        .ifEmpty { listOf(LinhaDoFormulario()) },
+    qr = blocos.filterIsInstance<Bloco.Qr>().firstOrNull()?.conteudo.orEmpty(),
+    copias = copias,
+)
+```
+
+Não há Composable neste arquivo — é modelo de dados e conversão pura, o que o deixa em `commonMain` sem puxar nada de Compose além do que `LabelDocument` já traz. `paraDocumento()` filtra campos em branco (`isNotBlank()`, não `isNotEmpty()` — uma linha só com espaços não vira `Bloco.Linha`) e monta os blocos na ordem fixa título → linhas → QR, cada linha carregando o `alinhamento` que foi escolhido para ela. `paraCampos()` faz o caminho inverso para reabrir uma etiqueta salva na tela de composição: recupera o `alinhamento` de cada `Bloco.Linha` — não só o texto — porque é exatamente essa perda que o comentário no topo do arquivo documenta como bug já corrigido. Repare também que `paraCampos()` nunca devolve `linhas` vazia: `.ifEmpty { listOf(LinhaDoFormulario()) }` garante pelo menos um campo de linha em branco, para o formulário sempre ter onde o cursor começar.
+
+## Passo 2 — PreviewEtiqueta
+
+```kotlin title="shared/src/commonMain/kotlin/com/fatec/printec/ui/PreviewEtiqueta.kt"
+package com.fatec.printec.ui
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.fatec.printec.etiqueta.Alinhamento
+import com.fatec.printec.etiqueta.Bloco
+import com.fatec.printec.etiqueta.Impressora
+import com.fatec.printec.etiqueta.LabelDocument
+import com.fatec.printec.etiqueta.Pc860
+import com.fatec.printec.etiqueta.QuebraDeLinha
+import com.fatec.printec.etiqueta.normalizado
+
+data class LinhaDePreview(
+    val texto: String,
+    val escala: Int,
+    val alinhamento: Alinhamento,
+    val negrito: Boolean,
+)
+
+/**
+ * Usa a MESMA QuebraDeLinha do EscPosRenderer. Se as duas divergirem, o que o
+ * usuario ve deixa de ser o que sai no papel.
+ */
+fun linhasDePreview(documento: LabelDocument): List<LinhaDePreview> =
+    documento.blocos.map { it.normalizado() }.flatMap { bloco ->
+        when (bloco) {
+            is Bloco.Linha -> QuebraDeLinha
+                .quebrar(bloco.texto, QuebraDeLinha.colunasPara(bloco.escala))
+                .map { LinhaDePreview(it, bloco.escala, bloco.alinhamento, bloco.negrito) }
+            is Bloco.Qr -> {
+                val truncado = bloco.conteudo.length > 20
+                val prefixo = bloco.conteudo.take(20) + if (truncado) "…" else ""
+                listOf(LinhaDePreview("[ QR: $prefixo ]", 1, Alinhamento.CENTRO, false))
+            }
+            is Bloco.Avanco -> emptyList()
+            is Bloco.Titulo -> emptyList()  // normalizado() ja converteu
+        }
+    }
+
+fun caracteresSubstituidos(documento: LabelDocument): Int =
+    documento.blocos.map { it.normalizado() }.sumOf { bloco ->
+        when (bloco) {
+            is Bloco.Linha -> Pc860.codificar(bloco.texto).substituidos
+            else -> 0
+        }
+    }
+
+/**
+ * Tamanho de fonte em que as 32 colunas da impressora cabem EXATAMENTE na
+ * largura disponivel.
+ *
+ * Fonte fixa nao serve aqui. Com fonte de acessibilidade grande, 32 caracteres
+ * passam da largura do celular e o Compose quebra a linha uma SEGUNDA vez, por
+ * conta propria — o preview deixa de bater com o papel em silencio, justamente
+ * para quem aumentou a fonte. Medir e escalar mantem a promessa da spec §6 em
+ * qualquer largura e qualquer escala de fonte do sistema.
+ */
+@Composable
+private fun corpoQueCabe(largura: Dp): TextUnit {
+    val medidor = rememberTextMeasurer()
+    val densidade = LocalDensity.current
+    val larguraDaReferencia = remember(medidor, densidade) {
+        with(densidade) {
+            medidor.measure(
+                text = "M".repeat(Impressora.COLUNAS_BASE),
+                style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = REFERENCIA),
+                softWrap = false,
+            ).size.width.toDp()
+        }
+    }
+    // Piso para nao virar ilegivel em tela estreita; teto para nao inchar no desktop.
+    return REFERENCIA * (largura / larguraDaReferencia).coerceIn(0.35f, 1.2f)
+}
+
+private val REFERENCIA = 20.sp
+
+@Composable
+fun PreviewEtiqueta(documento: LabelDocument, modifier: Modifier = Modifier) {
+    BoxWithConstraints(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(Color.White)
+            .padding(8.dp),
+    ) {
+        // maxWidth aqui ja vem descontado do padding acima.
+        val corpo = corpoQueCabe(maxWidth)
+        Column(Modifier.fillMaxWidth()) {
+            linhasDePreview(documento).forEach { linha ->
+                Text(
+                    text = linha.texto,
+                    color = Color.Black,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = corpo * linha.escala,
+                    fontWeight = if (linha.negrito) FontWeight.Bold else FontWeight.Normal,
+                    textAlign = when (linha.alinhamento) {
+                        Alinhamento.ESQUERDA -> TextAlign.Start
+                        Alinhamento.CENTRO -> TextAlign.Center
+                        Alinhamento.DIREITA -> TextAlign.End
+                    },
+                    // A quebra de linha e decidida por QuebraDeLinha, nunca pelo
+                    // Compose. Se algo nao couber, preferimos cortar visivelmente
+                    // a reflowar em silencio e mentir sobre o que vai sair.
+                    softWrap = false,
+                    maxLines = 1,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            val substituidos = caracteresSubstituidos(documento)
+            if (substituidos > 0) {
+                Text(
+                    text = "$substituidos caractere(s) não suportado(s) serão substituídos por ?",
+                    color = MaterialTheme.colorScheme.error,
+                    fontSize = 11.sp,
+                    modifier = Modifier.padding(top = 8.dp),
+                )
+            }
+        }
+    }
+}
+```
+
+`linhasDePreview(documento: LabelDocument): List<LinhaDePreview>` é a função que carrega o WYSIWYG inteiro nas costas. Ela normaliza cada `Bloco` primeiro — a mesma `normalizado()` da aula 04 — e então despacha por tipo: `Bloco.Linha` passa por `QuebraDeLinha.quebrar(bloco.texto, QuebraDeLinha.colunasPara(bloco.escala))`, byte a byte a mesma chamada que `EscPosRenderer.escreverLinha` faz antes de escrever no stream. `Bloco.Qr` não vira texto de verdade — vira um marcador `[ QR: <prefixo> ]`, truncado em 20 caracteres com reticências se for mais longo, porque não faz sentido tentar prever no preview a aparência de um código QR real. `Bloco.Avanco` não produz linha nenhuma (é um comando de espaço em branco, não de texto), e `Bloco.Titulo` cai no ramo vazio porque `normalizado()` já o converteu em `Linha` antes do `when` rodar — o comentário `// normalizado() ja converteu` marca isso explicitamente.
+
+`caracteresSubstituidos(documento: LabelDocument): Int` soma, sobre todo `Bloco.Linha` normalizado, o campo `substituidos` que `Pc860.codificar` (aula 03) já calculava — é o mesmo contador que decide se o aviso "N caractere(s) não suportado(s)" aparece embaixo do preview.
+
+O Composable `PreviewEtiqueta(documento: LabelDocument, modifier: Modifier = Modifier)` é a peça mais fina do arquivo: mede a largura disponível com `BoxWithConstraints`, calcula `corpo` uma vez com `corpoQueCabe(maxWidth)`, e desenha um `Text` por `LinhaDePreview` — cor, família de fonte, tamanho escalado por `linha.escala`, peso conforme `negrito`, alinhamento conforme `alinhamento`. Nenhuma decisão de conteúdo é tomada aqui dentro; tudo o que aparece na tela já veio pronto de `linhasDePreview`.
+
+## ⚠️ Atenção
+
+O preview não pode ter regra de quebra própria — nem "só para o título", nem "só para esse caso especial do QR". No instante em que tiver, a única coisa que ainda separa o usuário de uma promessa falsa é o `RendererIgualAoPreviewTest` — e esse teste só cobre o que alguém lembrou de exercitar: quatro casos (33 caracteres, palavra sem espaço de 40, escala 2, acentuação), todos com um único `Bloco.Linha` por documento. Um `Bloco.Titulo` com quebra, ou uma combinação de `Bloco.Linha` com `Bloco.Qr` no mesmo documento, não têm um teste dedicado aqui — o teste prova consistência para os casos que ele exercita, não para todos os que existem. A regra de quebra mora num lugar só, `QuebraDeLinha`, precisamente para que não seja preciso lembrar de testar cada combinação de bloco: qualquer um deles, ao passar por `linhasDePreview` ou por `EscPosRenderer`, chama a mesma função.
+
+## ▶️ Como Executar
+
+```bash
+./gradlew :shared:jvmTest --tests "com.fatec.printec.ui.*" --tests "com.fatec.printec.impressao.RendererIgualAoPreviewTest"
+```
+
+Esperado: `BUILD SUCCESSFUL`. O primeiro filtro cobre `FormularioEtiquetaTest` e `LinhasDePreviewTest` — os dois vivem no pacote `com.fatec.printec.ui`, junto com `EtiquetaViewModelTest` da aula 11, que passa a rodar de brinde. O segundo filtro cobre `RendererIgualAoPreviewTest`, que vive em `jvmCommonTest` mas é alcançado pela mesma tarefa `:shared:jvmTest`, porque o `build.gradle.kts` do módulo `shared` declara `jvmTest` dependendo de `jvmCommonTest`, que por sua vez depende de `commonTest` — é por isso que um comando só roda os três arquivos de teste desta aula, apesar de eles viverem em dois source sets diferentes.
+
+## 💻 Mão na Massa
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+<Tabs>
+  <TabItem value="ex1" label="Exercício 1 — Quebre a promessa" default>
+
+### O que o teste realmente garante
+
+Em `Impressora.kt`, mude `COLUNAS_BASE` de `32` para `30` e rode só o teste do clímax:
+
+```bash
+./gradlew :shared:jvmTest --tests "com.fatec.printec.impressao.RendererIgualAoPreviewTest"
+```
+
+Ele passa. `QuebraDeLinha.colunasPara(escala)` deriva o número de colunas de `Impressora.COLUNAS_BASE`, e tanto `EscPosRenderer.escreverLinha` quanto `linhasDePreview` chamam essa mesma função — nenhum dos dois tem `32` escrito no próprio código. Mudar a constante desloca as duas pontas exatamente igual, então elas continuam concordando entre si, mesmo produzindo linhas de 30 caracteres em vez de 32.
+
+É esse o limite do que `RendererIgualAoPreviewTest` garante: ele prova que o preview e o renderizador **concordam um com o outro**, não que algum dos dois está fisicamente certo em relação à LT-8359 de verdade. Se `COLUNAS_BASE` estivesse calibrado errado — a impressora real cabendo 28 caracteres por linha, não 30 —, nenhum teste deste arquivo perceberia, porque os dois lados do teste leem a mesma constante errada. (Se você rodar a suíte inteira em vez de só esta classe, vai ver `LinhasDePreviewTest` quebrar — ele tem `32` escrito literalmente no assert. Essa é a diferença entre um teste que fixa um valor absoluto e um teste que só verifica consistência entre dois caminhos.) Depois de observar, restaure `COLUNAS_BASE` para `32`.
+
+  </TabItem>
+  <TabItem value="ex2" label="Exercício 2 — Duplique a regra">
+
+### A rede de proteção pegando de verdade
+
+Dentro de `linhasDePreview`, no ramo `is Bloco.Linha`, troque a chamada a `QuebraDeLinha.quebrar` por uma cópia local que ignora espaços — por exemplo, fatiando o texto em pedaços de tamanho fixo `colunas` sem procurar o último espaço na janela, em vez de respeitar fronteira de palavra como o `QuebraDeLinha.quebrar` original faz. Rode:
+
+```bash
+./gradlew :shared:jvmTest --tests "com.fatec.printec.impressao.RendererIgualAoPreviewTest"
+```
+
+O teste `escala 2 quebra igual nos dois caminhos` fica vermelho: o texto `"linha razoavelmente comprida para escala dois"` tem espaços dentro da janela de quebra, então a versão que corta sempre na largura produz linhas diferentes da versão que corta no último espaço — e o `assertEquals(doPreview, doRenderizador)` denuncia a diferença, porque `EscPosRenderer` continua chamando o `QuebraDeLinha.quebrar` original, sem a cópia alterada. (Os testes com `"z".repeat(33)` e `"a".repeat(40)` não pegam essa mudança específica: são um único "token" sem espaço nenhum, então cortar na largura e cortar na última palavra dão o mesmo resultado.) Restaure a chamada original antes de seguir. Você acabou de ver, ao vivo, a única coisa que impede uma segunda cópia da regra de quebra de divergir em silêncio.
+
+  </TabItem>
+</Tabs>

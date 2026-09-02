@@ -133,6 +133,11 @@ const sidebars: SidebarsConfig = {
             label: "Módulo 4 — Estado e persistência",
             items: ["ldm/aula-09", "ldm/aula-10", "ldm/aula-11"],
         },
+        {
+            type: "category",
+            label: "Módulo 5 — Telas, papel e entrega",
+            items: ["ldm/aula-12"],
+        },
     ],
 };
 
