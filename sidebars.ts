@@ -4,6 +4,12 @@ const sidebars: SidebarsConfig = {
     pdmiiSidebar: [
         {
             type: "category",
+            label: "Módulo 0 — Fundamentos de Kotlin",
+            collapsed: false,
+            items: ["pdmii/aula-00-kotlin"],
+        },
+        {
+            type: "category",
             label: "Módulo 1 — Fundamentos",
             collapsed: false,
             items: ["pdmii/aula-01", "pdmii/aula-02", "pdmii/aula-03", "pdmii/aula-04"],
