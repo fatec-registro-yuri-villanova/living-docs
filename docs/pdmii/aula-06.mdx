@@ -1,0 +1,63 @@
+---
+sidebar_position: 6
+title: "Aula 06: Box"
+description: "Sobreposição de elementos e contentAlignment."
+---
+
+# Aula 06: Box
+
+:::info 📂 Código da Aula
+Esta aula é a lição **Box** do playground, no repositório `compose-intro` (branch `app-final`):
+
+- Arquivo: `app/src/main/java/com/fatec/composeintro/ui/lessons/L06Box.kt`
+- No app: abra o catálogo → módulo **Layout** → **Box**
+
+```bash
+git clone https://github.com/fatec-registro-yuri-villanova/compose-intro
+git checkout app-final
+```
+:::
+
+## 📖 Conceito
+
+`Box` é um container que empilha os filhos um sobre o outro, na mesma posição. Diferente de `Column` e `Row`, que colocam os filhos lado a lado, o `Box` deixa que eles se cruzem — como camadas.
+
+É assim que se coloca um texto sobre uma imagem, um selo no canto de um card, um badge sobre um ícone. `contentAlignment` decide em que canto (ou centro) os filhos ficam.
+
+:::caution Armadilha
+Dentro de um `Box`, a ordem importa como camada — o último filho declarado fica por cima dos anteriores. No demo, ligar o switch faz a caixa menor aparecer SOBRE a maior, no alinhamento escolhido.
+:::
+
+## 💻 Código de Referência
+
+```kotlin title="ui/lessons/L06Box.kt"
+@Composable
+private fun BoxDemo(alignment: Alignment, overlay: Boolean) {
+    Box(
+        modifier = Modifier
+            .size(160.dp)
+            .background(MaterialTheme.colorScheme.surfaceVariant),
+        contentAlignment = alignment
+    ) {
+        Text(
+            text = "frente",
+            modifier = Modifier
+                .background(MaterialTheme.colorScheme.primaryContainer)
+                .padding(12.dp)
+        )
+        if (overlay) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .background(MaterialTheme.colorScheme.tertiary)
+            )
+        }
+    }
+}
+```
+
+## 🧪 Experimente
+
+- Abra o app e vá em **Layout → Box**.
+- Troque `contentAlignment` entre `TopStart`, `Center` e `BottomEnd` e veja a caixa "frente" se mover para o canto ou o centro escolhido.
+- Ligue **"sobrepor uma camada"** e veja uma segunda caixa aparecer por cima da primeira, no mesmo alinhamento — a ordem de declaração decide quem fica em cima.

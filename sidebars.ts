@@ -6,7 +6,12 @@ const sidebars: SidebarsConfig = {
             type: "category",
             label: "Módulo 1 — Fundamentos",
             collapsed: false,
-            items: ["pdmii/aula-01"],
+            items: ["pdmii/aula-01", "pdmii/aula-02", "pdmii/aula-03", "pdmii/aula-04"],
+        },
+        {
+            type: "category",
+            label: "Módulo 2 — Layout",
+            items: ["pdmii/aula-05", "pdmii/aula-06", "pdmii/aula-07", "pdmii/aula-08"],
         },
     ],
 

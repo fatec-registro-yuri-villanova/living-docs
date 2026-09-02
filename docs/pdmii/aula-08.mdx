@@ -1,0 +1,54 @@
+---
+sidebar_position: 8
+title: "Aula 08: LazyColumn"
+description: "Listas que só compõem o que aparece."
+---
+
+# Aula 08: LazyColumn
+
+:::info 📂 Código da Aula
+Esta aula é a lição **LazyColumn** do playground, no repositório `compose-intro` (branch `app-final`):
+
+- Arquivo: `app/src/main/java/com/fatec/composeintro/ui/lessons/L08LazyColumn.kt`
+- No app: abra o catálogo → módulo **Layout** → **LazyColumn**
+
+```bash
+git clone https://github.com/fatec-registro-yuri-villanova/compose-intro
+git checkout app-final
+```
+:::
+
+## 📖 Conceito
+
+`LazyColumn` é uma `Column` preguiçosa. Uma `Column` comum compõe todos os filhos de uma vez, existam eles na tela ou não. A `LazyColumn` compõe só os itens visíveis e vai criando o resto conforme você rola.
+
+Uma lista de contatos, um feed, um catálogo (como o deste app) pode ter centenas ou milhares de itens. Construir todos de uma vez seria lento e gastaria memória à toa — é por isso que a tela inicial deste app usa `LazyColumn` desde o primeiro dia.
+
+:::caution Armadilha
+Dentro da `LazyColumn` você usa `items(lista) { ... }`, não um `forEach`. O `forEach` traria de volta o comportamento "compõe tudo". Suba o slider para centenas de itens: a rolagem continua leve, porque só um punhado existe por vez.
+:::
+
+## 💻 Código de Referência
+
+```kotlin title="ui/lessons/L08LazyColumn.kt"
+@Composable
+private fun LazyColumnDemo(count: Int) {
+    LazyColumn(modifier = Modifier.fillMaxWidth()) {
+        items((1..count).toList()) { n ->
+            Text(
+                text = "Item $n",
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp)
+            )
+            HorizontalDivider()
+        }
+    }
+}
+```
+
+## 🧪 Experimente
+
+- Abra o app e vá em **Layout → LazyColumn**.
+- Aumente a quantidade de itens até várias centenas e role a lista — a rolagem continua leve porque só as linhas visíveis existem de fato.
+- Note no código de referência que a lista usa `items(lista) { ... }`, não um `forEach` — é isso que mantém a composição preguiçosa.

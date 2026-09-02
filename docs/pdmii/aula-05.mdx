@@ -1,0 +1,65 @@
+---
+sidebar_position: 5
+title: "Aula 05: Column e Row"
+description: "Arranjo e alinhamento em linha e coluna."
+---
+
+# Aula 05: Column e Row
+
+:::info 📂 Código da Aula
+Esta aula é a lição **Column e Row** do playground, no repositório `compose-intro` (branch `app-final`):
+
+- Arquivo: `app/src/main/java/com/fatec/composeintro/ui/lessons/L05ColumnRow.kt`
+- No app: abra o catálogo → módulo **Layout** → **Column e Row**
+
+```bash
+git clone https://github.com/fatec-registro-yuri-villanova/compose-intro
+git checkout app-final
+```
+:::
+
+## 📖 Conceito
+
+`Column` empilha os filhos de cima para baixo; `Row` os coloca lado a lado. Em cada um, `Arrangement` distribui o espaço no eixo principal e `Alignment` posiciona no eixo cruzado.
+
+Toda tela de um app Compose é feita aninhando esses dois containers — um perfil com nome em cima e seguidores lado a lado, por exemplo, é uma `Column` com uma `Row` dentro. Aprender `Arrangement` e `Alignment` aqui vale para o resto do curso.
+
+:::caution Armadilha
+É fácil trocar os dois. `Arrangement` mexe no espaço ENTRE e AO REDOR dos filhos no eixo principal (numa `Row`, o horizontal); `Alignment` encosta os filhos numa borda do eixo cruzado (numa `Row`, o vertical). Esta lição mostra uma `Row` — a `Column` é a mesma ideia girada 90°.
+:::
+
+## 💻 Código de Referência
+
+```kotlin title="ui/lessons/L05ColumnRow.kt"
+@Composable
+private fun RowDemo(arrangement: Arrangement.Horizontal, alignment: Alignment.Vertical) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(120.dp),
+        horizontalArrangement = arrangement,
+        verticalAlignment = alignment
+    ) {
+        Caixa("Nome")
+        Caixa("Perfil")
+        Caixa("100")
+    }
+}
+
+@Composable
+private fun Caixa(texto: String) {
+    Text(
+        text = texto,
+        modifier = Modifier
+            .background(MaterialTheme.colorScheme.primaryContainer)
+            .padding(12.dp)
+    )
+}
+```
+
+## 🧪 Experimente
+
+- Abra o app e vá em **Layout → Column e Row**.
+- Troque `horizontalArrangement` entre `Start`, `Center`, `End`, `SpaceBetween` e `SpaceEvenly` e veja como o espaço horizontal entre as três caixas muda.
+- Troque `verticalAlignment` entre `Top`, `CenterVertically` e `Bottom` e veja as caixas encostarem numa borda diferente do eixo cruzado.
+- Lembre-se: uma `Column` faria exatamente o mesmo, só que na vertical.

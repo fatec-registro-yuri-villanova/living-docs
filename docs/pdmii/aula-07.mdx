@@ -1,0 +1,66 @@
+---
+sidebar_position: 7
+title: "Aula 07: Peso e espaço"
+description: "weight, proporção e layout que se adapta."
+---
+
+# Aula 07: Peso e espaço
+
+:::info 📂 Código da Aula
+Esta aula é a lição **Peso e espaço** do playground, no repositório `compose-intro` (branch `app-final`):
+
+- Arquivo: `app/src/main/java/com/fatec/composeintro/ui/lessons/L07WeightSpace.kt`
+- No app: abra o catálogo → módulo **Layout** → **Peso e espaço**
+
+```bash
+git clone https://github.com/fatec-registro-yuri-villanova/compose-intro
+git checkout app-final
+```
+:::
+
+## 📖 Conceito
+
+Dentro de uma `Row` (ou `Column`), `Modifier.weight(n)` faz o filho ocupar uma fatia proporcional do espaço que sobra. Peso 2 contra peso 1 significa o dobro da largura.
+
+Sem peso, cada caixa ocupa só o tamanho do seu conteúdo. Com peso, você diz "estas três dividem a linha nesta proporção", e o layout se adapta a qualquer largura de tela — a base de layouts responsivos.
+
+:::caution Armadilha
+Peso é uma **proporção**, não um tamanho fixo. E aceita valores fracionários — `1.5` contra `1.0` é uma divisão válida. É por isso que o slider desta lição não arredonda: `2.5` de peso é uma resposta legítima.
+:::
+
+## 💻 Código de Referência
+
+```kotlin title="ui/lessons/L07WeightSpace.kt"
+@Composable
+private fun WeightDemo(weightA: Float, weightB: Float, weightC: Float) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(120.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        PesoCaixa("A", weightA, MaterialTheme.colorScheme.primaryContainer)
+        PesoCaixa("B", weightB, MaterialTheme.colorScheme.secondaryContainer)
+        PesoCaixa("C", weightC, MaterialTheme.colorScheme.tertiaryContainer)
+    }
+}
+
+@Composable
+private fun RowScope.PesoCaixa(rotulo: String, peso: Float, cor: Color) {
+    Text(
+        text = rotulo,
+        modifier = Modifier
+            .weight(peso)
+            .fillMaxHeight()
+            .background(cor)
+            .wrapContentHeight(Alignment.CenterVertically),
+        textAlign = TextAlign.Center
+    )
+}
+```
+
+## 🧪 Experimente
+
+- Abra o app e vá em **Layout → Peso e espaço**.
+- Aumente o peso de uma caixa (A, B ou C) e veja-a roubar espaço das outras — a soma dos pesos é o todo, e cada caixa fica com a sua fração.
+- Repare que os sliders aceitam valores fracionários, como `2.5`: peso é uma proporção, não um número inteiro fixo.

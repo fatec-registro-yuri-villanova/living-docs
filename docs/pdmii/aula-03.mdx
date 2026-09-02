@@ -1,0 +1,79 @@
+---
+sidebar_position: 3
+title: "Aula 03: Parâmetros"
+description: "Do componente rígido ao reutilizável."
+---
+
+# Aula 03: Parâmetros
+
+:::info 📂 Código da Aula
+Esta aula é a lição **Parâmetros** do playground, no repositório `compose-intro` (branch `app-final`):
+
+- Arquivo: `app/src/main/java/com/fatec/composeintro/ui/lessons/L03Parameters.kt`
+- No app: abra o catálogo → módulo **Fundamentos** → **Parâmetros**
+
+```bash
+git clone https://github.com/fatec-registro-yuri-villanova/compose-intro
+git checkout app-final
+```
+:::
+
+## 📖 Conceito
+
+Esta aula mostra a diferença entre uma função que só sabe fazer **uma coisa** e uma que aceita o conteúdo de fora, como parâmetro.
+
+`RigidTitle` é o começo real de qualquer projeto Compose: um composable com o texto escrito por dentro. Ele funciona, mas só serve para uma tela. `ReusableTitle` recebe `text` como parâmetro e serve para todas.
+
+:::caution Armadilha
+A tentação, diante disso, é resolver criando `TituloDaTelaDeLogin`, `TituloDaTelaDePerfil`, `TituloDaTelaDeCadastro`... três funções quase idênticas em vez de uma com um parâmetro. Se você se pegar copiando um composable só para mudar uma palavra, o que faltava era um parâmetro.
+:::
+
+## 💻 Código de Referência
+
+```kotlin title="ui/lessons/L03Parameters.kt"
+@Composable
+private fun ParametersDemo(text: String) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text(
+            text = "rígido:",
+            style = MaterialTheme.typography.labelSmall
+        )
+        RigidTitle()
+
+        Text(
+            text = "reutilizável:",
+            style = MaterialTheme.typography.labelSmall
+        )
+        ReusableTitle(text = text)
+        ReusableTitle(text = "$text (de novo)")
+        ReusableTitle(text = text.uppercase())
+    }
+}
+
+/** O componente original deste projeto: o texto mora dentro dele. */
+@Composable
+private fun RigidTitle() {
+    Text(
+        text = "Tela de Login",
+        fontSize = 28.sp
+    )
+}
+
+/** O mesmo componente, agora aceitando o conteúdo de fora. */
+@Composable
+private fun ReusableTitle(text: String) {
+    Text(
+        text = text,
+        fontSize = 28.sp
+    )
+}
+```
+
+## 🧪 Experimente
+
+- Abra o app e vá em **Fundamentos → Parâmetros**.
+- Digite algo no campo **texto**: o título rígido, no topo, não muda — o texto dele está escrito por dentro da função.
+- Repare que os três títulos reutilizáveis abaixo mudam juntos ao digitar: são o MESMO componente `ReusableTitle`, chamado três vezes com valores diferentes (`text`, `"$text (de novo)"`, `text.uppercase()`).

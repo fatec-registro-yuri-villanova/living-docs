@@ -1,0 +1,67 @@
+---
+sidebar_position: 2
+title: "Aula 02: Text"
+description: "Escala tipográfica, maxLines e overflow."
+---
+
+# Aula 02: Text
+
+:::info 📂 Código da Aula
+Esta aula é a lição **Text** do playground, no repositório `compose-intro` (branch `app-final`):
+
+- Arquivo: `app/src/main/java/com/fatec/composeintro/ui/lessons/L02Text.kt`
+- No app: abra o catálogo → módulo **Fundamentos** → **Text**
+
+```bash
+git clone https://github.com/fatec-registro-yuri-villanova/compose-intro
+git checkout app-final
+```
+:::
+
+## 📖 Conceito
+
+`Text` é o composable que você mais vai usar: é ele que desenha texto na tela.
+
+Em vez de escolher tamanho e peso na mão em cada tela, o Material3 traz uma **escala tipográfica** pronta, acessível via `MaterialTheme.typography`. Usar a escala — `bodyLarge`, `titleLarge`, `headlineMedium` e as demais — é o que faz o app inteiro parecer coerente sem esforço extra.
+
+:::caution Armadilha
+Definir um `fontSize` solto funciona, mas ignora o tema: troque o tema e o texto não acompanha. Prefira sempre `style = MaterialTheme.typography.algumaCoisa`.
+:::
+
+Quando o texto não cabe, `maxLines` e `overflow` decidem o que acontece: sem limite, o texto quebra em quantas linhas precisar; com um limite de linhas, ele corta e mostra reticências (`TextOverflow.Ellipsis`).
+
+## 💻 Código de Referência
+
+```kotlin title="ui/lessons/L02Text.kt"
+private const val LONG_TEXT =
+    "Compose descreve a tela em vez de manipulá-la. Este parágrafo existe para " +
+        "ficar comprido o suficiente e mostrar o que acontece quando o texto não cabe."
+
+private enum class TextStyleOption(val label: String) {
+    BODY("bodyLarge"),
+    TITLE("titleLarge"),
+    HEADLINE("headlineMedium")
+}
+
+@Composable
+private fun TextDemo(styleOption: TextStyleOption, limitLines: Boolean) {
+    val style: TextStyle = when (styleOption) {
+        TextStyleOption.BODY -> MaterialTheme.typography.bodyLarge
+        TextStyleOption.TITLE -> MaterialTheme.typography.titleLarge
+        TextStyleOption.HEADLINE -> MaterialTheme.typography.headlineMedium
+    }
+
+    Text(
+        text = LONG_TEXT,
+        style = style,
+        maxLines = if (limitLines) 1 else Int.MAX_VALUE,
+        overflow = TextOverflow.Ellipsis
+    )
+}
+```
+
+## 🧪 Experimente
+
+- Abra o app e vá em **Fundamentos → Text**.
+- Troque `style` entre `bodyLarge`, `titleLarge` e `headlineMedium` e veja o texto mudar de tamanho e peso junto — é o tema decidindo, não um `fontSize` solto.
+- Ligue **"maxLines = 1"** e veja o texto cortar com reticências em vez de quebrar em várias linhas.

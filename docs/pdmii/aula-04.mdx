@@ -1,0 +1,89 @@
+---
+sidebar_position: 4
+title: "Aula 04: Modifier"
+description: "A corrente de instruções — e por que a ordem importa."
+---
+
+# Aula 04: Modifier
+
+:::info 📂 Código da Aula
+Esta aula é a lição **Modifier** do playground, no repositório `compose-intro` (branch `app-final`):
+
+- Arquivo: `app/src/main/java/com/fatec/composeintro/ui/lessons/L04Modifier.kt`
+- No app: abra o catálogo → módulo **Fundamentos** → **Modifier**
+
+```bash
+git clone https://github.com/fatec-registro-yuri-villanova/compose-intro
+git checkout app-final
+```
+:::
+
+## 📖 Conceito
+
+Um `Modifier` é um objeto que você pendura num composable para dizer como ele deve se comportar: tamanho, espaçamento, fundo, cliques, borda.
+
+Em vez de cada componente ter dezenas de parâmetros (`padding`, `margin`, `background`, `width`...), o Compose tira tudo isso para um objeto só, que funciona igual em qualquer composable. Aprendeu `Modifier` uma vez, serve para o resto do curso.
+
+:::caution Armadilha
+E é a maior armadilha desta aula: a **ordem** importa. `Modifier` é uma corrente lida da esquerda para a direita, e cada elo trabalha sobre o resultado do anterior.
+
+- `padding(16.dp).background(azul)` → afasta primeiro, pinta o que sobrou: a cor NÃO ocupa a margem.
+- `background(azul).padding(16.dp)` → pinta primeiro, afasta depois: a cor ocupa tudo e é o texto que se afasta.
+
+As duas caixas do demo têm exatamente os mesmos elos, só na ordem trocada.
+:::
+
+## 💻 Código de Referência
+
+```kotlin title="ui/lessons/L04Modifier.kt"
+@Composable
+private fun ModifierOrderDemo(padding: Dp, fillWidth: Boolean) {
+    val color = MaterialTheme.colorScheme.primaryContainer
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceEvenly,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(
+            modifier = Modifier.weight(1f),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = "padding → background",
+                style = MaterialTheme.typography.labelSmall
+            )
+            Text(
+                text = "caixa",
+                modifier = Modifier
+                    .then(if (fillWidth) Modifier.fillMaxWidth(0.4f) else Modifier)
+                    .padding(padding)
+                    .background(color)
+            )
+        }
+
+        Column(
+            modifier = Modifier.weight(1f),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = "background → padding",
+                style = MaterialTheme.typography.labelSmall
+            )
+            Text(
+                text = "caixa",
+                modifier = Modifier
+                    .then(if (fillWidth) Modifier.fillMaxWidth(0.4f) else Modifier)
+                    .background(color)
+                    .padding(padding)
+            )
+        }
+    }
+}
+```
+
+## 🧪 Experimente
+
+- Abra o app e vá em **Fundamentos → Modifier**.
+- Aumente o **padding** e repare: na caixa da esquerda (`padding → background`) a cor encolhe para dentro; na da direita (`background → padding`) a cor fica no tamanho total e é o texto que se afasta dela.
+- Ligue **fillMaxWidth()** e veja que a ordem também entra na definição do tamanho da caixa, não só no espaçamento.
