@@ -1,0 +1,72 @@
+---
+sidebar_position: 12
+title: "Aula 12: Scaffold"
+description: "TopAppBar, FAB e a armadilha do innerPadding."
+---
+
+# Aula 12: Scaffold
+
+:::info 📂 Código da Aula
+Esta aula é a lição **Scaffold** do playground, no repositório `compose-intro` (branch `app-final`):
+
+- Arquivo: `app/src/main/java/com/fatec/composeintro/ui/lessons/L12Scaffold.kt`
+- No app: abra o catálogo → módulo **Componentes Material3** → **Scaffold**
+
+```bash
+git clone https://github.com/fatec-registro-yuri-villanova/compose-intro
+git checkout app-final
+```
+:::
+
+## 📖 Conceito
+
+`Scaffold` é um layout pronto do Material que reserva os lugares certos para a barra de cima (`TopAppBar`), a barra de baixo (`BottomAppBar`) e o botão flutuante (FAB), deixando o miolo para o seu conteúdo. É o que a própria moldura destas lições usa.
+
+Sem ele, você posicionaria cada barra na mão e teria que calcular onde o conteúdo pode começar. O `Scaffold` entrega esse cálculo num `innerPadding`.
+
+:::caution Armadilha
+Essa é a armadilha mais comum de todas: o `Scaffold` te dá um `innerPadding` e você **precisa** aplicá-lo no conteúdo. Se ignorar, o conteúdo desliza para trás da `TopAppBar` e some. Ligue o switch "ignorar innerPadding" e veja o texto se esconder atrás da barra.
+:::
+
+## 💻 Código de Referência
+
+```kotlin title="ui/lessons/L12Scaffold.kt"
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ScaffoldDemo(showFab: Boolean, showBottomBar: Boolean, ignoreInnerPadding: Boolean) {
+    Scaffold(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.surface),
+        topBar = { TopAppBar(title = { Text("Minha tela") }) },
+        bottomBar = { if (showBottomBar) BottomAppBar { Text("barra de baixo", modifier = Modifier.padding(16.dp)) } },
+        floatingActionButton = {
+            if (showFab) FloatingActionButton(onClick = {}) {
+                Icon(Icons.Filled.Add, contentDescription = "Adicionar")
+            }
+        }
+    ) { innerPadding ->
+        val conteudoModifier = if (ignoreInnerPadding) {
+            Modifier.fillMaxSize()
+        } else {
+            Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+        }
+        Box(modifier = conteudoModifier) {
+            Text(
+                text = "conteúdo da tela",
+                modifier = Modifier
+                    .background(MaterialTheme.colorScheme.primaryContainer)
+                    .padding(8.dp)
+            )
+        }
+    }
+}
+```
+
+## 🧪 Experimente
+
+- Abra o app e vá em **Componentes Material3 → Scaffold**.
+- Ligue e desligue o **FAB** e a **barra de baixo** e veja o `Scaffold` reservar o espaço certo para cada um.
+- Ligue **"ignorar innerPadding"** e veja o conteúdo escorregar para trás da barra de cima.

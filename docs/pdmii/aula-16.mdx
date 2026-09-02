@@ -1,0 +1,53 @@
+---
+sidebar_position: 16
+title: "Aula 16: rememberSaveable"
+description: "Estado que sobrevive à rotação da tela."
+---
+
+# Aula 16: rememberSaveable
+
+:::info 📂 Código da Aula
+Esta aula é a lição **rememberSaveable** do playground, no repositório `compose-intro` (branch `app-final`):
+
+- Arquivo: `app/src/main/java/com/fatec/composeintro/ui/lessons/L16RememberSaveable.kt`
+- No app: abra o catálogo → módulo **Estado** → **rememberSaveable**
+
+```bash
+git clone https://github.com/fatec-registro-yuri-villanova/compose-intro
+git checkout app-final
+```
+:::
+
+## 📖 Conceito
+
+`remember` guarda o valor entre recomposições, mas o **perde** quando a Activity é recriada — girar a tela, por exemplo. `rememberSaveable` salva o valor num Bundle e o restaura depois, sobrevivendo a essas recriações.
+
+Girar o aparelho recria a tela do zero. Com `remember`, o que o usuário digitou ou contou some. `rememberSaveable` preserva — é o certo para texto de formulário, posição de rolagem, seleção.
+
+:::caution Armadilha
+Você não vê a diferença rodando o app parado — só quando algo recria a tela. Gire o aparelho depois de mexer nos dois contadores: o "com remember" volta a zero, o "com rememberSaveable" continua onde estava. (Tipos simples salvam automático; objetos complexos precisam de um Saver.)
+:::
+
+## 💻 Código de Referência
+
+```kotlin title="ui/lessons/L16RememberSaveable.kt"
+@Composable
+private fun SaveableDemo() {
+    var comum by remember { mutableStateOf(0) }
+    var salvo by rememberSaveable { mutableStateOf(0) }
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceEvenly
+    ) {
+        Contador(rotulo = "com remember", valor = comum, onSomar = { comum++ })
+        Contador(rotulo = "com rememberSaveable", valor = salvo, onSomar = { salvo++ })
+    }
+}
+```
+
+## 🧪 Experimente
+
+- Abra o app e vá em **Estado → rememberSaveable**.
+- Toque em "somar" nos dois contadores algumas vezes.
+- Gire o aparelho (ou mude a orientação do emulador) e veja o contador "com remember" voltar a zero, enquanto o "com rememberSaveable" mantém o valor.

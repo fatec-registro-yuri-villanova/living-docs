@@ -1,0 +1,124 @@
+---
+sidebar_position: 15
+title: "Aula 15: State hoisting"
+description: "Tirar o estado de dentro do componente."
+---
+
+# Aula 15: State hoisting
+
+:::info 📂 Código da Aula
+Esta aula é a lição **State hoisting** do playground, no repositório `compose-intro` (branch `app-final`):
+
+- Arquivo da lição: `app/src/main/java/com/fatec/composeintro/ui/lessons/L15StateHoisting.kt`
+- Ela compõe dois componentes de outros pacotes, que são o próprio assunto da aula:
+  - `app/src/main/java/com/fatec/composeintro/ui/components/EmailInputText.kt` (estado por dentro)
+  - `app/src/main/java/com/fatec/composeintro/ui/components/login/LoginInputField.kt` (estado içado)
+- No app: abra o catálogo → módulo **Estado** → **State hoisting**
+
+```bash
+git clone https://github.com/fatec-registro-yuri-villanova/compose-intro
+git checkout app-final
+```
+:::
+
+## 📖 Conceito
+
+"Içar" (hoist) o estado é movê-lo do componente filho para quem o usa. Em vez de o campo guardar o próprio texto, ele recebe `value` e devolve `onValueChange` — e quem chama passa a ser o dono do estado.
+
+Quando o estado mora dentro do campo, ninguém de fora consegue ler ou reagir a ele. Içando, a tela vê o valor e pode fazer algo com ele — validar, espelhar, habilitar um botão. É o padrão que todo o resto deste app já vinha usando.
+
+Os dois campos da demo são componentes reais deste projeto, de pacotes diferentes: `EmailInputText` (em `ui/components`) guarda o estado por dentro, com seu próprio `remember { mutableStateOf("") }`; `LoginInputField` (em `ui/components/login`) não guarda nada — recebe `value` e `onValueChange` de fora.
+
+:::caution Armadilha
+O campo de cima (`EmailInputText`) guarda o estado por dentro — a linha "a tela vê" não consegue mostrar o que você digitou nele. O campo de baixo (`LoginInputField`) tem o estado içado para a lição — e a mesma linha espelha cada letra ao vivo. Digite nos dois e compare.
+:::
+
+## 💻 Código de Referência
+
+Estado por dentro — `EmailInputText` guarda o próprio texto e não expõe nada para fora:
+
+```kotlin title="ui/components/EmailInputText.kt"
+@Composable
+fun EmailInputText(){
+    var email by remember{ mutableStateOf("") }
+
+    //value é texto que esta sendo exibido
+    //onValueChange quem escuta a alteracao do componente
+
+    TextField(
+        value = email,
+        onValueChange = {
+            novoTexto -> email = novoTexto
+
+        },
+        label = {
+            Text("E-mail")
+        }
+    )
+
+
+}
+```
+
+Estado içado — `LoginInputField` não guarda nada: recebe `value` e `onValueChange` de quem o chama:
+
+```kotlin title="ui/components/login/LoginInputField.kt"
+@Composable
+fun LoginInputField(
+    label: String,
+    value: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    TextField(
+        value = value,
+        onValueChange = onValueChange,
+        label = { Text(label) }
+    )
+}
+```
+
+E na lição, o estado do campo içado mora na própria `L15StateHoisting`, não no componente:
+
+```kotlin title="ui/lessons/L15StateHoisting.kt"
+@Composable
+fun L15StateHoisting(onBack: () -> Unit) {
+    // O estado do campo IÇADO mora aqui, na lição — este é o hoisting acontecendo.
+    var emailIcado by remember { mutableStateOf("") }
+
+    LessonScaffold(
+        title = "State hoisting",
+        notice = "Digite nos dois campos. Só o de baixo tem o estado içado para a " +
+            "tela, então só ele consegue ser espelhado aqui embaixo.",
+        onBack = onBack
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text("estado por dentro (a tela NÃO vê):", style = MaterialTheme.typography.labelMedium)
+            EmailInputText()
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+            Text("estado içado (a tela vê):", style = MaterialTheme.typography.labelMedium)
+            LoginInputField(
+                label = "E-mail",
+                value = emailIcado,
+                onValueChange = { emailIcado = it }
+            )
+            Text(
+                text = if (emailIcado.isBlank()) "a tela vê: (vazio)" else "a tela vê: $emailIcado",
+                style = MaterialTheme.typography.bodyMedium
+            )
+        }
+    }
+}
+```
+
+## 🧪 Experimente
+
+- Abra o app e vá em **Estado → State hoisting**.
+- Digite no campo de cima (**estado por dentro**) e repare que a tela não mostra nada abaixo dele.
+- Digite no campo de baixo (**estado içado**) e veja o texto "a tela vê: ..." acompanhar cada letra.
+- No código, note que `LoginInputField` não tem nenhum `remember` — quem guarda o estado é `L15StateHoisting`.

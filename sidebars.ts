@@ -13,6 +13,16 @@ const sidebars: SidebarsConfig = {
             label: "Módulo 2 — Layout",
             items: ["pdmii/aula-05", "pdmii/aula-06", "pdmii/aula-07", "pdmii/aula-08"],
         },
+        {
+            type: "category",
+            label: "Módulo 3 — Componentes Material3",
+            items: ["pdmii/aula-09", "pdmii/aula-10", "pdmii/aula-11", "pdmii/aula-12"],
+        },
+        {
+            type: "category",
+            label: "Módulo 4 — Estado",
+            items: ["pdmii/aula-13", "pdmii/aula-14", "pdmii/aula-15", "pdmii/aula-16"],
+        },
     ],
 
     pdmiSidebar: [

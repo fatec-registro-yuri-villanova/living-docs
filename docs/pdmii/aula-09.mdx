@@ -1,0 +1,64 @@
+---
+sidebar_position: 9
+title: "Aula 09: Button"
+description: "Variantes, enabled e contagem de cliques."
+---
+
+# Aula 09: Button
+
+:::info 📂 Código da Aula
+Esta aula é a lição **Button** do playground, no repositório `compose-intro` (branch `app-final`):
+
+- Arquivo: `app/src/main/java/com/fatec/composeintro/ui/lessons/L09Button.kt`
+- No app: abra o catálogo → módulo **Componentes Material3** → **Button**
+
+```bash
+git clone https://github.com/fatec-registro-yuri-villanova/compose-intro
+git checkout app-final
+```
+:::
+
+## 📖 Conceito
+
+`Button` é o componente de ação do Material3. Ele vem em variantes — preenchido (`Button`), contornado (`OutlinedButton`) e de texto (`TextButton`) — para sinalizar quão importante é a ação.
+
+O `LoginButton` original deste projeto tinha o `onClick` fixo, com um `println` escrito por dentro. Isso servia para uma tela só. Um botão de verdade recebe `onClick` como **parâmetro** e deixa quem o usa decidir o que acontece — aqui, incrementar um contador que mora na lição.
+
+:::caution Armadilha
+`enabled = false` não é só cosmético. Um botão desabilitado ignora o clique inteiro — o `onClick` nem roda. Desligue o switch e veja o contador parar.
+:::
+
+## 💻 Código de Referência
+
+```kotlin title="ui/lessons/L09Button.kt"
+private enum class ButtonVariant(val label: String) {
+    FILLED("Filled"),
+    OUTLINED("Outlined"),
+    TEXT("Text")
+}
+
+@Composable
+private fun ButtonDemo(variant: ButtonVariant, enabled: Boolean, clicks: Int, onClick: () -> Unit) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        when (variant) {
+            ButtonVariant.FILLED -> Button(onClick = onClick, enabled = enabled) { Text("Entrar") }
+            ButtonVariant.OUTLINED -> OutlinedButton(onClick = onClick, enabled = enabled) { Text("Entrar") }
+            ButtonVariant.TEXT -> TextButton(onClick = onClick, enabled = enabled) { Text("Entrar") }
+        }
+        Text(
+            text = "cliques: $clicks",
+            style = MaterialTheme.typography.titleMedium
+        )
+    }
+}
+```
+
+## 🧪 Experimente
+
+- Abra o app e vá em **Componentes Material3 → Button**.
+- Toque no botão e veja o contador de cliques subir.
+- Troque a **variante** entre Filled, Outlined e Text e compare o peso visual de cada uma.
+- Desligue o switch **enabled** e repare que o clique passa a ser ignorado — o contador para.

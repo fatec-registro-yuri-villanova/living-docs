@@ -1,0 +1,79 @@
+---
+sidebar_position: 11
+title: "Aula 11: Card e Surface"
+description: "Elevação, cor e divisores."
+---
+
+# Aula 11: Card e Surface
+
+:::info 📂 Código da Aula
+Esta aula é a lição **Card e Surface** do playground, no repositório `compose-intro` (branch `app-final`):
+
+- Arquivo: `app/src/main/java/com/fatec/composeintro/ui/lessons/L11CardSurface.kt`
+- No app: abra o catálogo → módulo **Componentes Material3** → **Card e Surface**
+
+```bash
+git clone https://github.com/fatec-registro-yuri-villanova/compose-intro
+git checkout app-final
+```
+:::
+
+## 📖 Conceito
+
+Um `Card` é uma superfície elevada, com cantos arredondados e sombra, que junta informações relacionadas num bloco. Dentro dele cabem `Icon` (um símbolo), `Text` e `HorizontalDivider` (uma linha que separa seções).
+
+Cartões são a unidade visual do Material — cada item do catálogo desta app é um `Card`. A `elevation` (a sombra) comunica que o bloco está "acima" do fundo e é tocável.
+
+`Card` é uma `Surface` especializada: já vem com elevação e forma prontas. O selo colorido dentro do card, no código abaixo, é uma `Surface` "nua" — só cor e forma, sem sombra — para mostrar a peça que o `Card` empacota.
+
+:::caution Armadilha
+Elevação **não** é margem. Ela adiciona sombra, não espaço — a sombra dá a impressão de profundidade, mas o card ocupa o mesmo lugar. Suba o slider e repare que é a sombra que cresce, não o tamanho.
+:::
+
+## 💻 Código de Referência
+
+```kotlin title="ui/lessons/L11CardSurface.kt"
+private enum class AccentOption(val label: String) { PRIMARY("Primary"), TERTIARY("Tertiary"), ERROR("Error") }
+
+@Composable
+private fun CardDemo(elevation: Dp, accent: AccentOption) {
+    val cor: Color = when (accent) {
+        AccentOption.PRIMARY -> MaterialTheme.colorScheme.primary
+        AccentOption.TERTIARY -> MaterialTheme.colorScheme.tertiary
+        AccentOption.ERROR -> MaterialTheme.colorScheme.error
+    }
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        elevation = CardDefaults.cardElevation(defaultElevation = elevation)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(imageVector = Icons.Filled.Star, contentDescription = null, tint = cor)
+                Text("Favorito", style = MaterialTheme.typography.titleMedium)
+            }
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = cor)
+            Text("Conteúdo do card, agrupado numa superfície elevada.")
+            Surface(
+                modifier = Modifier.padding(top = 8.dp),
+                color = cor,
+                shape = MaterialTheme.shapes.small
+            ) {
+                Text(
+                    text = "Selo (Surface simples)",
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                    style = MaterialTheme.typography.labelSmall
+                )
+            }
+        }
+    }
+}
+```
+
+## 🧪 Experimente
+
+- Abra o app e vá em **Componentes Material3 → Card e Surface**.
+- Aumente o slider de **elevation** e veja a sombra sob o card crescer — sem o card mudar de tamanho.
+- Troque a **cor de destaque** e veja o ícone, o divisor e o selo (a `Surface` nua) mudarem juntos.

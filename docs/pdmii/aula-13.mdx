@@ -1,0 +1,52 @@
+---
+sidebar_position: 13
+title: "Aula 13: remember"
+description: "Por que o estado precisa ser lembrado entre recomposições — com e sem remember, lado a lado."
+---
+
+# Aula 13: remember
+
+:::info 📂 Código da Aula
+Esta aula é a lição **remember** do playground, no repositório `compose-intro` (branch `app-final`):
+
+- Arquivo: `app/src/main/java/com/fatec/composeintro/ui/lessons/L13Remember.kt`
+- No app: abra o catálogo → módulo **Estado** → **remember**
+
+```bash
+git clone https://github.com/fatec-registro-yuri-villanova/compose-intro
+git checkout app-final
+```
+:::
+
+## 📖 Conceito
+
+`remember { mutableStateOf(...) }` guarda um valor **entre recomposições**. O `mutableStateOf` cria um estado observável; o `remember` faz esse estado sobreviver quando a função é chamada de novo.
+
+Uma função `@Composable` roda muitas vezes (a cada recomposição). Sem `remember`, toda variável nasce de novo a cada execução — o valor se perde. `remember` é o que dá memória à função.
+
+:::caution Armadilha
+A mais comum de quem começa: **esquecer o `remember`**. As duas colunas da demo são iguais, menos por isso. A da esquerda lembra e conta; a da direita usa só `mutableStateOf`, sem `remember`, então cada clique recria o estado no zero e o contador nunca sai de 0.
+:::
+
+## 💻 Código de Referência
+
+```kotlin title="ui/lessons/L13Remember.kt"
+@Composable
+private fun ComRemember() {
+    var count by remember { mutableStateOf(0) }
+    Contador(rotulo = "com remember", valor = count, onSomar = { count++ })
+}
+
+@Composable
+private fun SemRemember() {
+    // De propósito SEM remember: cada recomposição recria o estado no zero.
+    var count by mutableStateOf(0)
+    Contador(rotulo = "sem remember", valor = count, onSomar = { count++ })
+}
+```
+
+## 🧪 Experimente
+
+- Abra o app e vá em **Estado → remember**.
+- Toque no botão "somar" das duas colunas e compare: a de `com remember` conta; a de `sem remember` fica presa no zero.
+- No código, a única diferença entre as duas é o `remember` — o resto é idêntico.

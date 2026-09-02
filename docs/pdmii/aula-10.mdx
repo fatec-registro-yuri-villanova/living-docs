@@ -1,0 +1,66 @@
+---
+sidebar_position: 10
+title: "Aula 10: TextField"
+description: "Teclado, senha e estado de erro."
+---
+
+# Aula 10: TextField
+
+:::info 📂 Código da Aula
+Esta aula é a lição **TextField** do playground, no repositório `compose-intro` (branch `app-final`):
+
+- Arquivo: `app/src/main/java/com/fatec/composeintro/ui/lessons/L10TextField.kt`
+- No app: abra o catálogo → módulo **Componentes Material3** → **TextField**
+
+```bash
+git clone https://github.com/fatec-registro-yuri-villanova/compose-intro
+git checkout app-final
+```
+:::
+
+## 📖 Conceito
+
+`TextField` é o componente onde o usuário digita. Ele não guarda o próprio texto: você passa o `value` atual e recebe cada mudança pelo `onValueChange`. Esse par é o mesmo dos controles deste kit — e é o assunto central da aula 15 (state hoisting).
+
+Um `TextField` sabe muito mais que "receber letras" — ele escolhe o teclado (numérico, e-mail), esconde senha e mostra estado de erro. Tudo isso via parâmetros, sem você reimplementar nada.
+
+:::caution Armadilha
+`isError = true` deixa o campo vermelho, mas **não** impede o texto. Validar o conteúdo é trabalho seu — o campo só reflete o estado que você mandar.
+:::
+
+## 💻 Código de Referência
+
+```kotlin title="ui/lessons/L10TextField.kt"
+private enum class KeyboardOption(val label: String, val value: KeyboardType) {
+    TEXT("Text", KeyboardType.Text),
+    NUMBER("Number", KeyboardType.Number),
+    EMAIL("Email", KeyboardType.Email)
+}
+
+@Composable
+private fun TextFieldDemo(
+    value: String,
+    onValueChange: (String) -> Unit,
+    isError: Boolean,
+    password: Boolean,
+    keyboardType: KeyboardType
+) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        label = { Text("Digite aqui") },
+        isError = isError,
+        singleLine = true,
+        visualTransformation = if (password) PasswordVisualTransformation() else VisualTransformation.None,
+        keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
+        modifier = Modifier.fillMaxWidth()
+    )
+}
+```
+
+## 🧪 Experimente
+
+- Abra o app e vá em **Componentes Material3 → TextField**.
+- Digite no campo e veja o texto acompanhar o que você digita.
+- Ligue **senha** e veja o texto virar pontos; ligue **erro** e veja o campo ficar vermelho mesmo com texto válido.
+- Troque o **keyboardType** entre Text, Number e Email e repare que o conjunto de teclas do teclado muda.
