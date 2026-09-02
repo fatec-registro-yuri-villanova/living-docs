@@ -1,0 +1,394 @@
+---
+sidebar_position: 8
+title: "Aula 08: USB e serial no Desktop"
+description: "A JVM não tem Bluetooth — e por que isso não impede o Desktop de imprimir por Bluetooth."
+---
+
+# Aula 08: USB e serial no Desktop
+
+## 📖 Conceito
+
+A aula 07 escreveu a implementação Android de `PrinterTransport` (aula 06), sobre um socket RFCOMM de verdade. Esta aula escreve a implementação Desktop — e o primeiro fato estranho é que **a JVM não tem Bluetooth nativo nenhum**. Não existe `javax.bluetooth` de verdade, nenhuma API padrão para varrer dispositivos nem para abrir um socket RFCOMM a partir de Kotlin/JVM. E mesmo assim o Desktop imprime por Bluetooth.
+
+A saída está no sistema operacional, não na JVM. No Windows, parear a LT-8359 cria uma **porta COM virtual** — o driver do perfil SPP (Serial Port Profile, a mesma ideia da aula 07) expõe o enlace Bluetooth como se fosse uma porta serial de verdade. Escrever nessa porta COM é escrever na impressora. Da ótica de quem usa o app, isso é "conectar por Bluetooth"; deste lado do código, é abrir uma porta serial e escrever bytes nela. É o mesmo enlace de rádio da aula anterior, só que exposto por uma API completamente diferente — porque quem faz a ponte entre rádio e API é o sistema operacional, não o app.
+
+Isso dá ao Desktop dois caminhos de impressão que não têm nada em comum por baixo:
+
+- **USB** passa pelo spooler de impressão do Windows, via `javax.print` — a mesma API que qualquer app Java usaria para imprimir num documento comum.
+- **Bluetooth** passa por uma porta COM, via `jSerialComm` — uma biblioteca de porta serial, que não sabe (nem precisa saber) que do outro lado tem rádio em vez de fio.
+
+`TransporteDesktop` é o roteador que apresenta os dois como uma lista só de `PrinterTarget`, e decide qual dos dois usar na hora de imprimir. A decisão de design que sustenta esse roteamento: o tipo viaja **dentro do id** (`usb:algumIdDeImpressora`, `serial:COM3`), não é adivinhado pelo formato do nome. Adivinhar por "isso parece uma porta COM" funcionaria — até o dia em que uma impressora USB comum se chamasse algo parecido o bastante para confundir a heurística. Um prefixo explícito no id é determinístico; um palpite sobre o formato do nome não é.
+
+## 🗂️ Estrutura de Arquivos
+
+```
+shared/src/
+├── jvmMain/kotlin/com/fatec/printec/impressao/
+│   ├── DesktopUsbTransport.kt
+│   ├── DesktopSerialTransport.kt
+│   └── TransporteDesktop.kt
+└── jvmTest/kotlin/com/fatec/printec/impressao/
+    ├── DesktopUsbTransportTest.kt
+    └── TransporteDesktopTest.kt
+```
+
+`TransporteDesktopTest.kt` guarda duas classes de teste, não uma — a segunda cuida do transporte serial, e o motivo de ela morar nesse arquivo em vez de ganhar o próprio `DesktopSerialTransportTest.kt` fica claro na próxima seção.
+
+## 🔴 O Teste
+
+```kotlin title="shared/src/jvmTest/kotlin/com/fatec/printec/impressao/TransporteDesktopTest.kt"
+package com.fatec.printec.impressao
+
+import kotlinx.coroutines.test.runTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
+
+/**
+ * O roteamento e a unica logica nova do Bluetooth no desktop que NAO e hardware.
+ * O I/O serial em si so se verifica com a impressora pareada.
+ */
+private class TransporteEspiao(private val destinos: List<PrinterTarget>) : PrinterTransport {
+    var idRecebido: String? = null
+    override suspend fun listarDestinos() = destinos
+    override suspend fun imprimir(destino: PrinterTarget, bytes: ByteArray) {
+        idRecebido = destino.id
+    }
+}
+
+class TransporteDesktopTest {
+
+    private fun usb() = TransporteEspiao(listOf(PrinterTarget("Impressora X", "Impressora X")))
+    private fun serial() = TransporteEspiao(listOf(PrinterTarget("COM3", "Serial sobre Bluetooth (COM3)")))
+
+    @Test
+    fun `a lista mescla os dois transportes com o tipo no id`() = runTest {
+        val destinos = TransporteDesktop(usb(), serial()).listarDestinos()
+        assertEquals(listOf("usb:Impressora X", "serial:COM3"), destinos.map { it.id })
+        // o nome legivel nao e prefixado — e o que o usuario le
+        assertTrue(destinos.any { it.nome == "Serial sobre Bluetooth (COM3)" })
+    }
+
+    @Test
+    fun `destino serial vai para o serial e nao para o usb`() = runTest {
+        val u = usb(); val s = serial()
+        TransporteDesktop(u, s).imprimir(PrinterTarget("serial:COM3", "x"), byteArrayOf(1))
+        assertEquals("COM3", s.idRecebido)   // prefixo removido antes de repassar
+        assertEquals(null, u.idRecebido)     // o USB nao foi tocado
+    }
+
+    @Test
+    fun `destino usb vai para o usb e nao para o serial`() = runTest {
+        val u = usb(); val s = serial()
+        TransporteDesktop(u, s).imprimir(PrinterTarget("usb:Impressora X", "x"), byteArrayOf(1))
+        assertEquals("Impressora X", u.idRecebido)
+        assertEquals(null, s.idRecebido)
+    }
+
+    @Test
+    fun `id sem prefixo, salvo antes do bluetooth existir, ainda vai para o usb`() = runTest {
+        val u = usb(); val s = serial()
+        TransporteDesktop(u, s).imprimir(PrinterTarget("Impressora X", "x"), byteArrayOf(1))
+        assertEquals("Impressora X", u.idRecebido)
+        assertEquals(null, s.idRecebido)
+    }
+}
+
+/**
+ * Nao ha impressora pareada nesta maquina, entao lista vazia e aprovacao valida —
+ * mesmo criterio do DesktopUsbTransportTest. O que este teste PROVA e outra coisa:
+ * que a biblioteca nativa do jSerialComm extrai e carrega. Se ela falhasse,
+ * `getCommPorts()` estouraria em vez de devolver lista vazia.
+ */
+class DesktopSerialTransportTest {
+
+    @Test
+    fun `listar portas carrega a biblioteca nativa e devolve entradas bem formadas`() = runTest {
+        val destinos = DesktopSerialTransport().listarDestinos()
+        assertTrue(destinos.all { it.id.isNotBlank() && it.nome.isNotBlank() })
+    }
+}
+```
+
+```kotlin title="shared/src/jvmTest/kotlin/com/fatec/printec/impressao/DesktopUsbTransportTest.kt"
+package com.fatec.printec.impressao
+
+import kotlinx.coroutines.test.runTest
+import kotlin.test.Test
+import kotlin.test.assertFailsWith
+import kotlin.test.assertTrue
+
+class DesktopUsbTransportTest {
+
+    @Test
+    fun `listar destinos nao estoura mesmo sem impressora instalada`() = runTest {
+        val destinos = DesktopUsbTransport().listarDestinos()
+        assertTrue(destinos.all { it.id.isNotBlank() && it.nome.isNotBlank() })
+    }
+
+    @Test
+    fun `imprimir para destino inexistente reporta FalhaAoConectar`() = runTest {
+        assertFailsWith<ErroImpressao.FalhaAoConectar> {
+            DesktopUsbTransport().imprimir(
+                PrinterTarget("impressora-que-nao-existe-xyz", "Fantasma"),
+                byteArrayOf(0x1B, 0x40),
+            )
+        }
+    }
+}
+```
+
+Vale ler os quatro testes com cuidado antes de rodar qualquer coisa, porque eles não provam todos a mesma coisa:
+
+- **`TransporteDesktopTest`** é o único que roda contra `PrinterTransport` falso (`TransporteEspiao`), sem tocar `javax.print` nem `jSerialComm`. É aqui que o roteamento de verdade — o prefixo somado em `listarDestinos`, e a escolha de transporte mais a remoção do prefixo em `imprimir` — é testado de forma determinística, sem depender de nada instalado na máquina. As duas implementações reais são injetáveis no construtor de `TransporteDesktop` exatamente para permitir isso: o teste passa fakes no lugar de `DesktopUsbTransport()` e `DesktopSerialTransport()`.
+- **`DesktopSerialTransportTest`**, apesar de morar no mesmo arquivo, já roda contra a classe real. Sem porta pareada na máquina que executa o teste, uma lista vazia é resultado aceitável — o próprio comentário no código diz o que o teste prova de fato: que a biblioteca nativa do `jSerialComm` extrai e carrega. Nada aqui verifica que um byte chega numa impressora.
+- **`DesktopUsbTransportTest`** também roda contra a classe real: um teste confere que listar não estoura sem impressora instalada, o outro confere que `imprimir` para um id inexistente devolve `ErroImpressao.FalhaAoConectar` — o ramo de erro de `DesktopUsbTransport`, exercitado sem precisar de hardware algum, porque "impressora-que-nao-existe-xyz" nunca vai bater com um serviço real.
+
+Rode:
+
+```bash
+./gradlew :shared:jvmTest --tests "com.fatec.printec.impressao.*Desktop*"
+```
+
+Esperado: falha de compilação. Nenhum dos três arquivos de `jvmMain` existe ainda.
+
+## Passo 1 — DesktopUsbTransport
+
+```kotlin title="shared/src/jvmMain/kotlin/com/fatec/printec/impressao/DesktopUsbTransport.kt"
+package com.fatec.printec.impressao
+
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import javax.print.DocFlavor
+import javax.print.PrintService
+import javax.print.PrintServiceLookup
+import javax.print.SimpleDoc
+import javax.print.attribute.HashPrintRequestAttributeSet
+
+/**
+ * Envia bytes crus pelo spooler do Windows. Se o driver da impressora insistir
+ * em converter a impressao em imagem, o plano B da spec e escrever direto na
+ * porta COM/USB com jSerialComm — nao implementado ate que se prove necessario.
+ */
+class DesktopUsbTransport : PrinterTransport {
+
+    override suspend fun listarDestinos(): List<PrinterTarget> = withContext(Dispatchers.IO) {
+        servicos().map { PrinterTarget(id = it.name, nome = it.name) }
+    }
+
+    override suspend fun imprimir(destino: PrinterTarget, bytes: ByteArray) =
+        withContext(Dispatchers.IO) {
+            val servico = servicos().firstOrNull { it.name == destino.id }
+                ?: throw ErroImpressao.FalhaAoConectar("Impressora '${destino.nome}' não encontrada")
+
+            try {
+                val doc = SimpleDoc(bytes, DocFlavor.BYTE_ARRAY.AUTOSENSE, null)
+                servico.createPrintJob().print(doc, HashPrintRequestAttributeSet())
+            } catch (e: Exception) {
+                throw ErroImpressao.FalhaAoEscrever(e.message ?: e::class.simpleName.orEmpty())
+            }
+        }
+
+    /**
+     * O subsistema de impressao do Windows estoura sozinho em casos reais —
+     * spooler em mau estado, entrada de driver corrompida. Nenhuma excecao crua
+     * pode escapar deste transporte: a UI so sabe tratar ErroImpressao, e o
+     * ViewModel da Tarefa 8 captura exatamente esse tipo. Uma excecao nao tipada
+     * atravessaria a corrotina e derrubaria o app.
+     */
+    private fun servicos(): List<PrintService> = try {
+        PrintServiceLookup.lookupPrintServices(null, null).toList()
+    } catch (e: Exception) {
+        throw ErroImpressao.FalhaAoConectar(e.message ?: e::class.simpleName.orEmpty())
+    }
+}
+```
+
+`DesktopUsbTransport` fala com o spooler do Windows via `javax.print`, a API padrão da própria JVM — nenhuma biblioteca externa aqui. `listarDestinos` pergunta a `PrintServiceLookup` quais `PrintService` existem no sistema e devolve um `PrinterTarget` por serviço, usando o nome do serviço tanto como `id` quanto como `nome` — não há um identificador separado, mais estável, para uma impressora USB; o nome que o Windows dá ao serviço é o único identificador disponível.
+
+`imprimir` procura o serviço pelo nome, envolve os bytes crus num `SimpleDoc` com `DocFlavor.BYTE_ARRAY.AUTOSENSE` — dizendo ao spooler "não interprete isto, é um fluxo de bytes já pronto" — e manda um `PrintJob`. O comentário no topo da classe registra o plano B que este código não implementa: se o driver de alguma impressora insistir em converter a saída em imagem em vez de repassar os bytes ESC/POS intactos, a spec prevê escrever direto na porta com `jSerialComm`, a mesma biblioteca do Passo 2 — mas só quando isso se provar necessário, não antes.
+
+`servicos()` é onde mora a lição da aula 06 aplicada ao lado USB: `PrintServiceLookup.lookupPrintServices` é uma API do subsistema de impressão do Windows, e subsistemas assim estouram sozinhos em cenários reais — spooler travado, entrada de driver corrompida. Por isso a chamada inteira vive dentro de um `try/catch` que converte qualquer `Exception` não tipada em `ErroImpressao.FalhaAoConectar`, a única coisa que a UI sabe tratar.
+
+## Passo 2 — DesktopSerialTransport
+
+```kotlin title="shared/src/jvmMain/kotlin/com/fatec/printec/impressao/DesktopSerialTransport.kt"
+package com.fatec.printec.impressao
+
+import com.fazecast.jSerialComm.SerialPort
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+
+/**
+ * Impressao por porta serial no desktop — que e como o Bluetooth chega ate aqui.
+ *
+ * A JVM nao tem Bluetooth nativo. No Windows, parear a LT-8359 cria uma porta
+ * COM virtual (perfil SPP), e escrever nessa porta e escrever na impressora.
+ * Da otica do usuario e "conectar por Bluetooth"; deste lado e serial.
+ *
+ * Isso tambem explica por que nao ha descoberta nem pareamento aqui, pelo mesmo
+ * motivo do Android: quem pareia e o sistema operacional, uma vez.
+ */
+class DesktopSerialTransport : PrinterTransport {
+
+    override suspend fun listarDestinos(): List<PrinterTarget> = withContext(Dispatchers.IO) {
+        portas().map {
+            // O nome descritivo do Windows para uma porta pareada e literalmente
+            // "Standard Serial over Bluetooth link (COM3)", entao o usuario
+            // reconhece a impressora sem precisar decorar numero de COM.
+            PrinterTarget(id = it.systemPortName, nome = it.descriptivePortName)
+        }
+    }
+
+    override suspend fun imprimir(destino: PrinterTarget, bytes: ByteArray) =
+        withContext(Dispatchers.IO) {
+            val porta = portas().firstOrNull { it.systemPortName == destino.id }
+                ?: throw ErroImpressao.FalhaAoConectar("Porta '${destino.nome}' não encontrada")
+
+            // Em porta COM virtual de SPP estes parametros sao ignorados — quem
+            // manda e o enlace Bluetooth. Ficam fixos ate que algum teste com
+            // hardware mostre o contrario.
+            porta.setComPortParameters(9600, 8, SerialPort.ONE_STOP_BIT, SerialPort.NO_PARITY)
+            porta.setComPortTimeouts(SerialPort.TIMEOUT_WRITE_BLOCKING, 0, TIMEOUT_ESCRITA_MS)
+
+            if (!porta.openPort()) {
+                throw ErroImpressao.FalhaAoConectar("Não foi possível abrir ${destino.nome}")
+            }
+
+            // Abrir, escrever, fechar a cada trabalho: a impressora hiberna em 10
+            // minutos, e manter a porta aberta produziria "o app diz conectado e a
+            // impressora esta desligada".
+            try {
+                val saida = porta.outputStream
+                // Mesma razao do transporte Android: escrever tudo de uma vez
+                // estoura o buffer da impressora e perde a cauda do documento.
+                EscritaEmBlocos.escrever(bytes, ::delay) { bloco ->
+                    saida.write(bloco)
+                    saida.flush()
+                }
+            } catch (e: Exception) {
+                throw ErroImpressao.FalhaAoEscrever(e.message ?: e::class.simpleName.orEmpty())
+            } finally {
+                porta.closePort()
+            }
+        }
+
+    /** Nenhuma excecao crua pode escapar: a UI so sabe tratar ErroImpressao. */
+    private fun portas(): List<SerialPort> = try {
+        SerialPort.getCommPorts().toList()
+    } catch (e: Exception) {
+        throw ErroImpressao.FalhaAoConectar(e.message ?: e::class.simpleName.orEmpty())
+    }
+
+    private companion object {
+        const val TIMEOUT_ESCRITA_MS = 5_000
+    }
+}
+```
+
+`jSerialComm` é a biblioteca que fala com portas seriais a partir da JVM — inclusive as COM virtuais que o Windows cria para dispositivos SPP pareados. `listarDestinos` chama `SerialPort.getCommPorts()` e usa `systemPortName` (o "COM3" cru) como `id`, e `descriptivePortName` como `nome`. Esse nome descritivo não é escolha do app: é literalmente o que o Windows escreve para uma porta Bluetooth pareada — algo como "Standard Serial over Bluetooth link (COM3)" — o que já basta para quem usa o app reconhecer a impressora sem decorar número de porta nenhum.
+
+`imprimir` acha a porta pelo `id`, configura parâmetros seriais, abre, escreve e fecha — sempre nessa ordem, sempre por trabalho. Reparem que `EscritaEmBlocos.escrever` (aula 06) volta a aparecer aqui exatamente como na aula 07: a mesma política de vazão, os mesmos 256 bytes por bloco e a mesma pausa de drenagem, porque o motivo é o mesmo — escrever tudo de uma vez estoura o buffer de entrada da impressora e perde o fim do documento, esteja o socket do outro lado num RFCOMM do Android ou numa porta COM do Windows.
+
+Sobre `setComPortParameters(9600, 8, SerialPort.ONE_STOP_BIT, SerialPort.NO_PARITY)`: numa porta COM física de verdade, esses quatro números (baud rate, bits de dado, bit de parada, paridade) definem a física do sinal elétrico na linha. Numa porta COM **virtual** de SPP, não existe linha elétrica nenhuma para configurar — o enlace é Bluetooth, e quem governa a velocidade e a integridade dos dados é o próprio protocolo Bluetooth, não esses parâmetros seriais. O comentário no código é direto sobre isso: os valores são ignorados nesse cenário, e ficam fixos em `9600, 8, ONE_STOP_BIT, NO_PARITY` até que algum teste com hardware real mostre que precisam mudar. Ninguém testou o efeito de trocar esses números porque, até aqui, nenhum teste deste projeto toca uma porta serial de verdade.
+
+## Passo 3 — TransporteDesktop
+
+```kotlin title="shared/src/jvmMain/kotlin/com/fatec/printec/impressao/TransporteDesktop.kt"
+package com.fatec.printec.impressao
+
+/**
+ * Transporte do desktop: apresenta impressoras USB e portas seriais (Bluetooth)
+ * como uma lista so, e roteia a impressao para o lado certo.
+ *
+ * O tipo viaja no proprio id (`usb:` / `serial:`) porque o roteamento precisa ser
+ * deterministico. Adivinhar pelo formato do nome — "parece COM alguma coisa" —
+ * funcionaria ate o dia em que uma impressora USB se chamasse algo parecido.
+ *
+ * As duas implementacoes por tras sao injetaveis para que o roteamento, que e a
+ * unica logica aqui que nao depende de hardware, possa ser testado de verdade.
+ */
+class TransporteDesktop(
+    private val usb: PrinterTransport = DesktopUsbTransport(),
+    private val serial: PrinterTransport = DesktopSerialTransport(),
+) : PrinterTransport {
+
+    override suspend fun listarDestinos(): List<PrinterTarget> =
+        usb.listarDestinos().map { it.comPrefixo(PREFIXO_USB) } +
+            serial.listarDestinos().map { it.comPrefixo(PREFIXO_SERIAL) }
+
+    override suspend fun imprimir(destino: PrinterTarget, bytes: ByteArray) {
+        val (transporte, idOriginal) = rotear(destino.id)
+        transporte.imprimir(destino.copy(id = idOriginal), bytes)
+    }
+
+    private fun rotear(id: String): Pair<PrinterTransport, String> = when {
+        id.startsWith(PREFIXO_SERIAL) -> serial to id.removePrefix(PREFIXO_SERIAL)
+        id.startsWith(PREFIXO_USB) -> usb to id.removePrefix(PREFIXO_USB)
+        // Configuracao salva antes de o Bluetooth existir: era USB, por definicao.
+        // Sem isto, quem ja tinha uma impressora escolhida veria a impressao falhar
+        // sem entender por que.
+        else -> usb to id
+    }
+
+    private fun PrinterTarget.comPrefixo(prefixo: String) = copy(id = prefixo + id)
+
+    private companion object {
+        const val PREFIXO_USB = "usb:"
+        const val PREFIXO_SERIAL = "serial:"
+    }
+}
+```
+
+`TransporteDesktop` recebe as duas implementações reais como parâmetros com valor padrão — `usb: PrinterTransport = DesktopUsbTransport()`, `serial: PrinterTransport = DesktopSerialTransport()` — para que o código de produção (aula 13) possa instanciar `TransporteDesktop()` sem argumento nenhum, enquanto o teste passa fakes nos mesmos parâmetros.
+
+`listarDestinos` mescla as duas listas, prefixando cada `id` — nunca o `nome` — com `usb:` ou `serial:`. É por isso que o teste confere `destinos.map { it.id }` contra `["usb:Impressora X", "serial:COM3"]`, mas confere `nome` separadamente: o prefixo é informação interna de roteamento, não algo que a pessoa usando o app deveria ler.
+
+`imprimir` delega a `rotear`, que devolve o par (transporte certo, id sem prefixo) — o `Pair<PrinterTransport, String>` é desmontado com `val (transporte, idOriginal) = rotear(...)`. O `when` de `rotear` tem três ramos, mas repare que o terceiro não é o mesmo tipo dos dois primeiros: `id.startsWith(PREFIXO_SERIAL)` e `id.startsWith(PREFIXO_USB)` tratam um id com prefixo reconhecido; o `else -> usb to id` trata um id **sem** prefixo nenhum, encaminhando para o USB com o id intacto. O comentário no código explica por quê: antes desta aula, só existia USB, então qualquer configuração salva num banco de dados de uma versão anterior do app guarda um id sem prefixo — e esse id sempre foi, por definição, um id de impressora USB. Sem esse ramo de compatibilidade, alguém que já tivesse escolhido uma impressora antes desta funcionalidade existir veria a impressão falhar sem nenhuma pista do motivo.
+
+## ⚠️ Atenção
+
+**Isto é específico do Windows.** A porta COM virtual criada ao parear um dispositivo SPP é o caminho do Windows — não existe um equivalente idêntico em Linux ou macOS. Em Linux, o dispositivo pareado costuma aparecer como `/dev/rfcomm0` (ou um nome parecido, dependendo do gerenciador de Bluetooth); em macOS, o caminho é outro ainda. E `jSerialComm`, a biblioteca por trás de `DesktopSerialTransport`, enumera portas de forma diferente em cada sistema operacional — o `systemPortName` de uma porta Bluetooth pareada em Linux não tem o formato `COM3` que este código assume implicitamente ao ler `descriptivePortName` como "Standard Serial over Bluetooth link (COMx)". Este app não finge portabilidade nesse ponto: `DesktopSerialTransport` foi escrito e só foi verificado contra o Windows.
+
+**Nenhuma exceção crua pode escapar de um transporte.** Repare que tanto `DesktopUsbTransport.servicos()` quanto `DesktopSerialTransport.portas()` embrulham a chamada real numa função isolada com seu próprio `try/catch`. Isso não é excesso de cautela: `PrintServiceLookup` e o subsistema de impressão do Windows estouram sozinhos em casos reais — spooler em mau estado, entrada de driver corrompida — e uma exceção não tipada, vinda de dentro de uma corrotina em `Dispatchers.IO`, não é algo que a UI (aula 13) saiba tratar. Ela só sabe tratar `ErroImpressao`. Sem essa conversão, uma falha do subsistema de impressão derrubaria o app inteiro em vez de virar uma mensagem na tela.
+
+## ▶️ Como Executar
+
+```bash
+./gradlew :shared:jvmTest --tests "com.fatec.printec.impressao.*Desktop*"
+```
+
+Esperado: verde — os quatro testes de roteamento em `TransporteDesktopTest`, mais o teste de listagem real em `DesktopSerialTransportTest` e os dois de `DesktopUsbTransportTest`. Releia a seção **🔴 O Teste** antes de comemorar: verde aqui prova o roteamento, prova que a biblioteca nativa do `jSerialComm` carrega, e prova dois comportamentos de borda do lado USB sem impressora — não prova que um byte chegou numa impressora de verdade. Isso só se verifica com a LT-8359 pareada e ligada.
+
+E é exatamente por isso que vale um segundo resultado, visível: escreva um `fun main()` de rascunho (ou um teste temporário, sem `assert` nenhum, só para rodar e ler o console) que chame `TransporteDesktop().listarDestinos()` e imprima cada `PrinterTarget`. Na sua própria máquina, isso mostra as impressoras e portas COM reais que o Windows enxerga — com os prefixos `usb:` e `serial:` já aplicados, exatamente como o app vai ver.
+
+## 💻 Mão na Massa
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+<Tabs>
+  <TabItem value="ex1" label="Exercício 1 — Roteie na mão" default>
+
+### Para onde vai cada id?
+
+Sem rodar nada, releia `rotear` em `TransporteDesktop.kt` e responda, para cada um destes três ids, para qual transporte ele vai e com qual id ele chega lá:
+
+1. `usb:Microsoft Print to PDF`
+2. `serial:COM3`
+3. `COM3` (sem prefixo nenhum)
+
+Depois confira lendo o código: cada ramo do `when` de `rotear` diz exatamente o que faz com o prefixo. Preste atenção especial ao terceiro caso — ele não cai no mesmo ramo dos outros dois, e o comentário ao lado do `else` explica por quê.
+
+  </TabItem>
+  <TabItem value="ex2" label="Exercício 2 — Liste sua máquina">
+
+### O que o Windows enxerga na sua máquina
+
+Escreva um teste (ou reaproveite o `main()` de rascunho da seção anterior) que chame `TransporteDesktop().listarDestinos()` e imprima cada `PrinterTarget` no console.
+
+Rode e observe a lista. Para cada entrada, decida: é uma impressora física de verdade, ou é algo virtual (como "Microsoft Print to PDF" ou "Microsoft XPS Document Writer")? Se você já pareou uma impressora Bluetooth com esta máquina, procure na lista por algo parecido com "Standard Serial over Bluetooth link" — é assim que o Windows nomeia a porta COM virtual da aula, e é esse nome que vai aparecer para quem usa o app.
+
+  </TabItem>
+</Tabs>

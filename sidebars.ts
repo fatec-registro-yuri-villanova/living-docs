@@ -126,7 +126,7 @@ const sidebars: SidebarsConfig = {
         {
             type: "category",
             label: "Módulo 3 — Bluetooth e Impressora",
-            items: ["ldm/aula-07"],
+            items: ["ldm/aula-07", "ldm/aula-08"],
         },
     ],
 };
