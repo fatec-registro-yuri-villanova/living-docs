@@ -1,0 +1,79 @@
+---
+sidebar_position: 18
+title: "Aula 18: LaunchedEffect"
+description: "Trabalho assíncrono amarrado à composição."
+---
+
+# Aula 18: LaunchedEffect
+
+:::info 📂 Código da Aula
+Esta aula é a lição **LaunchedEffect** do playground, no repositório `compose-intro` (branch `app-final`):
+
+- Arquivo: `app/src/main/java/com/fatec/composeintro/ui/lessons/L18LaunchedEffect.kt`
+- No app: abra o catálogo → módulo **Estado avançado** → **LaunchedEffect**
+
+```bash
+git clone https://github.com/fatec-registro-yuri-villanova/compose-intro
+git checkout app-final
+```
+:::
+
+## 📖 Conceito
+
+`LaunchedEffect(chave)` lança uma corrotina quando entra na tela (e de novo sempre que a `chave` muda). Quando sai da tela, a corrotina é cancelada sozinha. É onde vão chamadas de rede, timers, `delay` — coisas suspensas.
+
+Você NÃO pode chamar código suspenso direto no corpo de um `@Composable` — ele roda muitas vezes por segundo. O `LaunchedEffect` dá um lugar seguro, com começo, fim e cancelamento automáticos.
+
+:::caution Armadilha
+A `chave` controla tudo. Toque em "buscar" enquanto uma busca está em andamento: a chave muda, o Compose CANCELA a busca anterior e começa outra. Se a chave fosse fixa, o efeito rodaria só uma vez e ignoraria os cliques seguintes.
+:::
+
+## 💻 Código de Referência
+
+```kotlin title="ui/lessons/L18LaunchedEffect.kt"
+@Composable
+fun L18LaunchedEffect(onBack: () -> Unit) {
+    var buscaId by remember { mutableIntStateOf(0) }
+    var carregando by remember { mutableStateOf(false) }
+    var resultado by remember { mutableStateOf("") }
+
+    // Roda a cada mudança de buscaId. buscaId == 0 é o estado inicial: não busca.
+    LaunchedEffect(buscaId) {
+        if (buscaId > 0) {
+            carregando = true
+            resultado = ""
+            delay(1500)
+            resultado = "Resultado da busca #$buscaId"
+            carregando = false
+        }
+    }
+
+    LessonScaffold(
+        title = "LaunchedEffect",
+        notice = "Toque em 'buscar' para simular uma chamada com 1,5s de espera. " +
+            "Toque de novo durante a espera: a busca anterior é cancelada e recomeça.",
+        onBack = onBack
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Button(onClick = { buscaId++ }) { Text("buscar") }
+
+            when {
+                carregando -> CircularProgressIndicator()
+                resultado.isNotBlank() -> Text(resultado, style = MaterialTheme.typography.titleMedium)
+                else -> Text("nenhuma busca ainda", style = MaterialTheme.typography.bodyMedium)
+            }
+        }
+    }
+}
+```
+
+## 🧪 Experimente
+
+- Abra o app e vá em **Estado avançado → LaunchedEffect**.
+- Toque em "buscar" e observe o indicador de progresso por 1,5s até o resultado aparecer.
+- Toque em "buscar" de novo bem no meio da espera: a busca anterior some e uma nova de 1,5s começa — é a chave (`buscaId`) mudando e cancelando o efeito anterior.
+- No código, note que o corpo do `LaunchedEffect` só roda quando `buscaId > 0`: o estado inicial (`0`) não dispara busca nenhuma.

@@ -1,0 +1,77 @@
+---
+sidebar_position: 19
+title: "Aula 19: ViewModel"
+description: "Estado e regra fora da UI, com StateFlow."
+---
+
+# Aula 19: ViewModel
+
+:::info 📂 Código da Aula
+Esta aula é a lição **ViewModel** do playground, no repositório `compose-intro` (branch `app-final`):
+
+- Arquivo: `app/src/main/java/com/fatec/composeintro/ui/lessons/L19ViewModel.kt`
+- No app: abra o catálogo → módulo **Estado avançado** → **ViewModel**
+
+```bash
+git clone https://github.com/fatec-registro-yuri-villanova/compose-intro
+git checkout app-final
+```
+:::
+
+## 📖 Conceito
+
+Um `ViewModel` guarda o estado num `StateFlow` e expõe funções para mudá-lo. A tela obtém o ViewModel com `viewModel()` e observa o estado com `collectAsStateWithLifecycle`.
+
+Esta lição fecha a trilha do estado que o curso vem seguindo desde o Módulo 4: na aula 13 (`remember`), o estado morava *por dentro* do componente. Na aula 15 (state hoisting), ele foi *içado* para a função da tela — mas ainda morria quando o processo era recriado, e a regra de negócio ficava misturada com a UI. Aqui, com o ViewModel, o estado e a decisão saem da tela de vez: o `LoginViewModel` sobrevive à recriação da Activity e concentra toda a lógica, o que o torna testável sem subir tela nenhuma.
+
+:::caution Armadilha
+Não guarde `viewModel()` numa variável fora da composição nem crie o ViewModel na mão dentro da tela (por exemplo chamando o construtor diretamente). Use sempre `viewModel()`, que devolve o MESMO ViewModel entre recomposições e o liga ao ciclo de vida.
+:::
+
+## 💻 Código de Referência
+
+```kotlin title="ui/lessons/L19ViewModel.kt"
+data class LoginUiState(
+    val email: String = "",
+    val password: String = "",
+    val emailValid: Boolean = false,
+    val canLogin: Boolean = false
+)
+
+class LoginViewModel : ViewModel() {
+    private val _uiState = MutableStateFlow(LoginUiState())
+    val uiState: StateFlow<LoginUiState> = _uiState.asStateFlow()
+
+    fun onEmailChange(value: String) = _uiState.update { atual ->
+        val valido = value.contains("@") && value.contains(".")
+        atual.copy(email = value, emailValid = valido, canLogin = valido && atual.password.length >= 6)
+    }
+
+    fun onPasswordChange(value: String) = _uiState.update { atual ->
+        atual.copy(password = value, canLogin = atual.emailValid && value.length >= 6)
+    }
+}
+
+@Composable
+fun L19ViewModel(onBack: () -> Unit) {
+    val vm: LoginViewModel = viewModel()
+    val estado by vm.uiState.collectAsStateWithLifecycle()
+
+    LessonScaffold(
+        title = "ViewModel",
+        notice = "O botão só mostra 'Entrar' quando a validação passa: e-mail com @ e ., " +
+            "senha de 6+. Toda essa regra de decisão vive fora da tela, não aqui.",
+        onBack = onBack
+    ) {
+        // ... campos de e-mail e senha lendo `estado` e chamando
+        // vm::onEmailChange / vm::onPasswordChange
+    }
+}
+```
+
+## 🧪 Experimente
+
+- Abra o app e vá em **Estado avançado → ViewModel**.
+- Digite um e-mail sem `@` ou sem `.`: o aviso "e-mail inválido" aparece e o botão continua "Preencha os campos".
+- Complete um e-mail válido e uma senha com 6 ou mais caracteres: o botão muda para "Entrar".
+- No código, note que `L19ViewModel` (o composable) não guarda nenhum estado próprio nem decide a validação — ele só lê `estado` e chama `vm::onEmailChange`/`vm::onPasswordChange`. Toda a regra mora no `LoginViewModel`, que dá para testar isoladamente (veja `LoginViewModelTest` no repositório).

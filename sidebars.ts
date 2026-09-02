@@ -23,6 +23,11 @@ const sidebars: SidebarsConfig = {
             label: "Módulo 4 — Estado",
             items: ["pdmii/aula-13", "pdmii/aula-14", "pdmii/aula-15", "pdmii/aula-16"],
         },
+        {
+            type: "category",
+            label: "Módulo 5 — Estado avançado",
+            items: ["pdmii/aula-17", "pdmii/aula-18", "pdmii/aula-19"],
+        },
     ],
 
     pdmiSidebar: [
