@@ -1,0 +1,166 @@
+---
+sidebar_position: 15
+title: "Aula 15: Calibração e entrega"
+description: "Confirmar os 384 dots em papel, fechar a suíte e empacotar."
+---
+
+# Aula 15: Calibração e entrega
+
+## 📖 Conceito
+
+A aula 02 fez uma conta: 384 dots de largura útil ÷ 12 dots por glifo da Font A = 32 colunas. A aula 04 usou essa conta para escrever `etiquetaDeCalibracao()`, uma etiqueta com uma régua de exatamente 32 caracteres. As duas aulas foram honestas sobre o que essa conta é: inferência a partir do datasheet, nunca medida no papel. É esta aula que finalmente imprime a régua na LT-8359 de verdade. Se ela ocupar a largura inteira sem quebrar em duas linhas, os 384 dots — e portanto os 32 caracteres — estão certos. Se quebrar, a largura real é menor, e é este o momento de descobrir isso, não uma reclamação de usuário meses depois.
+
+A etiqueta cobre as oito escalas, de 1x a 8x, e isso não é generosidade de cobertura: é a faixa inteira que o hardware aceita. `EscPosRenderer.tamanho(escala)` (aula 05) monta o byte de `GS ! n` como `(escala - 1).coerceIn(0, 7)` em cada nibble — o registrador da impressora só representa oito escalas, 1x a 8x; escala 9 não existe fisicamente. A etiqueta de calibração exercita o intervalo completo porque é o único instrumento que responde às perguntas de hardware que ainda estão em aberto, e cobertura reduzida aqui custa uma sessão inteira de testes remarcados.
+
+Ela também já entregou um achado, sem que uma única etiqueta tivesse saído do rolo: o comentário de `normalizado()` (aula 04) descreve que "CALIBRACAO" em escala 2x com negrito sai borrado, porque na LT-8359 o negrito é um segundo impacto da cabeça de impressão deslocado por uma fração de dot — em escala normal isso cria o efeito esperado, mas em 2x o segundo impacto cai dentro do próprio glifo já alargado. É por isso que `Titulo` normalizado não leva negrito. A etiqueta de calibração é onde essa previsão e o controle ficam lado a lado na mesma folha: o título "CALIBRACAO" (2x, sem negrito, por causa da decisão da aula 04) logo acima da linha "escala 2x" (2x puro, sem negrito também, porque nenhuma linha desta etiqueta pede negrito). O papel desta aula é o primeiro lugar em que essa lógica se confirma fora do comentário de código.
+
+E há uma constante que não vai passar no mesmo teste: `Impressora.DOTS_LARGURA = 384`. `git grep DOTS_LARGURA main` no repositório do Printec devolve só a declaração do `const val` e o comentário acima dela — nenhum arquivo de produção lê essa constante. Quem decide quantas colunas cabem numa linha é `Impressora.COLUNAS_BASE` (32), que `QuebraDeLinha.colunasPara()` (aula 02) usa direto; quem converte milímetros em dots ao avançar o papel é `Impressora.DOTS_POR_MM` (8), que `EscPosRenderer.avancar()` (aula 05) usa. `DOTS_LARGURA` registra a conta que gerou `COLUNAS_BASE` — 32 colunas × 12 dots — mas nenhum código a consulta de volta. Mesmo que a régua desta etiqueta confirme os 384 dots no papel, corrigir `DOTS_LARGURA` sozinho não mudaria uma linha sequer do que a impressora produz. É uma constante que registra uma crença sobre o hardware e não governa nada — o tipo de coisa que só aparece quando alguém pergunta, como o Exercício 1 vai pedir, "o que exatamente lê isto?"
+
+## 🗂️ Estrutura de Arquivos
+
+```
+shared/src/
+├── commonTest/kotlin/com/fatec/printec/
+│   └── SharedCommonTest.kt
+├── jvmTest/kotlin/com/fatec/printec/
+│   └── SharedLogicDesktopTest.kt
+├── androidHostTest/kotlin/com/fatec/printec/
+│   └── SharedLogicAndroidHostTest.kt
+└── androidDeviceTest/kotlin/com/fatec/printec/impressao/
+    └── EscPosCoffeeDispositivoTest.kt
+```
+
+## Passo 1 — Os testes de fechamento
+
+Um teste por source set de teste do módulo `shared` — não testam uma regra de negócio nova, testam que cada ambiente de execução ainda compila e roda depois de catorze aulas de mudanças.
+
+```kotlin title="shared/src/commonTest/kotlin/com/fatec/printec/SharedCommonTest.kt"
+package com.fatec.printec
+
+import kotlin.test.Test
+import kotlin.test.assertEquals
+
+class SharedCommonTest {
+
+    @Test
+    fun example() {
+        assertEquals(3, 1 + 2)
+    }
+}
+```
+
+```kotlin title="shared/src/jvmTest/kotlin/com/fatec/printec/SharedLogicDesktopTest.kt"
+package com.fatec.printec
+
+import kotlin.test.Test
+import kotlin.test.assertEquals
+
+class SharedLogicDesktopTest {
+
+    @Test
+    fun example() {
+        assertEquals(3, 1 + 2)
+    }
+}
+```
+
+```kotlin title="shared/src/androidHostTest/kotlin/com/fatec/printec/SharedLogicAndroidHostTest.kt"
+package com.fatec.printec
+
+import kotlin.test.Test
+import kotlin.test.assertEquals
+
+class SharedLogicAndroidHostTest {
+
+    @Test
+    fun example() {
+        assertEquals(3, 1 + 2)
+    }
+}
+```
+
+```kotlin title="shared/src/androidDeviceTest/kotlin/com/fatec/printec/impressao/EscPosCoffeeDispositivoTest.kt"
+package com.fatec.printec.impressao
+
+import com.github.anastaciocintra.escpos.EscPos
+import java.io.ByteArrayOutputStream
+import kotlin.test.Test
+import kotlin.test.assertEquals
+
+class EscPosCoffeeDispositivoTest {
+
+    @Test
+    fun escpos_coffee_carrega_e_executa_no_android() {
+        val saida = ByteArrayOutputStream()
+        EscPos(saida).use { it.initializePrinter() }
+        assertEquals(listOf<Byte>(0x1B, 0x40), saida.toByteArray().toList())
+    }
+}
+```
+
+Os três primeiros são idênticos de propósito — `assertEquals(3, 1 + 2)` não verifica nada do domínio, verifica que `commonTest`, `jvmTest` e `androidHostTest` ainda compilam e executam cada um no seu próprio ambiente. O quarto é diferente: `EscPosCoffeeDispositivoTest` repete, byte a byte, a mesma asserção de `EscPosCoffeeVivoTest` (aula 05) — inicializar o `EscPos` da biblioteca `escpos-coffee` e conferir que o stream recebe `0x1B 0x40`. A diferença não está no código, está em onde ele roda.
+
+## ⚠️ Atenção
+
+`EscPosCoffeeDispositivoTest` mora em `androidDeviceTest`, não em `androidHostTest`. Isso importa porque `androidHostTest` — o source set que `./gradlew :shared:testAndroidHostTest` executa — roda na JVM da própria máquina de desenvolvimento, exatamente como `jvmTest`: o `build.gradle.kts` do módulo `shared` declara `getByName("androidHostTest").dependsOn(jvmCommonTest)`, o mesmo `jvmCommonTest` de que `jvmTest` depende. Um teste em `androidHostTest` prova que o código compila e roda numa JVM comum; não prova nada sobre o runtime real do Android (ART), com seu próprio bytecode e suas próprias bibliotecas padrão.
+
+É exatamente essa lacuna que `EscPosCoffeeDispositivoTest` fecha. `escpos-coffee` é uma biblioteca Java pensada para desktop — ninguém a escreveu tendo Android em mente. `EscPosCoffeeVivoTest` (aula 05), rodando em `jvmCommonTest`, já prova que ela carrega numa JVM. Mas isso não garante que carregue em ART: `androidDeviceTest` é o único source set deste projeto que executa de verdade num aparelho ou emulador Android, via `instrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"`. `EscPosCoffeeDispositivoTest` existe para provar, num teste automatizado e repetível, que `escpos-coffee` carrega e executa no Android real — algo que nenhum teste de JVM na máquina do desenvolvedor, `jvmTest` ou `androidHostTest`, consegue garantir. `./gradlew :shared:testAndroidHostTest` não o executa; ele só roda com um dispositivo ou emulador conectado.
+
+## ▶️ Como Executar
+
+A suíte inteira, module por module:
+
+```bash
+./gradlew :shared:jvmTest
+```
+
+```bash
+./gradlew :shared:testAndroidHostTest
+```
+
+Os artefatos de entrega:
+
+```bash
+./gradlew :androidApp:assembleDebug
+```
+
+```bash
+./gradlew :desktopApp:run
+```
+
+E o fecho de catorze aulas: abrir **Ajustes** nas duas plataformas e tocar "IMPRIMIR TESTE", que dispara `vm.imprimir(etiquetaDeCalibracao(), salvarRascunho = false)` (aulas 13 e 14) — o mesmo `LabelDocument` da aula 04, passando pelo mesmo `EscPosRenderer` (aula 05), só trocando o transporte: `TransporteDesktop` (aula 08) de um lado, `AndroidBluetoothTransport` (aula 07) do outro. Imprimir nas duas e comparar os dois papéis lado a lado é o teste que nenhum `assertEquals` deste projeto consegue fazer sozinho.
+
+## 💻 Mão na Massa
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+<Tabs>
+  <TabItem value="ex1" label="Exercício 1 — Meça" default>
+
+### A régua contra uma régua de verdade
+
+Imprima a etiqueta de calibração e meça a linha de 32 caracteres com uma régua física. Ela tem 48 mm? (384 dots ÷ 8 dots/mm, a mesma constante `Impressora.DOTS_POR_MM` que `EscPosRenderer.avancar()` usa para converter milímetros em dots.)
+
+Se der 48 mm, os 384 dots da aula 02 estão confirmados. Se não, antes de corrigir qualquer coisa, rode `git grep DOTS_LARGURA main` no repositório do Printec e leia o resultado com atenção — quantos arquivos aparecem, e são de produção ou é só a própria declaração da constante? Depois pergunte: se a régua saiu de um tamanho diferente de 48 mm, **qual constante precisaria mudar para a próxima etiqueta impressa vir diferente** — `DOTS_LARGURA`, `COLUNAS_BASE` ou `DOTS_POR_MM`? Justifique olhando quem lê cada uma (`QuebraDeLinha.colunasPara()`, aula 02, e `EscPosRenderer.avancar()`, aula 05).
+
+  </TabItem>
+  <TabItem value="ex2" label="Exercício 2 — Os dois papéis">
+
+### Android e Desktop, lado a lado
+
+Imprima a mesma etiqueta de calibração pelo Android e pelo Desktop e compare os dois papéis.
+
+Se saírem diferentes — régua de tamanho distinto, escalas distintas, negrito num e não no outro — o culpado está no transporte, não no renderizador. Explique por que, a partir da arquitetura: `EscPosRenderer.kt` mora em `jvmCommonMain` (aula 05), e tanto `androidMain` quanto `jvmMain` dependem desse source set — é literalmente o mesmo código gerando os mesmos bytes nas duas plataformas. O que muda entre elas é só quem carrega esses bytes na impressora: `AndroidBluetoothTransport` (aula 07) de um lado, `TransporteDesktop` (aula 08) do outro.
+
+  </TabItem>
+  <TabItem value="ex3" label="Exercício 3 — O que ficou de fora">
+
+### Onde o escopo foi decidido
+
+Abra o `README.md` do projeto Printec. Ele descreve a estrutura padrão de um projeto Kotlin Multiplatform — `commonMain`, `androidMain`, `jvmMain` — e os comandos de build e teste; não diz nada sobre o que este app específico decidiu não fazer. Quem registra essas decisões é `docs/superpowers/specs/2026-08-24-printec-etiquetas-design.md`, seção 3 ("Escopo"), subseção "Fora".
+
+Leia essa subseção e escolha três itens: código de barras 1D, descoberta e pareamento Bluetooth dentro do app, sincronização entre dispositivos. Para cada um, diga em que aula deste curso você o encaixaria e o que, especificamente, quebraria — que tipo (`Bloco` novo? outro `PrinterTransport`?) precisaria mudar, e em qual aula esse tipo foi definido.
+
+  </TabItem>
+</Tabs>
