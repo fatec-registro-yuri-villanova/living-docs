@@ -6,6 +6,11 @@ description: "A JVM não tem Bluetooth — e por que isso não impede o Desktop 
 
 # Aula 08: USB e serial no Desktop
 
+:::info 🔀 Código da Aula
+- **Ponto de partida:** o estado ao fim da aula anterior
+- **Gabarito final:** `git checkout main`
+:::
+
 ## 📖 Conceito
 
 A aula 07 escreveu a implementação Android de `PrinterTransport` (aula 06), sobre um socket RFCOMM de verdade. Esta aula escreve a implementação Desktop — e o primeiro fato estranho é que **a JVM não tem Bluetooth nativo nenhum**. Não existe `javax.bluetooth` de verdade, nenhuma API padrão para varrer dispositivos nem para abrir um socket RFCOMM a partir de Kotlin/JVM. E mesmo assim o Desktop imprime por Bluetooth.

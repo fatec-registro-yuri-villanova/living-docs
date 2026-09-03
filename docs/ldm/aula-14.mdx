@@ -6,6 +6,11 @@ description: "Manifest, permissão em runtime e a mesma UI da aula 13 imprimindo
 
 # Aula 14: O app Android
 
+:::info 🔀 Código da Aula
+- **Ponto de partida:** o estado ao fim da aula anterior
+- **Gabarito final:** `git checkout main`
+:::
+
 ## 📖 Conceito
 
 O Android reaproveita **tudo** de `shared/`: as três telas (`TelaCompor`, `TelaEtiquetas`, `TelaConfiguracoes`), a navegação que as costura (`AppEtiquetas`), o `EtiquetaViewModel`, o `LabelStore` e o `EscPosRenderer` — todos da aula 13, sem uma linha alterada. O que muda é só o host: `Application`, `Activity`, Manifest — e o transporte, que aqui é `AndroidBluetoothTransport` (aula 07) no lugar de `TransporteDesktop` (aula 08). É o pagamento de todo o trabalho de KMP desde a aula 01, e vale mostrar o número: `androidApp` tem **dois** arquivos Kotlin. `PrintecApp.kt` e `MainActivity.kt` — só isso liga a UI já pronta a um Bluetooth de verdade.

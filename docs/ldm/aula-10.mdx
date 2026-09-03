@@ -6,6 +6,11 @@ description: "Do LabelDocument para as tabelas e de volta, com Flow reagindo a m
 
 # Aula 10: O store SQLDelight
 
+:::info 🔀 Código da Aula
+- **Ponto de partida:** o estado ao fim da aula anterior
+- **Gabarito final:** `git checkout main`
+:::
+
 ## 📖 Conceito
 
 A aula 09 deixou o schema pronto e os drivers abrindo o banco nas duas plataformas, mas nada do resto do app fala SQL diretamente — o que o resto do app enxerga é `LabelStore`, a interface com `configuracoes()`, `etiquetasSalvas()`, `salvarEtiqueta`, `salvarRascunho` e as demais operações. Esta aula escreve a única implementação dessa interface: `LabelStoreSqlDelight`. O trabalho dela é ser o tradutor entre dois formatos que não se parecem em nada. De um lado, `LabelDocument` (aula 04) — uma lista de `Bloco` tipados, `Titulo`, `Linha`, `Qr`, `Avanco`, cada um com seus próprios campos. Do outro, as tabelas `etiqueta` e `bloco` (aula 09) — linhas com colunas fixas, e uma coluna `tipo` em texto para dizer qual variante de `Bloco` aquela linha representa.

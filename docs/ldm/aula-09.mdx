@@ -6,6 +6,11 @@ description: "SQLDelight, o schema da etiqueta e a única vez que este projeto u
 
 # Aula 09: Banco nas duas plataformas
 
+:::info 🔀 Código da Aula
+- **Ponto de partida:** o estado ao fim da aula anterior
+- **Gabarito final:** `git checkout main`
+:::
+
 ## 📖 Conceito
 
 Esta aula abre o **Módulo 4 — Estado e persistência**. Até aqui a trilha construiu um documento (aula 04), os bytes que o representam (aula 05) e dois jeitos de entregar esses bytes a uma impressora (aulas 07 e 08). Nada disso sobrevive ao fechar o app — não há onde guardar uma etiqueta feita, nem a impressora escolhida da última vez. É isso que este módulo resolve, e o banco começa aqui.
@@ -412,13 +417,15 @@ Compare o número que voltou com `PrintecDatabase.Schema.version` — é o mesmo
 
 ### Simule o banco pré-existente
 
-Escreva um teste (pode viver junto de `DriverDesktopTest`, num diretório temporário próprio) que:
+Estenda o `fun main()` de rascunho da seção anterior — aquele que vive em `jvmMain` e roda hoje, sem esperar a aula 10 — para que ele, num diretório temporário próprio:
 
 1. Crie o banco chamando `DriverDesktop(diretorio).criar()` uma vez, e feche o driver.
 2. Zere a versão gravada com `PRAGMA user_version = 0;` — sem tocar em mais nada.
 3. Chame `DriverDesktop(diretorio).criar()` de novo, no mesmo diretório.
 
-Verifique que a segunda chamada não estoura exceção nenhuma. Depois, em duas linhas, explique: qual dos três ramos do `when` dentro de `criar()` foi o que tratou essa segunda chamada, e por que não foi o primeiro ramo — mesmo `versaoNoArquivo` valendo `0L` nos dois casos.
+Confira que a segunda chamada não estoura exceção nenhuma. Depois, em duas linhas, explique: qual dos três ramos do `when` dentro de `criar()` foi o que tratou essa segunda chamada, e por que não foi o primeiro ramo — mesmo `versaoNoArquivo` valendo `0L` nos dois casos.
+
+O rascunho é o caminho de hoje porque `jvmTest` inteiro só volta a compilar na aula 10, quando `LabelStoreSqlDelight` existir. Depois da aula 10, vale transformar este rascunho num teste de verdade, ao lado de `DriverDesktopTest`.
 
   </TabItem>
 </Tabs>

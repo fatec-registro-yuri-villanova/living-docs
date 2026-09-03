@@ -374,7 +374,7 @@ fun App() {
 }
 ```
 
-Se as duas telas abrirem com o mesmo botão e a mesma saudação, o setup está correto — os dois hosts (`MainActivity.kt` no Android, `main.kt` no Desktop) não fazem nada além de chamar essa função.
+Se as duas telas abrirem com o mesmo botão e a mesma saudação, o setup está correto — os dois hosts (`MainActivity.kt` no Android, `main.kt` no Desktop) não têm UI própria: cada um só monta o seu invólucro de plataforma — a `Activity` com `enableEdgeToEdge()` de um lado, a `Window` do Compose Desktop do outro — e chama essa função lá dentro. O `@Preview` de `MainActivity.kt` faz o mesmo para o painel de preview do Android Studio.
 
 ## 💻 Mão na Massa
 

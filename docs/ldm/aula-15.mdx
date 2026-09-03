@@ -6,6 +6,11 @@ description: "Confirmar os 384 dots em papel, fechar a suíte e empacotar."
 
 # Aula 15: Calibração e entrega
 
+:::info 🔀 Código da Aula
+- **Ponto de partida:** o estado ao fim da aula anterior
+- **Gabarito final:** `git checkout main`
+:::
+
 ## 📖 Conceito
 
 A aula 02 fez uma conta: 384 dots de largura útil ÷ 12 dots por glifo da Font A = 32 colunas. A aula 04 usou essa conta para escrever `etiquetaDeCalibracao()`, uma etiqueta com uma régua de exatamente 32 caracteres. As duas aulas foram honestas sobre o que essa conta é: inferência a partir do datasheet, nunca medida no papel. É esta aula que finalmente imprime a régua na LT-8359 de verdade. Se ela ocupar a largura inteira sem quebrar em duas linhas, os 384 dots — e portanto os 32 caracteres — estão certos. Se quebrar, a largura real é menor, e é este o momento de descobrir isso, não uma reclamação de usuário meses depois.

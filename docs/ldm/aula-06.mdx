@@ -6,6 +6,11 @@ description: "Erros tipados porque falhar é rotina, e por que escrever tudo de 
 
 # Aula 06: O contrato de saída
 
+:::info 🔀 Código da Aula
+- **Ponto de partida:** o estado ao fim da aula anterior
+- **Gabarito final:** `git checkout main`
+:::
+
 ## 📖 Conceito
 
 Até aqui, tudo o que o projeto construiu vive dentro do próprio Kotlin: `LabelDocument` (aula 04) e os bytes ESC/POS que `EscPosRenderer` produz a partir dele (aula 05) não tocam hardware nenhum. Esta aula é onde isso muda — `PrinterTransport` é o contrato entre esses bytes e a impressora de verdade, e a Lintian LT-8359 dita as duas ideias que moldam esse contrato.

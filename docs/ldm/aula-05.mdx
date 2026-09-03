@@ -6,6 +6,11 @@ description: "Do documento aos bytes que a impressora entende — inclusive o QR
 
 # Aula 05: Renderizar ESC/POS
 
+:::info 🔀 Código da Aula
+- **Ponto de partida:** o estado ao fim da aula anterior
+- **Gabarito final:** `git checkout main`
+:::
+
 ## 📖 Conceito
 
 ESC/POS não é XML, não é JSON, não é nenhum formato de texto: é uma linguagem de bytes de comando intercalados com bytes de conteúdo. Cada comando começa com um byte de escape (`ESC` = `0x1B` ou `GS` = `0x1D`) seguido de um ou mais bytes que dizem o que fazer. É a linguagem que a Lintian LT-8359 entende nativamente, e é o que `EscPosRenderer` produz a partir de um `LabelDocument`.

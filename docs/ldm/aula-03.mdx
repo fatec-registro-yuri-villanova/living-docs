@@ -6,6 +6,11 @@ description: "Por que 'ação' vira lixo na impressora e como uma tabela de 48 c
 
 # Aula 03: Acentuação e a code page PC860
 
+:::info 🔀 Código da Aula
+- **Ponto de partida:** o estado ao fim da aula anterior
+- **Gabarito final:** `git checkout main`
+:::
+
 ## 📖 Conceito
 
 A impressora não fala UTF-8. Ela fala **code pages**: tabelas de 256 posições onde cada byte de `0x20` a `0x7E` é ASCII de sempre (letras, números, pontuação sem acento) e cada byte de `0x80` a `0xFF` significa uma coisa diferente dependendo de qual página está selecionada. A LT-8359 vem de fábrica na **code page 3, a PC860**, portuguesa — é essa tabela que decide o que `0x87` desenha no papel.

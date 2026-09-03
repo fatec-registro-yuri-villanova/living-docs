@@ -6,6 +6,11 @@ description: "Seis estados, uma guarda de reentrância e um retry — porque a i
 
 # Aula 11: A máquina de estados da impressão
 
+:::info 🔀 Código da Aula
+- **Ponto de partida:** o estado ao fim da aula anterior
+- **Gabarito final:** `git checkout main`
+:::
+
 ## 📖 Conceito
 
 Esta aula fecha o **Módulo 4 — Estado e persistência**, e fecha com a classe onde tudo que a trilha construiu até aqui se encontra. `EtiquetaViewModel` lê configuração através de `LabelStore` (aulas 09–10), passa o `LabelDocument` (aula 04) por uma função de renderizar que devolve bytes (`EscPosRenderer`, aula 05), e entrega esses bytes a um `PrinterTransport` (aula 06, implementado nas aulas 07 e 08). O assunto próprio desta classe não é nenhuma dessas três coisas — é o **estado**: o que a UI mostra enquanto a impressão acontece, e os invariantes que impedem essa UI de ficar presa.

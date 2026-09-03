@@ -6,6 +6,11 @@ description: "RFCOMM sobre dispositivos pareados, e as três armadilhas que derr
 
 # Aula 07: Bluetooth SPP no Android
 
+:::info 🔀 Código da Aula
+- **Ponto de partida:** o estado ao fim da aula anterior
+- **Gabarito final:** `git checkout main`
+:::
+
 ## 📖 Conceito
 
 Esta aula abre o **Módulo 3 — Bluetooth e Impressora**, o módulo que dá nome à trilha. As aulas 04 a 06 construíram tudo em Kotlin puro: um documento, os bytes ESC/POS que o representam, e o contrato `PrinterTransport` que promete entregar esses bytes a uma impressora de verdade. Esta aula escreve a primeira implementação desse contrato — a do Android, sobre Bluetooth clássico.
@@ -31,7 +36,7 @@ shared/src/
     └── AndroidBluetoothTransportTest.kt
 ```
 
-`androidHostTest` é um source set novo nesta trilha: ele roda os testes na JVM da própria máquina, sem precisar de aparelho nem de emulador — rápido, do mesmo jeito que `commonTest` e `jvmCommonTest` das aulas anteriores. O outro lado, `androidDeviceTest`, existe para o que só faz sentido rodando dentro de um Android de verdade (ou um emulador que simule um); este projeto não usa esse source set até a aula 14, onde o app é instalado e o papel finalmente sai da impressora.
+`androidHostTest` é um source set novo nesta trilha: ele roda os testes na JVM da própria máquina, sem precisar de aparelho nem de emulador — rápido, do mesmo jeito que `commonTest` e `jvmCommonTest` das aulas anteriores. O outro lado, `androidDeviceTest`, existe para o que só faz sentido rodando dentro de um Android de verdade (ou um emulador que simule um); este projeto não usa esse source set até a aula 15, onde `EscPosCoffeeDispositivoTest` prova que a `escpos-coffee` carrega dentro do runtime real do Android.
 
 ## 🔴 O Teste
 
@@ -195,7 +200,7 @@ Três armadilhas reais, cada uma com o comentário que ficou no código como cic
 ./gradlew :shared:testAndroidHostTest
 ```
 
-Esperado: `BUILD SUCCESSFUL`. Vale deixar explícito o que esse teste **não** faz: ele não fala com nenhum hardware, não abre socket nenhum, não precisa de Bluetooth ligado nem de aparelho pareado. Ele só confere que `UUID_SPP` é, byte a byte, o UUID padrão do perfil SPP — uma decisão da classe, não um comportamento de runtime. Papel só sai da impressora na aula 14.
+Esperado: `BUILD SUCCESSFUL`. Vale deixar explícito o que esse teste **não** faz: ele não fala com nenhum hardware, não abre socket nenhum, não precisa de Bluetooth ligado nem de aparelho pareado. Ele só confere que `UUID_SPP` é, byte a byte, o UUID padrão do perfil SPP — uma decisão da classe, não um comportamento de runtime. Papel sai pela primeira vez na aula 13, no Desktop, e por Bluetooth na aula 14.
 
 ## 💻 Mão na Massa
 
