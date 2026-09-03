@@ -1,160 +1,204 @@
 ---
 sidebar_position: 2
-title: "Aula 02: Supabase Client Compartilhado"
-description: "Configuração do SupabaseClient no módulo shared — Auth, Postgrest e Storage para reuso cross-platform."
+title: "Aula 02: Largura, colunas e quebra de linha"
+description: "32 colunas, 384 dots e a regra de quebra que preview e impressora precisam dividir."
 ---
 
-# Aula 02: Supabase Client Compartilhado
+# Aula 02: Largura, colunas e quebra de linha
 
-:::info 🔀 Branch da Aula
-Esta aula refere-se à branch: **`aula-02`**
-```bash
-git checkout aula-02
-```
+:::info 🔀 Código da Aula
+- **Ponto de partida:** o estado ao fim da aula anterior
+- **Gabarito final:** `git checkout main`
 :::
 
 ## 📖 Conceito
 
-Na aula anterior, montamos a estrutura KMP com um servidor Ktor puro. Agora vamos dar o próximo passo: **conectar o projeto ao Supabase** — o banco de dados que alimentará nosso ecossistema MergeSkills.
+A impressora não sabe o que é uma "palavra". Ela recebe uma sequência de caracteres e imprime até a linha acabar — aí corta, no meio de qualquer coisa, sem aviso. Quem decide *onde* quebrar o texto antes de mandar para o hardware é o app.
 
-O segredo está no módulo `shared/`. Como ele é compilado para múltiplas plataformas (JVM, Android, Desktop), qualquer código escrito lá fica disponível automaticamente para todos os módulos. Isso significa que vamos criar **uma única configuração** do Supabase e reutilizá-la em:
+De onde vêm os 32 caracteres por linha? A Lintian LT-8359 imprime com a Font A, cujos glifos padrão medem 12×24 dots. A largura útil do papel é 384 dots:
 
-- 🖥️ **Server** (Ktor) — para endpoints da API
-- 💻 **Desktop** (Compose for Desktop) — para o CMS administrativo
-- 📱 **Android** (futuro) — para o app mobile
-
-### O que muda nesta branch (vs aula-01)
-
-| Arquivo | O que foi adicionado | Módulo |
-|---------|---------------------|--------|
-| `SupabaseClient.kt` | Factory function para criar o client | `shared/` |
-| `Constants.kt` | Porta padrão do server | `shared/` |
-| `shared/build.gradle.kts` | Dependências Supabase SDK | `shared/` |
-| `server/build.gradle.kts` | Dependências Supabase + Database | `server/` |
-| `Application.kt` | Inicialização do SupabaseClient | `server/` |
-
-### Supabase SDK — O que são os Plugins?
-
-O Supabase SDK para Kotlin é modular. Cada funcionalidade é um **plugin** que você instala separadamente:
-
-| Plugin | Função | Quando usar |
-|--------|--------|-------------|
-| `Postgrest` | Acesso ao banco de dados (CRUD) | Sempre — é o core |
-| `Auth` | Autenticação de usuários | Login, Register, JWT |
-| `Storage` | Upload/download de arquivos | Fotos de perfil, imagens |
-
-## 💻 Código de Referência
-
-### SupabaseClient.kt — Factory Function no Shared
-
-A função `createAppSupabaseClient` vive no `commonMain`, o que significa que **qualquer módulo** pode chamá-la com suas próprias credenciais:
-
-```kotlin title="shared/src/commonMain/kotlin/.../SupabaseClient.kt"
-fun createAppSupabaseClient(
-    supabaseUrl: String,
-    supabaseKey: String
-): SupabaseClient {
-    return createSupabaseClient(
-        supabaseUrl = supabaseUrl,
-        supabaseKey = supabaseKey
-    ) {
-        install(Postgrest)   // Acesso ao banco (queries, inserts, etc.)
-        install(Auth)        // Autenticação (login, register, JWT)
-        install(Storage)     // Armazenamento de arquivos (fotos, docs)
-
-        defaultSerializer = KotlinXSerializer(Json {
-            ignoreUnknownKeys = true  // Ignora campos extra do JSON
-            prettyPrint = true        // JSON formatado nos logs
-            isLenient = true          // Aceita JSON "relaxado"
-        })
-    }
-}
+```
+384 dots ÷ 12 dots/caractere = 32 caracteres por linha
 ```
 
-:::tip Factory Pattern
-Uma **factory function** é uma função que cria e retorna um objeto pronto para uso. Em vez de chamar `createSupabaseClient(...)` espalhado pelo código, centralizamos a configuração em um lugar só. Se amanhã quisermos adicionar um plugin novo, alteramos apenas este arquivo.
-:::
+`Impressora.DOTS_LARGURA = 384` é uma inferência a partir dessa conta, não um valor lido de datasheet — a aula 15 confirma o número em papel com uma etiqueta de calibração impressa na própria impressora. Até lá, 384 é a melhor estimativa disponível.
 
-### Application.kt — Server consome o Shared
+Escala também entra na conta. Se o texto imprime em escala 2 (glifo com o dobro da largura), cabem só 16 caracteres na mesma linha física — a metade. `QuebraDeLinha.colunasPara(escala)` existe para essa divisão: `colunasPara(1)` devolve 32, `colunasPara(2)` devolve 16.
 
-O servidor lê as credenciais buscando por `System.getProperty()` (JVM args definidos no `build.gradle.kts`) ou Variáveis de Ambiente. Caso não encontre, ele implementa um fallback absoluto, lendo diretamente o arquivo `local.properties` na raiz do projeto, permitindo executar o servidor diretamente pelo botão Play (🟢) do IntelliJ:
+### Por que a regra mora num objeto isolado
 
-```kotlin title="server/src/main/kotlin/.../Application.kt"
-import io.github.jan.supabase.SupabaseClient
-import io.github.jan.supabase.postgrest.postgrest
+`QuebraDeLinha` não faz parte do renderizador ESC/POS nem da tela. Ela é um objeto `commonMain` só com essas duas funções, sem dependência de nada. O motivo aparece só na aula 12: lá, um preview na tela vai mostrar ao usuário exatamente como a etiqueta vai sair impressa, quebrando o texto do mesmo jeito que a impressora quebra. Se a lógica de quebra do preview divergir um caractere sequer da lógica de quebra do renderizador, o preview passa a mentir — o que aparece na tela não é o que sai no papel. Colocar as duas em `QuebraDeLinha.quebrar()` e chamar essa única função dos dois lugares é o que impede a divergência.
 
-fun Application.module() {
-    // Configurações do Supabase (tentativa 1: JVM args/Env Vars)
-    var supabaseUrl = System.getProperty("SUPABASE_URL") ?: System.getenv("SUPABASE_URL")
-    var supabaseKey = System.getProperty("SUPABASE_KEY") ?: System.getenv("SUPABASE_KEY")
+## 🗂️ Estrutura de Arquivos
 
-    // Fallback absoluto: Ler o arquivo local.properties diretamente (para IntelliJ direto no botão de Play)
-    if (supabaseUrl == null || supabaseKey == null) {
-        val properties = java.util.Properties()
-        val localPropFiles = listOf(
-            java.io.File("local.properties"),
-            java.io.File("../local.properties"),
-            java.io.File("../../local.properties")
+```
+shared/src/
+├── commonMain/kotlin/com/fatec/printec/etiqueta/
+│   ├── Impressora.kt        ← constantes físicas: colunas, dots, dots/mm
+│   └── QuebraDeLinha.kt     ← regra de quebra compartilhada
+└── commonTest/kotlin/com/fatec/printec/etiqueta/
+    └── QuebraDeLinhaTest.kt
+```
+
+## 🔴 O Teste
+
+```kotlin title="shared/src/commonTest/kotlin/com/fatec/printec/etiqueta/QuebraDeLinhaTest.kt"
+package com.fatec.printec.etiqueta
+
+import kotlin.test.Test
+import kotlin.test.assertEquals
+
+class QuebraDeLinhaTest {
+
+    @Test
+    fun `texto menor que a largura fica em uma linha`() {
+        assertEquals(listOf("bancada A"), QuebraDeLinha.quebrar("bancada A", 32))
+    }
+
+    @Test
+    fun `texto com exatamente 32 caracteres nao quebra`() {
+        val texto = "a".repeat(32)
+        assertEquals(listOf(texto), QuebraDeLinha.quebrar(texto, 32))
+    }
+
+    @Test
+    fun `texto com 33 caracteres quebra em duas linhas`() {
+        val texto = "a".repeat(33)
+        assertEquals(listOf("a".repeat(32), "a"), QuebraDeLinha.quebrar(texto, 32))
+    }
+
+    @Test
+    fun `quebra preferencialmente no espaco entre palavras`() {
+        val texto = "peca de reposicao para bancada central"
+        assertEquals(
+            listOf("peca de reposicao para bancada", "central"),
+            QuebraDeLinha.quebrar(texto, 32),
         )
-        val file = localPropFiles.firstOrNull { it.exists() }
-        if (file != null) {
-            properties.load(java.io.FileInputStream(file))
-            supabaseUrl = properties.getProperty("SUPABASE_URL")
-            supabaseKey = properties.getProperty("SUPABASE_KEY")
-        }
-    }
-    
-    var supabase: SupabaseClient? = null
-    
-    if (supabaseUrl != null && supabaseKey != null) {
-        // Reutiliza a factory do módulo shared!
-        supabase = createAppSupabaseClient(supabaseUrl, supabaseKey)
     }
 
-    install(ContentNegotiation) {
-        json(Json {
-            prettyPrint = true
-            isLenient = true
-            ignoreUnknownKeys = true
-        })
+    @Test
+    fun `palavra maior que a linha e cortada em vez de sumir`() {
+        val texto = "b".repeat(40)
+        assertEquals(listOf("b".repeat(32), "b".repeat(8)), QuebraDeLinha.quebrar(texto, 32))
     }
 
-    routing {
-        get("/") {
-            call.respondText("API LDDM/PDM (mergeskillskmp). Tente acessar /api/health")
-        }
+    @Test
+    fun `acentos contam como um caractere`() {
+        // Na PC860 cada acentuada ocupa 1 byte, entao conta 1 coluna.
+        val texto = "ação não coração"  // 16 caracteres
+        assertEquals(listOf(texto), QuebraDeLinha.quebrar(texto, 16))
+    }
 
-        get("/api/health") {
-            call.respond(
-                HealthResponse(
-                    status = "Status UP",
-                    timestamp = System.currentTimeMillis()
-                )
-            )
-        }
+    @Test
+    fun `texto vazio produz uma linha vazia`() {
+        assertEquals(listOf(""), QuebraDeLinha.quebrar("", 32))
+    }
+
+    @Test
+    fun `escala dobrada reduz as colunas pela metade`() {
+        assertEquals(32, QuebraDeLinha.colunasPara(1))
+        assertEquals(16, QuebraDeLinha.colunasPara(2))
+        assertEquals(8, QuebraDeLinha.colunasPara(4))
     }
 }
 ```
 
-### Dependências — O que foi adicionado no Gradle
+Rode:
 
-No `shared/build.gradle.kts`, três novas dependências com `api()` (visíveis para quem depende do shared):
+```bash
+./gradlew :shared:jvmTest --tests "com.fatec.printec.etiqueta.QuebraDeLinhaTest"
+```
 
-```kotlin title="shared/build.gradle.kts (diff vs aula-01)"
-commonMain.dependencies {
-    // ... (existentes da aula-01)
-    api(libs.supabase.postgrest)  // NOVO: Database
-    api(libs.supabase.gotrue)     // NOVO: Auth
-    api(libs.supabase.storage)    // NOVO: Storage
+Esperado: **falha de compilação** — `Unresolved reference: QuebraDeLinha`. Isso não é um assert vermelho, é o compilador recusando o arquivo: a classe `QuebraDeLinha` ainda não existe, então o Kotlin nem consegue gerar o bytecode do teste. Em Kotlin, a primeira rodada do ciclo teste-primeiro quase sempre falha assim — compilação, não asserção. Só depois que o tipo existe é que faz sentido falar em teste vermelho ou verde.
+
+## Passo 1 — Impressora
+
+```kotlin title="shared/src/commonMain/kotlin/com/fatec/printec/etiqueta/Impressora.kt"
+package com.fatec.printec.etiqueta
+
+/**
+ * Constantes físicas da Lintian LT-8359, apuradas pelo autoteste da impressora.
+ * DOTS_LARGURA é inferência (32 colunas x 12 dots da Font A) até ser confirmada
+ * em papel pela etiqueta de calibração.
+ */
+object Impressora {
+    const val COLUNAS_BASE = 32
+    const val DOTS_LARGURA = 384
+    const val DOTS_POR_MM = 8
 }
 ```
 
-:::tip `api()` vs `implementation()`
-- **`api()`**: A dependência fica visível para quem depende deste módulo (o server "enxerga" o Supabase automaticamente).
-- **`implementation()`**: A dependência fica privada — só o shared a conhece.
+`Impressora` é só constantes: `COLUNAS_BASE` (32), `DOTS_LARGURA` (384) e `DOTS_POR_MM` (8, usado a partir da aula 05 para converter milímetros em dots ao avançar o papel). O comentário no topo do arquivo já registra a ressalva da seção anterior — `DOTS_LARGURA` é inferência até a calibração da aula 15.
 
-Como queremos que o server use o SupabaseClient diretamente, usamos `api()`.
-:::
+Rode o teste de novo:
+
+```bash
+./gradlew :shared:jvmTest --tests "com.fatec.printec.etiqueta.QuebraDeLinhaTest"
+```
+
+Ainda falha — `Impressora` existe agora, mas `QuebraDeLinha` continua sem definição.
+
+## Passo 2 — QuebraDeLinha
+
+```kotlin title="shared/src/commonMain/kotlin/com/fatec/printec/etiqueta/QuebraDeLinha.kt"
+package com.fatec.printec.etiqueta
+
+/**
+ * Regra de quebra COMPARTILHADA entre o preview e o renderizador ESC/POS.
+ * Se as duas divergirem, o WYSIWYG vira mentira — por isso mora num lugar só.
+ */
+object QuebraDeLinha {
+
+    fun colunasPara(escala: Int): Int = Impressora.COLUNAS_BASE / escala.coerceAtLeast(1)
+
+    fun quebrar(texto: String, colunas: Int): List<String> {
+        if (texto.isEmpty()) return listOf("")
+
+        val linhas = mutableListOf<String>()
+        var restante = texto
+
+        while (restante.isNotEmpty()) {
+            if (restante.length <= colunas) {
+                linhas += restante
+                break
+            }
+            val janela = restante.substring(0, colunas + 1)
+            val corte = janela.lastIndexOf(' ')
+            if (corte <= 0) {
+                // Palavra maior que a linha: corta na largura em vez de descartar.
+                linhas += restante.substring(0, colunas)
+                restante = restante.substring(colunas)
+            } else {
+                linhas += restante.substring(0, corte)
+                restante = restante.substring(corte + 1)
+            }
+        }
+        return linhas
+    }
+}
+```
+
+`quebrar()` percorre o texto em loop, cortando uma linha por vez, e cada volta cai em um de três casos:
+
+- **Cabe na linha** — `restante.length <= colunas`: o resto inteiro vira a última linha e o loop termina.
+- **Quebra no último espaço da janela** — quando não cabe, pega uma janela de `colunas + 1` caracteres, procura o último espaço nela (`lastIndexOf(' ')`) e corta ali, descartando o espaço.
+- **Palavra maior que a linha** — se a janela não tem espaço nenhum (`corte <= 0`), não há onde quebrar por palavra. Em vez de descartar o excesso, o código corta exatamente na largura (`restante.substring(0, colunas)`) e continua processando o resto na próxima linha — nenhum caractere se perde.
+
+`colunasPara(escala)` é a função que a seção anterior descreveu: `Impressora.COLUNAS_BASE / escala.coerceAtLeast(1)`. O `coerceAtLeast(1)` evita divisão por zero (ou resultado negativo) se algum chamador passar `escala <= 0` — a função se protege sozinha em vez de confiar que quem chama nunca vai errar.
+
+## ⚠️ Atenção
+
+A janela usada para procurar o espaço de corte é `colunas + 1` caracteres — **não** `colunas`. Repare na linha (já mostrada no Passo 2 acima): `val janela = restante.substring(0, colunas + 1)`.
+
+O `+ 1` existe para cobrir o caso em que o espaço cai exatamente na fronteira da coluna 32. Se a janela fosse só `colunas` caracteres, um espaço na posição 32 nunca apareceria nela — a busca `lastIndexOf(' ')` não o enxergaria, e a função cairia no caso de "palavra maior que a linha", cortando no meio de uma palavra que na verdade termina exatamente ali. Trocar `colunas + 1` por `colunas` faz o texto perder efetivamente uma coluna de conteúdo útil toda vez que uma quebra cai bem na borda da linha — um bug sutil, porque a maioria dos textos de teste não bate exatamente no limite.
+
+## ▶️ Como Executar
+
+```bash
+./gradlew :shared:jvmTest --tests "com.fatec.printec.etiqueta.QuebraDeLinhaTest"
+```
+
+Esperado: `BUILD SUCCESSFUL`, todos os testes da classe verdes — os oito casos do arquivo de teste, incluindo o de acentos, o de texto vazio e o de escala. Esse é o resultado desta aula: a mesma regra de quebra que o preview vai usar na aula 12 já está testada e funcionando, isolada de qualquer coisa que dependa de tela ou de hardware.
 
 ## 💻 Mão na Massa
 
@@ -162,60 +206,31 @@ import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
 <Tabs>
-  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
+  <TabItem value="ex1" label="Exercício 1 — Escreva antes de olhar" default>
 
-### Configure o local.properties
+### Reescreva `QuebraDeLinha.kt` do zero
 
-Crie (ou edite) o arquivo `local.properties` na raiz do projeto com suas credenciais do Supabase:
+Apague o conteúdo de `QuebraDeLinha.kt`, deixando só a declaração do `object`. Sem olhar o gabarito acima, reescreva `colunasPara` e `quebrar` olhando *só* para `QuebraDeLinhaTest.kt` — os nomes dos testes e os `assertEquals` dizem o que a função precisa fazer.
 
-```properties
-SUPABASE_URL=https://SEU-PROJETO.supabase.co
-SUPABASE_KEY=sua-anon-key-aqui
+Rode até ficar verde:
+
+```bash
+./gradlew :shared:jvmTest --tests "com.fatec.printec.etiqueta.QuebraDeLinhaTest"
 ```
 
-Execute o servidor com `./gradlew :server:run` e verifique no log que não há erros de conexão.
+Não precisa bater linha por linha com o original — só precisa passar em todos os oito casos.
 
   </TabItem>
-  <TabItem value="ex2" label="Exercício 2 — Aplicação">
+  <TabItem value="ex2" label="Exercício 2 — O caso que falta">
 
-### Endpoint de status do Supabase
+### Espaços nas bordas
 
-Modifique o endpoint `/api/health` para retornar se o Supabase está conectado ou não:
+Acrescente a `QuebraDeLinhaTest.kt` dois casos novos:
 
-```kotlin
-get("/api/health") {
-    call.respond(HealthResponse(
-        status = if (supabase != null) "UP (Supabase OK)" else "DEGRADED (sem Supabase)",
-        timestamp = System.currentTimeMillis()
-    ))
-}
-```
+1. Um texto que **termina em espaço** (por exemplo, `"bancada A "`, com 32+ caracteres de forma que force quebra).
+2. Um texto com **dois espaços seguidos** no meio.
 
-  </TabItem>
-  <TabItem value="ex3" label="Exercício 3 — Desafio">
-
-### Primeira query real
-
-Crie um endpoint `GET /api/courses` que use o Supabase para buscar dados da tabela `courses`. Note a estruturação usando `try-catch` para isolar erros durante a delegação e o acesso nativo do plugin usando `.postgrest["tabela"]`:
-
-```kotlin
-get("/api/courses") {
-    try {
-        val supabaseClient = supabase ?: throw IllegalStateException("SupabaseClient is null. Check Environment Variables.")
-        val courses = supabaseClient.postgrest["courses"].select()
-        call.respondText(courses.data)
-    } catch (e: Exception) {
-        e.printStackTrace()
-        call.respondText("{\"error\": \"${e.message}\"}", status = io.ktor.http.HttpStatusCode.InternalServerError)
-    }
-}
-```
-
-:::tip Executando o Servidor Localmente
-Graças ao nosso *fallback absoluto* implementado na função `Application.module()`, agora você pode rodar o servidor apertando no "Play" (🟢) direto no arquivo `Application.kt` do Android Studio/IntelliJ! O servidor irá retroagir pastas até encontrar seu arquivo `local.properties` e carregar o `SUPABASE_KEY` e a `SUPABASE_URL`.
-:::
-
-Se a tabela ainda não existir, o Supabase retornará um erro 404 — e tudo bem, na próxima aula criaremos o schema!
+Rode o teste. Se passar, releia `quebrar()` e explique, em prosa, por que o comportamento atual já cobre esse caso. Se falhar, você encontrou um limite real da implementação atual — descreva-o em uma frase (o que exatamente ela faz de errado com espaços duplicados ou finais).
 
   </TabItem>
 </Tabs>

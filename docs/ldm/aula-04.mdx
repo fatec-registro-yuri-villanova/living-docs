@@ -1,83 +1,222 @@
 ---
 sidebar_position: 4
-title: "Aula 04: Modelagem de Dados e DTOs (Data Transfer Objects)"
-description: "Tradução do Schema SQL para Kotlin @Serializable DTOs e elaboração de Padrão Repository."
+title: "Aula 04: O documento da etiqueta"
+description: "Um modelo puro que não sabe nada sobre impressora, Compose ou plataforma."
 ---
 
-# Aula 04: Modelagem de Dados e DTOs
+# Aula 04: O documento da etiqueta
 
-:::info 🔀 Branch da Aula
-Esta aula refere-se à branch: **`aula-04`**
-```bash
-git checkout aula-04
-```
+:::info 🔀 Código da Aula
+- **Ponto de partida:** o estado ao fim da aula anterior
+- **Gabarito final:** `git checkout main`
 :::
 
 ## 📖 Conceito
 
-Na branch anterior, deixamos o Supabase moldado com o nosso Schema SQL de 6 tabelas (IDs baseados em `serial` inteiros, e relacionamentos definidos). Para que o Kotlin entenda que o campo SQL `streak_freezes` corresponde à uma propriedade legível no App... entra a orquestração via **Data Transfer Objects** (DTOs).
+Até aqui, cada aula produziu uma peça isolada: `Impressora` e `QuebraDeLinha` sabem de colunas e dots; `Pc860` sabe converter texto para os bytes que a LT-8359 entende. Nenhuma delas sabe o que é uma etiqueta. Esta aula fecha essa lacuna com `LabelDocument` — o modelo que descreve *o que* vai ser impresso, sem dizer *como*.
 
-Com as facilidades do Kotlin Multiplatform (KMP), escrevemos esses modelos no diretório _Shared_ (`shared/.../domain/models`), permitindo que a aplicação Server, o App mobile do PDM, e o CMS de Desktop (PDMII) possam usar a **mesma coleção de classes**. 
+`LabelDocument` é o contrato entre as quatro partes do app que ainda vão ser construídas nas próximas aulas: a UI produz um `LabelDocument`, o preview desenha um `LabelDocument`, o renderizador ESC/POS transforma um `LabelDocument` em bytes, e o banco guarda um `LabelDocument`. É por isso que este arquivo não importa Compose nem nada específico de plataforma — se importasse, arrastaria essa dependência para os outros três consumidores, mesmo os que não têm nada a ver com tela.
 
-## 💻 Código de Referência
+### Por que `sealed interface`
 
-### @Serializable e Mapeamento de @SerialName
+`Bloco` é um `sealed interface`. Isso diz ao compilador Kotlin que a lista de tipos que podem implementar `Bloco` é fechada e conhecida em tempo de compilação — só os subtipos declarados no mesmo arquivo existem, ponto. A consequência aparece do lado de quem *consome* um `Bloco`: um `when (bloco)` que trata todos os subtipos não precisa de um ramo `else`, porque o compilador já sabe que não falta nenhum caso. E se alguém, um dia, acrescentar um subtipo novo a `Bloco` e esquecer de tratá-lo num desses `when`, o projeto para de compilar naquele ponto — o esquecimento vira um erro na hora de compilar, não um bug para descobrir em produção. Essa rede de proteção é para o renderizador da aula 05.
 
-As classes do projeto utilizam a anotação mágica `@Serializable` provida pelo pacote `kotlinx.serialization`.
+### Por que `normalizado()`
 
-Um grande detalhe do mapeamento de Objetos Relacionais:
-* O Postgres usa o padrão `snake_case`. (Ex: `created_at`).
-* Kotlin defende código no formato `camelCase`. (Ex: `createdAt`).
+`Bloco.Titulo` é açúcar sintático: semanticamente ele é só uma `Linha` em escala 2, centralizada. Em vez de fazer cada consumidor de `Bloco` (o renderizador, o preview) saber tratar `Titulo` como um caso especial, `normalizado()` converte `Titulo` em `Linha` uma única vez, antes de qualquer um deles rodar. Isso deixa o renderizador e o preview com um caso a menos para se preocupar.
 
-Em vez de quebrar a legibilidade e forçar o Kotlin a usar sublinhados nativamente nas propriedades, o `@SerialName` traduz de volta para a infraestrutura por baixo dos panos:
+E tem um detalhe que só o hardware ensina: repare que `Titulo` normalizado *não* vira negrito. Isso é proposital. A LT-8359 imprime ênfase (negrito) como um duplo impacto da cabeça de impressão, deslocado horizontalmente por uma fração de dot. Em escala normal esse deslocamento cria o efeito de negrito esperado. Mas em escala 2x — que é exatamente a escala que `normalizado()` usa para títulos — o segundo impacto cai *dentro* do próprio glifo, já alargado, em vez de ao lado dele. O resultado não é um título em negrito: é um título borrado.
 
-```kotlin title="shared/.../domain/models/Models.kt"
-@Serializable
-data class User(
-    val id: Int,
-    val username: String,
-    val email: String? = null,
-    val name: String? = null,
-    val password: String? = null,
-    @SerialName("profile_picture")
-    val profilePicture: String? = null,
-    @SerialName("streak_count")
-    val streakCount: Int = 0,
-    @SerialName("last_activity_at")
-    val lastActivityAt: String? = null,
-    @SerialName("streak_freezes")
-    val streakFreezes: Int = 0,
-    @SerialName("longest_streak")
-    val longestStreak: Int = 0,
-    val role: String = "user",
-    @SerialName("created_at")
-    val createdAt: String? = null
+## 🗂️ Estrutura de Arquivos
+
+```
+shared/src/
+├── commonMain/kotlin/com/fatec/printec/etiqueta/
+│   ├── LabelDocument.kt      ← Alinhamento, Bloco, LabelDocument, normalizado()
+│   └── EtiquetaDeTeste.kt    ← etiquetaDeCalibracao()
+└── commonTest/kotlin/com/fatec/printec/etiqueta/
+    └── EtiquetaDeTesteTest.kt
+```
+
+## 🔴 O Teste
+
+```kotlin title="shared/src/commonTest/kotlin/com/fatec/printec/etiqueta/EtiquetaDeTesteTest.kt"
+package com.fatec.printec.etiqueta
+
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
+
+class EtiquetaDeTesteTest {
+
+    @Test
+    fun `a regua tem exatamente 32 caracteres`() {
+        val regua = etiquetaDeCalibracao().blocos
+            .filterIsInstance<Bloco.Linha>()
+            .first { it.texto.length >= 32 }
+        assertEquals(32, regua.texto.length)
+        assertEquals(1, regua.escala)
+    }
+
+    @Test
+    fun `a calibracao exercita acentos do portugues`() {
+        val textos = etiquetaDeCalibracao().blocos
+            .filterIsInstance<Bloco.Linha>().map { it.texto }
+        assertTrue(textos.any { it.contains("ação") })
+    }
+
+    @Test
+    fun `a calibracao inclui um QR de referencia`() {
+        assertTrue(etiquetaDeCalibracao().blocos.any { it is Bloco.Qr })
+    }
+
+    @Test
+    fun `a calibracao cobre as oito escalas, de 1x a 8x`() {
+        // Spec §8: 1x a 8x. Cobertura reduzida aqui custa uma sessao de testes
+        // de hardware inteira -- este e o instrumento que responde perguntas
+        // em aberto sobre a LT-8359.
+        val escalas = etiquetaDeCalibracao().blocos
+            .filterIsInstance<Bloco.Linha>()
+            .filter { it.texto.startsWith("escala ") }
+            .map { it.escala }
+        assertEquals((1..8).toList(), escalas)
+    }
+
+    @Test
+    fun `nenhum caractere da calibracao e substituido`() {
+        val doc = etiquetaDeCalibracao()
+        val fora = doc.blocos.filterIsInstance<Bloco.Linha>()
+            .sumOf { Pc860.codificar(it.texto).substituidos }
+        assertEquals(0, fora)
+    }
+}
+```
+
+Rode:
+
+```bash
+./gradlew :shared:jvmTest --tests "com.fatec.printec.etiqueta.EtiquetaDeTesteTest"
+```
+
+Esperado: **falha de compilação** — `Unresolved reference: etiquetaDeCalibracao`. Como nas aulas anteriores, isso não é um teste vermelho: o compilador recusa o arquivo inteiro porque `etiquetaDeCalibracao`, `Bloco.Linha` e `Bloco.Qr` ainda não existem em lugar nenhum do projeto.
+
+## Passo 1 — LabelDocument
+
+```kotlin title="shared/src/commonMain/kotlin/com/fatec/printec/etiqueta/LabelDocument.kt"
+package com.fatec.printec.etiqueta
+
+enum class Alinhamento { ESQUERDA, CENTRO, DIREITA }
+
+sealed interface Bloco {
+    /** Açúcar para Linha(escala = 2, CENTRO). Ver [normalizado] quanto ao negrito. */
+    data class Titulo(val texto: String) : Bloco
+
+    data class Linha(
+        val texto: String,
+        val escala: Int = 1,
+        val alinhamento: Alinhamento = Alinhamento.ESQUERDA,
+        val negrito: Boolean = false,
+    ) : Bloco
+
+    data class Qr(val conteudo: String, val tamanhoModulo: Int = 6) : Bloco
+
+    data class Avanco(val milimetros: Int) : Bloco
+}
+
+data class LabelDocument(
+    val blocos: List<Bloco> = emptyList(),
+    val copias: Int = 1,
+)
+
+/**
+ * Normaliza Titulo para Linha, para que renderizador e preview tratem um caso a menos.
+ *
+ * Sem negrito de proposito. A LT-8359 imprime enfase como duplo impacto
+ * deslocado na horizontal; em largura 2x esse segundo impacto cai dentro do
+ * proprio glifo, preenche o vao entre as colunas de dots e o titulo sai
+ * borrado. Na etiqueta de calibracao isso aparece lado a lado: "CALIBRACAO"
+ * (2x + negrito) ilegivel logo acima de "escala 2x" (2x puro) nitido.
+ */
+fun Bloco.normalizado(): Bloco = when (this) {
+    is Bloco.Titulo -> Bloco.Linha(
+        texto = texto,
+        escala = 2,
+        alinhamento = Alinhamento.CENTRO,
+    )
+    else -> this
+}
+```
+
+Quatro blocos, quatro necessidades diferentes de uma etiqueta: `Titulo` para o cabeçalho, `Linha` para texto comum (com escala, alinhamento e negrito próprios), `Qr` para o código de barras 2D, e `Avanco` para empurrar o papel um número de milímetros sem imprimir nada — útil para dar espaço entre seções da etiqueta. `LabelDocument` é só a lista ordenada desses blocos mais `copias`, o número de vezes que a etiqueta deve sair da impressora.
+
+Rode o teste de novo:
+
+```bash
+./gradlew :shared:jvmTest --tests "com.fatec.printec.etiqueta.EtiquetaDeTesteTest"
+```
+
+Ainda falha — `Bloco` e `LabelDocument` já existem, mas `etiquetaDeCalibracao` continua sem definição.
+
+## Passo 2 — A etiqueta de calibração
+
+```kotlin title="shared/src/commonMain/kotlin/com/fatec/printec/etiqueta/EtiquetaDeTeste.kt"
+package com.fatec.printec.etiqueta
+
+/**
+ * Etiqueta de diagnostico. Confirma em papel o que o autoteste da impressora
+ * so deixou inferir: se a regua de 32 colunas ocupa a largura inteira sem
+ * quebrar, os 384 dots estao certos.
+ *
+ * E tambem a primeira ferramenta quando algo parece errado: se ela imprime, o
+ * problema esta no conteudo, nao na conexao.
+ */
+fun etiquetaDeCalibracao(): LabelDocument = LabelDocument(
+    blocos = listOf(
+        Bloco.Titulo("CALIBRACAO"),
+        Bloco.Linha("12345678901234567890123456789012"),   // 32 colunas exatas
+        // Spec §8 pede 1x a 8x: e este instrumento que vai responder as
+        // perguntas de hardware em aberto sobre a LT-8359, e cobertura
+        // reduzida aqui custa uma sessao de testes inteira.
+        Bloco.Linha("escala 1x"),
+        Bloco.Linha("escala 2x", escala = 2),
+        Bloco.Linha("escala 3x", escala = 3),
+        Bloco.Linha("escala 4x", escala = 4),
+        Bloco.Linha("escala 5x", escala = 5),
+        Bloco.Linha("escala 6x", escala = 6),
+        Bloco.Linha("escala 7x", escala = 7),
+        Bloco.Linha("escala 8x", escala = 8),
+        Bloco.Linha("ação não coração Ângela"),
+        Bloco.Linha("direita", alinhamento = Alinhamento.DIREITA),
+        Bloco.Linha("centro", alinhamento = Alinhamento.CENTRO),
+        Bloco.Qr("PRINTEC-CALIBRACAO"),
+    ),
+    copias = 1,
 )
 ```
 
-:::tip Tipos Nativos Primitivos
-Ao ler nosso `initial_schema.sql`, notamos que as Primary Keys (`id`) são `serial`, um auto-incremento numérico. Portanto, no Kotlin, nossos campos de `id` são todos mapeados para a tipagem primária `Int`. Identificadores relacionais (foreign keys) também acompanham essa formatação via `Int?`.
-:::
+A régua de `"12345678901234567890123456789012"` tem exatamente 32 caracteres. Até aqui, `Impressora.DOTS_LARGURA = 384` e as 32 colunas que vêm dele (aula 02) são inferência a partir do datasheet da Font A — nunca foram confirmadas em papel. Esta etiqueta é a ferramenta que faz essa confirmação: se a régua sai inteira, numa linha só, sem quebrar, os 384 dots estão certos. A aula 15 é onde essa etiqueta é finalmente impressa de verdade na LT-8359.
 
-Nesta branch, centralizamos nossas classes de representação de dados em um único arquivo de domínio principal:
+Ela também é a primeira ferramenta de diagnóstico do projeto, antes mesmo de existir uma UI para escolher o que imprimir: se a etiqueta de calibração imprime — corretamente, sem lixo nos acentos, com o QR legível — o problema em qualquer relato de "não imprime direito" está no conteúdo daquela etiqueta específica, não na conexão com a impressora nem no transporte (aulas 06 a 08).
 
-* `Models.kt` → Contém tanto a Core Business Logic (Course, User, Lesson) quanto os Payloads DTOs de Autenticação (LoginRequest, AuthResponse).
+Repare que a etiqueta cobre as oito escalas de 1x a 8x (spec §8) e uma frase com acentuação do português (`"ação não coração Ângela"`) — a mesma classe de caractere que `Pc860` (aula 03) precisa converter sem substituição.
 
-### Repository Pattern no KMP
+Rode o teste de novo:
 
-Pelo princípio SOLID de Responsabilidade Única, a lógica de pedir ativamente os Cursos no banco ou adicionar novos perfis... **não deve morar nos Routers HTTP nem nas Views dos Apps.** Ela mora em Contratos de Interface chamados "Repository".
-
-Nas instâncias mais elementares da Aula-04 criamos as interfaces com assinaturas que retornam a estrutura base das Entidades construídas:
-
-```kotlin title="shared/.../domain/repository/UserRepository.kt"
-interface UserRepository {
-    suspend fun login(request: LoginRequest): Result<AuthResponse>
-    suspend fun register(request: RegisterRequest): Result<AuthResponse>
-    suspend fun getUserProfile(userId: Int): Result<User>
-    suspend fun updateStreak(userId: Int): Result<User>
-}
+```bash
+./gradlew :shared:jvmTest --tests "com.fatec.printec.etiqueta.EtiquetaDeTesteTest"
 ```
-*A palavra-chave coroutine `suspend` no Kotlin garante que nossa requisição de rede irá para *background thread* em vez de congelar a interface (especialmente para quando chegar a vez do Compose no Desktop ou Mobile).*
+
+## ⚠️ Atenção
+
+`normalizado()` converte `Titulo` para `Linha` — mas o que acontece se, por algum caminho, um `Titulo` *não normalizado* chegar até o renderizador da aula 05? O `when` que vai varrer os blocos ali não vai ter um ramo `else` (é exatamente a rede de proteção do sealed interface que a seção de Conceito descreveu), então o ramo `is Bloco.Titulo` dele precisa existir — e nesse ramo não há conversão nenhuma, só uma chamada a `error(...)`, que derruba a execução com uma exceção. Isso é proposital: se um dia alguém chamar o renderizador direto, sem passar pelos blocos por `normalizado()` primeiro, o app falha alto e visível, na hora, em vez de imprimir um título errado (sem a escala e o centro que o normalizado() daria) e ninguém perceber até reclamação do usuário.
+
+## ▶️ Como Executar
+
+```bash
+./gradlew :shared:jvmTest --tests "com.fatec.printec.etiqueta.EtiquetaDeTesteTest"
+```
+
+Esperado: `BUILD SUCCESSFUL`, os cinco testes verdes — a régua de 32 colunas, os acentos do português, a presença do QR, as oito escalas em ordem e zero caracteres substituídos pela `Pc860`. `LabelDocument` e `etiquetaDeCalibracao()` estão prontos para os consumidores que vêm a seguir: o renderizador ESC/POS (aula 05), o banco (aulas 09 e 10), o ViewModel (aula 11), o preview (aula 12) e as duas telas de app (aulas 13 e 14).
 
 ## 💻 Mão na Massa
 
@@ -85,29 +224,39 @@ import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
 <Tabs>
-  <TabItem value="ex1" label="Exercício 1 — Check de Mapeamento" default>
+  <TabItem value="ex1" label="Exercício 1 — Onde a rede de proteção ainda não existe" default>
 
-Abra seu projeto Kotlin e seu Painel Supabase simultaneamente. 
-Tente ler o formato de constraint `lesson_id` (que é um Integer de FK) na sua tabela SQL de `questions` e depois procure esse campo específico no arquivo `Models.kt`.
-Reflita sobre como ele foi convertido pelo Kotlin com `@SerialName` e mantido na tipagem `Int?`.
+### Acrescente um subtipo a `Bloco`
 
-  </TabItem>
-  <TabItem value="ex2" label="Exercício 2 — Novo Model Progress">
+Em `LabelDocument.kt`, dentro do `sealed interface Bloco`, acrescente `data class CodigoDeBarras(val conteudo: String) : Bloco`.
 
-Nosso arquivo `Models.kt` já atende à tabela Progress. Agora, construa ativamente a interface de domínio em `shared/.../domain/repository/LessonProgressRepository.kt` com a assinatura assíncrona para buscar uma `List<LessonProgress>` passando a referência Inteira de um usuário:
+Rode:
 
-```kotlin
-interface LessonProgressRepository {
-    suspend fun fetchMyProgress(userId: Int) : List<LessonProgress>
-}
+```bash
+./gradlew :shared:compileKotlinJvm
 ```
 
+Anote o resultado. Ele te surpreende? Nada neste projeto, hoje, quebra — o compilador aceita `CodigoDeBarras` de primeira, sem reclamar de nenhum `when` incompleto.
+
+Volte a `normalizado()` e leia o `when` com atenção: ele tem um ramo `is Bloco.Titulo` e um `else -> this`. `else` cobre qualquer caso não citado explicitamente — inclusive um subtipo que nem existia quando esse `when` foi escrito. É por isso que adicionar `CodigoDeBarras` não quebrou nada: neste ponto do projeto, `normalizado()` é o único lugar que faz `when` sobre `Bloco`, e ele tem uma saída de escape.
+
+A rede de proteção que a seção de Conceito descreveu só vai aparecer na **aula 05**, no `when` do renderizador — lá não existe `else`: cada `is Bloco.X` precisa estar escrito à mão, e um subtipo esquecido vira erro de compilação, não um bug silencioso em produção. Você acabou de ver o outro lado dessa moeda: um `when` com `else` não te avisa de nada.
+
+Desfaça a alteração (remova `CodigoDeBarras`) antes de seguir para o exercício 2.
+
   </TabItem>
-  <TabItem value="ex3" label="Exercício 3 — Injeção Opcional (Desafio)">
+  <TabItem value="ex2" label="Exercício 2 — Sua etiqueta">
 
-Tente injetar artificialmente o Objeto Data Class "Course" puro que exploramos no modelo JSON dentro de uma Resposta base de Ktor na porta `Application.kt` apenas para testes local do server (Serializando na unha com `call.respond`). 
+### `minhaEtiqueta()`
 
-Note como o `ContentNegotiation` do Ktor pega a Data Class Kotlin e transforma automaticamente num formato JSON cru na URL porque sua Model possui a Tag `@Serializable` no topo.
+Escreva uma função `minhaEtiqueta(): LabelDocument` com um título, três linhas, um QR e um avanço de 5 mm, nessa ordem.
+
+Escreva um teste que chame `minhaEtiqueta().blocos.map { it.normalizado() }` e verifique:
+
+- a quantidade de blocos (6: título, três linhas, QR e avanço — `normalizado()` troca o tipo do título, não remove nem junta blocos);
+- a ordem dos tipos depois de normalizar (o primeiro é `Bloco.Linha`, não mais `Bloco.Titulo`, seguido pelas três linhas originais, o `Bloco.Qr` e o `Bloco.Avanco`).
+
+Rode o teste e confirme que ele passa verde.
 
   </TabItem>
 </Tabs>

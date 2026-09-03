@@ -1,110 +1,221 @@
 ---
 sidebar_position: 3
-title: "Aula 03: Banco de Dados e Schema SQL"
-description: "Modelagem do banco de dados relacional com SQL para suportar gamificação e conteúdo acadêmico."
+title: "Aula 03: Acentuação e a code page PC860"
+description: "Por que 'ação' vira lixo na impressora e como uma tabela de 48 caracteres resolve."
 ---
 
-# Aula 03: Banco de Dados e Schema SQL
+# Aula 03: Acentuação e a code page PC860
 
-:::info 🔀 Branch da Aula
-Esta aula refere-se à branch: **`aula-03`**
-```bash
-git checkout aula-03
-```
+:::info 🔀 Código da Aula
+- **Ponto de partida:** o estado ao fim da aula anterior
+- **Gabarito final:** `git checkout main`
 :::
 
 ## 📖 Conceito
 
-Na aula passada, testamos a conexão base usando Ktor e Supabase Client. Mas um projeto real não armazena apenas `status = UP`. Nesta semana, nossa arquitetura mergulha no **PostgreSQL** hospedado pelo Supabase.
+A impressora não fala UTF-8. Ela fala **code pages**: tabelas de 256 posições onde cada byte de `0x20` a `0x7E` é ASCII de sempre (letras, números, pontuação sem acento) e cada byte de `0x80` a `0xFF` significa uma coisa diferente dependendo de qual página está selecionada. A LT-8359 vem de fábrica na **code page 3, a PC860**, portuguesa — é essa tabela que decide o que `0x87` desenha no papel.
 
-O objetivo da aula é estruturar um esquema relacional que atenda à Spec Técnica do MergeSkills, conectando tabelas de trilhas de conhecimento e perfis gamificados (Streak).
+O problema aparece assim que você tenta imprimir um texto com acento. Uma string Kotlin como `"ação"` é UTF-8 por baixo dos panos, e em UTF-8 cada caractere acentuado — `ç`, `ã`, `õ` — não é um byte, são dois. Se você jogar esses bytes crus para a impressora, ela não sabe que devia juntá-los: ela lê byte a byte, contra a tabela PC860, e imprime dois caracteres errados no lugar de um certo. É por isso que mandar UTF-8 direto vira lixo no papel.
 
-### Por que SQL e não NoSQL?
-O "MergeSkills" precisa manter rigorosa integridade (ex: uma pergunta não pode existir sem uma lição que não existe sem um curso). O PostgreSQL oferece as *constraints* (restrições) que garantem isso através de chaves estrangeiras.
+A solução é converter a string para os bytes que a PC860 espera, um caractere Kotlin por byte, antes de mandar para o hardware.
 
-## 💻 Código de Referência
+### Por que uma tabela em Kotlin puro, e não `Charset.forName("cp860")`
 
-### O Arquivo initial_schema.sql
+A JVM sabe fazer essa conversão sozinha — `Charset.forName("cp860")` existe e funciona no Desktop. O problema é o Android: o provedor de charsets do Android é reduzido em relação ao da JVM completa, e pode simplesmente não incluir a PC860. Depender de `Charset.forName` significa descobrir isso só quando o app roda num aparelho de verdade — tarde demais.
 
-Este documento centraliza toda a inteligência do nosso banco. Nós o executamos na seção **SQL Editor** do painel do Supabase.
+Uma tabela escrita à mão em Kotlin puro não tem esse risco: ela é só um `Array` e um `Map`, roda igual nas duas plataformas porque não depende de nenhum provedor de charset do sistema operacional, e — o que importa para esta trilha — é testável em `commonTest`, sem precisar de um dispositivo Android nem da impressora ligada.
 
-Acompanhe as tabelas estruturais:
+### Por que caracteres de controle viram `?`
 
-```sql title="initial_schema.sql"
--- initial_schema.sql
--- Auto-generated from existing remote database
+`Pc860.codificar` não deixa passar bytes de controle (`0x00`–`0x1F`) — nem mesmo `\n`. Eles são substituídos por `?` e contados. Duas razões, e as duas importam:
 
-CREATE TABLE public.courses (
-    id serial PRIMARY KEY,
-    title text NOT NULL,
-    description text,
-    icon text,
-    color text,
-    total_lessons integer DEFAULT 0,
-    created_at timestamp with time zone DEFAULT now()
-);
+- Um `\n` cru dentro do texto criaria uma quebra de linha que o preview da aula 12 não sabe que existe — o WYSIWYG mentiria.
+- Em ESC/POS, bytes de controle carregam significado próprio (comandos, não texto). Deixar um passar sem querer pode ser interpretado como instrução em vez de conteúdo.
 
-CREATE TABLE public.users (
-    id serial PRIMARY KEY,
-    username text NOT NULL,
-    email text,
-    name text,
-    password text,
-    profile_picture text,
-    streak_count integer DEFAULT 0,
-    last_activity_at timestamp with time zone,
-    streak_freezes integer DEFAULT 0,
-    longest_streak integer DEFAULT 0,
-    role text DEFAULT 'user'::text NOT NULL,
-    created_at timestamp with time zone DEFAULT now()
-);
+Por isso o código prefere avisar — devolvendo quantos caracteres precisaram ser substituídos — a silenciosamente deixar passar algo que pode quebrar a impressão.
 
-CREATE TABLE public.lessons (
-    id serial PRIMARY KEY,
-    course_id integer REFERENCES public.courses(id),
-    title text NOT NULL,
-    description text,
-    "order" integer,
-    created_at timestamp with time zone DEFAULT now()
-);
+## 🗂️ Estrutura de Arquivos
 
-CREATE TABLE public.questions (
-    id serial PRIMARY KEY,
-    lesson_id integer REFERENCES public.lessons(id),
-    question text NOT NULL,
-    code text,
-    options jsonb DEFAULT '[]'::jsonb,
-    correct_answer integer,
-    "order" integer,
-    created_at timestamp with time zone DEFAULT now()
-);
-
-CREATE TABLE public.lesson_progress (
-    id serial PRIMARY KEY,
-    user_id integer REFERENCES public.users(id),
-    lesson_id integer REFERENCES public.lessons(id),
-    is_completed boolean DEFAULT false,
-    completed_at timestamp with time zone DEFAULT now(),
-    UNIQUE(user_id, lesson_id)
-);
-
-CREATE TABLE public.question_attempts (
-    id serial PRIMARY KEY,
-    user_id integer REFERENCES public.users(id),
-    question_id integer REFERENCES public.questions(id),
-    selected_option integer,
-    is_correct boolean DEFAULT false,
-    timestamp timestamp with time zone DEFAULT now(),
-    UNIQUE(user_id, question_id)
-);
+```
+shared/src/
+├── commonMain/kotlin/com/fatec/printec/etiqueta/
+│   └── Pc860.kt          ← tabela de codificação/decodificação
+└── commonTest/kotlin/com/fatec/printec/etiqueta/
+    └── Pc860Test.kt
 ```
 
-:::tip Técnicas Avançadas Aplicadas
-- **`SERIAL`**: Auto-incrementa os `id`s em inteiros. O Postgres cria automaticamente uma *sequence* rodando em plano de fundo.
-- **`TIMESTAMP WITH TIME ZONE`**: Armazena a exata linha do tempo (ideal para cálculo seguro da Ofensiva/Streak diária do aluno).
-- **`JSONB`**: No campo `options` da tabela `questions`, podemos armazenar vetores customizados livremente.
-- **`UNIQUE(col1, col2)`**: Impede redundância dupla de dados. Um mesmo usuário não pode ter mais de um `lesson_progress` atrelado exato à mesma `lesson`.
-:::
+## 🔴 O Teste
+
+```kotlin title="shared/src/commonTest/kotlin/com/fatec/printec/etiqueta/Pc860Test.kt"
+package com.fatec.printec.etiqueta
+
+import kotlin.test.Test
+import kotlin.test.assertEquals
+
+class Pc860Test {
+
+    @Test
+    fun `ascii passa inalterado`() {
+        val r = Pc860.codificar("Bancada A1")
+        assertEquals("Bancada A1".map { it.code.toByte() }, r.bytes.toList())
+        assertEquals(0, r.substituidos)
+    }
+
+    @Test
+    fun `acentuadas do portugues viram os bytes da PC860`() {
+        val r = Pc860.codificar("ação")
+        // a=0x61, ç=0x87, ã=0x84, o=0x6F
+        assertEquals(listOf<Byte>(0x61, 0x87.toByte(), 0x84.toByte(), 0x6F), r.bytes.toList())
+        assertEquals(0, r.substituidos)
+    }
+
+    @Test
+    fun `maiusculas acentuadas tambem sao mapeadas`() {
+        val r = Pc860.codificar("ÃÇÉÔÚ")
+        assertEquals(
+            listOf<Byte>(0x8E.toByte(), 0x80.toByte(), 0x90.toByte(), 0x8C.toByte(), 0x96.toByte()),
+            r.bytes.toList(),
+        )
+        assertEquals(0, r.substituidos)
+    }
+
+    @Test
+    fun `caractere fora da pagina vira interrogacao e e contado`() {
+        val r = Pc860.codificar("preço €")
+        assertEquals(1, r.substituidos)
+        assertEquals('?'.code.toByte(), r.bytes.last())
+    }
+
+    @Test
+    fun `emoji conta cada unidade nao mapeavel`() {
+        val r = Pc860.codificar("ok 🎉")
+        // O emoji ocupa duas unidades UTF-16, ambas nao mapeaveis.
+        assertEquals(2, r.substituidos)
+    }
+
+    @Test
+    fun `texto vazio produz zero bytes`() {
+        val r = Pc860.codificar("")
+        assertEquals(0, r.bytes.size)
+        assertEquals(0, r.substituidos)
+    }
+
+    @Test
+    fun `caracteres de controle sao substituidos`() {
+        val r = Pc860.codificar("a\nb")
+        // a=0x61, \n é controle (vira ?), b=0x62
+        assertEquals(listOf<Byte>(0x61, '?'.code.toByte(), 0x62), r.bytes.toList())
+        assertEquals(1, r.substituidos)
+    }
+}
+```
+
+Rode:
+
+```bash
+./gradlew :shared:jvmTest --tests "com.fatec.printec.etiqueta.Pc860Test"
+```
+
+Esperado: **falha de compilação**, `Unresolved reference: Pc860`. Como na aula 02, isso não é um assert vermelho — é o compilador recusando o arquivo porque o tipo `Pc860` ainda não existe em lugar nenhum do projeto.
+
+## Passo 1 — Pc860
+
+```kotlin title="shared/src/commonMain/kotlin/com/fatec/printec/etiqueta/Pc860.kt"
+package com.fatec.printec.etiqueta
+
+class ResultadoCodificacao(val bytes: ByteArray, val substituidos: Int)
+
+/**
+ * Codificação para a code page 3 (PC860, portuguesa) da LT-8359.
+ *
+ * Tabela própria em vez de Charset.forName("cp860"): o provedor de charsets do
+ * Android é reduzido e pode não incluir a PC860. Uma tabela em Kotlin puro se
+ * comporta igual nas duas plataformas e é testável sem dispositivo.
+ *
+ * Mapeia o ASCII imprimível (0x20..0x7E) e 0x80..0xAF (acentuadas e pontuação).
+ * O restante da página é box-drawing e grego, sem uso em etiquetas.
+ *
+ * Caracteres de controle (\n, \t, ESC…) NÃO passam: viram `?` e são contados.
+ * É deliberado — um 0x0A cru criaria uma quebra de linha que o preview não
+ * mostra, quebrando o WYSIWYG, e os bytes de controle carregam significado
+ * em ESC/POS. Melhor o usuário ver o aviso de substituição.
+ */
+object Pc860 {
+
+    private const val SUBSTITUTO = '?'.code.toByte()
+
+    /** Índice 0 corresponde ao byte 0x80. */
+    private val ALTOS = charArrayOf(
+        'Ç', 'ü', 'é', 'â', 'ã', 'à', 'Á', 'ç',   // 0x80..0x87
+        'ê', 'Ê', 'è', 'Í', 'Ô', 'ì', 'Ã', 'Â',   // 0x88..0x8F
+        'É', 'À', 'È', 'ô', 'õ', 'ò', 'Ú', 'ù',   // 0x90..0x97
+        'Ì', 'Õ', 'Ü', '¢', '£', 'Ù', '₧', 'Ó',   // 0x98..0x9F
+        'á', 'í', 'ó', 'ú', 'ñ', 'Ñ', 'ª', 'º',   // 0xA0..0xA7
+        '¿', 'Ò', '¬', '½', '¼', '¡', '«', '»',   // 0xA8..0xAF
+    )
+
+    private val PARA_BYTE: Map<Char, Byte> =
+        ALTOS.withIndex().associate { (i, c) -> c to (0x80 + i).toByte() }
+
+    fun codificar(texto: String): ResultadoCodificacao {
+        val saida = ByteArray(texto.length)
+        var substituidos = 0
+        for (i in texto.indices) {
+            val c = texto[i]
+            saida[i] = when {
+                c.code in 0x20..0x7E -> c.code.toByte()
+                PARA_BYTE.containsKey(c) -> PARA_BYTE.getValue(c)
+                else -> {
+                    substituidos++
+                    SUBSTITUTO
+                }
+            }
+        }
+        return ResultadoCodificacao(saida, substituidos)
+    }
+
+    /**
+     * Inverso de [codificar], byte a byte. Existe para o teste que prova que
+     * o preview e o renderizador ESC/POS quebram linha da mesma forma
+     * (RendererIgualAoPreviewTest): decodificar pela MESMA tabela evita que o
+     * teste dependa de uma copia paralela dela, que poderia divergir da real
+     * sem ninguem notar.
+     */
+    fun decodificar(bytes: ByteArray): String = buildString {
+        for (byte in bytes) {
+            val i = byte.toInt() and 0xFF
+            when {
+                i in 0x20..0x7E -> append(i.toChar())
+                i - 0x80 in ALTOS.indices -> append(ALTOS[i - 0x80])
+                else -> append(SUBSTITUTO.toInt().toChar())
+            }
+        }
+    }
+}
+```
+
+Repare em dois pontos:
+
+- **`/** Índice 0 corresponde ao byte 0x80. */`** — o comentário logo acima de `ALTOS` é o que torna a tabela legível: a posição 0 do array é `Ç`, e `Ç` é o byte `0x80`; a posição 7 é `ç`, byte `0x87`. Sem essa âncora, ler `ALTOS[i]` exigiria contar posições toda vez.
+- **`PARA_BYTE`** é o mapa inverso, construído a partir do próprio array com `ALTOS.withIndex().associate { (i, c) -> c to (0x80 + i).toByte() }`. Em vez de escrever a tabela duas vezes — uma para codificar, outra para decodificar — o código deriva uma da outra. Isso elimina a chance de as duas tabelas divergirem por um erro de digitação em uma cópia paralela.
+
+Rode o teste de novo:
+
+```bash
+./gradlew :shared:jvmTest --tests "com.fatec.printec.etiqueta.Pc860Test"
+```
+
+## ⚠️ Atenção
+
+`decodificar` não existe para o app — nada em produção decodifica bytes ESC/POS de volta para texto. Ela existe para um teste: é a peça que permite, na **aula 12**, provar que o preview na tela e o renderizador ESC/POS quebram linha exatamente da mesma forma. Esse teste decodifica os bytes que o renderizador produziu, usando a mesma tabela `Pc860`, e compara o resultado com o que o preview mostrou. Se `decodificar` usasse uma cópia paralela da tabela em vez da mesma `ALTOS`/`PARA_BYTE` de `codificar`, as duas tabelas poderiam divergir silenciosamente — um caractere mapeado errado só no lado do teste, mascarando um bug real ou criando um falso alarme. Decodificar pela mesma tabela fecha essa brecha.
+
+## ▶️ Como Executar
+
+```bash
+./gradlew :shared:jvmTest --tests "com.fatec.printec.etiqueta.Pc860Test"
+```
+
+Esperado: `BUILD SUCCESSFUL`, os sete casos verdes — ASCII inalterado, minúsculas e maiúsculas acentuadas, caractere fora da página, emoji, texto vazio e caractere de controle. `Pc860` está pronta para dois consumidores futuros: `codificar` é o que o renderizador ESC/POS da aula 05 chama antes de mandar bytes para a impressora; `decodificar` é o que o teste da aula 12 chama para provar que preview e impressão concordam.
 
 ## 💻 Mão na Massa
 
@@ -112,27 +223,32 @@ import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
 <Tabs>
-  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
+  <TabItem value="ex1" label="Exercício 1 — Descubra o byte" default>
 
-Acesse o **SQL Editor** no painel do Supabase apontado pelo `local.properties` (veja aula passada) e execute todo o comando do arquivo `initial_schema.sql`.
+### Leia a tabela antes de rodar qualquer coisa
 
-Em seguida vá até "Table Editor" e garanta visualmente que as 6 tabelas existem.
+Olhando só para o array `ALTOS` no Passo 1 (sem rodar nada ainda), responda:
 
-  </TabItem>
-  <TabItem value="ex2" label="Exercício 2 — Injeção Direta">
+1. Qual byte a PC860 usa para `ç`?
+2. Qual byte a PC860 usa para `Ã`?
 
-Ainda pelo editor SQL, realize um "Seed" na base. Ou seja, injete um dado cru simulado na tabela de Cursos para que na próxima aula a API possa retornar algo da Web:
+Lembre-se do comentário `/** Índice 0 corresponde ao byte 0x80. */`: o byte de um caractere na posição `i` do array é `0x80 + i`.
 
-```sql
-INSERT INTO courses (title, description, icon, color, total_lessons) 
-VALUES 
-('Desenvolvimento Kotlin Multiplatform', 'Base teórica de commonMain', 'kotlin', '#4CDF20', 10);
-```
+Depois, confirme escrevendo um teste seu que chame `Pc860.codificar("ç")` e outro que chame `Pc860.codificar("Ã")`, e compare o byte que saiu com o que você calculou na mão.
 
   </TabItem>
-  <TabItem value="ex3" label="Exercício 3 — Constraint Challenge">
+  <TabItem value="ex2" label="Exercício 2 — O contador">
 
-Apenas visualmente pelo SQL Editor: Como você criaria uma View nova (`CREATE VIEW`) no Supabase juntando `courses` com `lessons` para montar a grade horária num só resultado, sabendo que as tabelas possuem a chave condicional `course_id REFERENCES courses(id)`? Pense neste exercício teórico para entender o poder relacional do Postgres.
+### Um teste para `substituidos`
+
+Escreva um teste que passe para `Pc860.codificar` uma string contendo um emoji e um `\n` e verifique:
+
+- que `substituidos` vale 2;
+- que os bytes correspondentes a essas duas posições são `'?'.code.toByte()`.
+
+Atenção ao emoji que você escolher: o teste `emoji conta cada unidade nao mapeavel` do Passo anterior usa `"🎉"` sozinho e já dá `substituidos = 2`, porque esse emoji específico ocupa duas unidades UTF-16 (par substituto) e nenhuma das duas está mapeada. Se você quer o total exato de 2 somando emoji **e** `\n` na mesma string, escolha um emoji que caiba em uma única unidade UTF-16 — por exemplo `☺` (U+263A) — para não passar de 2.
+
+Em uma frase: por que o app quer saber *quantos* caracteres foram substituídos, em vez de `codificar` simplesmente trocar por `?` em silêncio e seguir em frente?
 
   </TabItem>
 </Tabs>

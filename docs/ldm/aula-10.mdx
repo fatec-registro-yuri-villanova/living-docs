@@ -1,137 +1,404 @@
 ---
 sidebar_position: 10
-description: Implementação de scripts administrativos de Seeding focados em injeção de massa e otimização por Batch e Upsert.
+title: "Aula 10: O store SQLDelight"
+description: "Do LabelDocument para as tabelas e de volta, com Flow reagindo a mudanças."
 ---
 
-# Aula 10: Scripts de Semente (Seeding) e Admin
+# Aula 10: O store SQLDelight
 
-Nesta aula, aprendemos a implementar o nosso bloco de **Seeding** (A injeção dos dados base da aplicação) como um Endpoint Administrativo **restrito e altamente performático** usando a estratégia de envio por arrays no Supabase KMP com a função nativa de Upsert.
+:::info 🔀 Código da Aula
+- **Ponto de partida:** o estado ao fim da aula anterior
+- **Gabarito final:** `git checkout main`
+:::
 
-Ao final, sua API estará estruturalmente madura para lidar com o preenchimento de massas de teste (Seeds) em lote na nuvem, e o projeto manterá as Controller e Services separadas graças à Arquitetura Limpa.
+## 📖 Conceito
 
----
+A aula 09 deixou o schema pronto e os drivers abrindo o banco nas duas plataformas, mas nada do resto do app fala SQL diretamente — o que o resto do app enxerga é `LabelStore`, a interface com `configuracoes()`, `etiquetasSalvas()`, `salvarEtiqueta`, `salvarRascunho` e as demais operações. Esta aula escreve a única implementação dessa interface: `LabelStoreSqlDelight`. O trabalho dela é ser o tradutor entre dois formatos que não se parecem em nada. De um lado, `LabelDocument` (aula 04) — uma lista de `Bloco` tipados, `Titulo`, `Linha`, `Qr`, `Avanco`, cada um com seus próprios campos. Do outro, as tabelas `etiqueta` e `bloco` (aula 09) — linhas com colunas fixas, e uma coluna `tipo` em texto para dizer qual variante de `Bloco` aquela linha representa.
 
-## 🏗 Estrutura da Funcionalidade
+Gravar um `Bloco` é achatar essa variação num conjunto comum de colunas: `tipo`, `conteudo`, `escala`, `alinhamento`, `negrito`. Nem todo bloco usa todas — `Avanco` não tem texto, só milímetros; `Qr` não tem alinhamento nem negrito de verdade. `LabelStoreSqlDelight` resolve isso reaproveitando colunas com sentidos diferentes conforme o tipo (a coluna `escala` vira "tamanho do módulo" para um `Qr` e "milímetros" para um `Avanco`), e preenchendo com valores fixos o que não se aplica. Ler de volta é o caminho inverso: um `when (b.tipo)` decide qual `Bloco` reconstruir a partir da linha, lendo cada coluna reaproveitada de volta com o sentido certo para aquele tipo.
 
-Para preencher nossa base com velocidade sem afetar a inicialização do Ktor, estruturamos uma Rota que separa as responsabilidades com elegância: A exposição da API fica exclusivamentre em `/routes/AdminRoutes.kt` enquanto toda a complexidade e motor de banco fica isolada dentro de `/services/SeedService.kt`.
+Duas `Flow` merecem atenção antes do código: `configuracoes()` e `etiquetasSalvas()` não devolvem uma lista pronta, devolvem um fluxo que **reemite sozinho** toda vez que a tabela correspondente muda — usando `asFlow()`/`mapToOne`/`mapToList` do SQLDelight sobre a query gerada. É esse mecanismo que faz a tela de etiquetas salvas da aula 13 se atualizar depois de um `salvarEtiqueta`, sem que ninguém precise chamar um "recarregar": quem está coletando o `Flow` já está inscrito para saber quando a tabela `etiqueta` muda, e a UI só reage.
 
-### DTOs em Módulo Compartilhado
+E há `garantirConfiguracao`: a query `INSERT OR IGNORE INTO configuracao (id) VALUES (0)` (aula 09) roda antes de toda leitura de configuração. Como o `CHECK (id = 0)` do schema só permite uma linha, inserir de novo quando ela já existe não faz nada — mas na primeira vez, num banco recém-criado, é o que garante que a linha 0 já existe antes de `lerConfiguracao` tentar lê-la. Sem isso, a primeira leitura de configurações de um app recém-instalado veria uma tabela vazia.
 
-Na pasta do módulo **`shared`**, precisamos garantir os objetos responsáveis pelo parsing dos inserts de Seed. Exemplo da payload genérica de uma lição (QuestionInsert):
+Por fim, o par `expect`/`actual`. A aula 09 prometeu que ele apareceria aqui, e o motivo de aparecer justo aqui — dentro de `LabelStoreSqlDelight.kt` — é que ele serve a esta classe: `gravar()` precisa de um timestamp para `criada_em`/`atualizada_em`, e obtê-lo é `internal expect fun agoraEmMillis(): Long`, declarado no fim do próprio arquivo desta classe. Diferente de `FabricaDeDriver` (aula 09), onde Android e Desktop precisam de parâmetros de construção diferentes (`Context` de um lado, um `File` do outro) e por isso a solução é uma interface, aqui a assinatura é **idêntica** nas duas plataformas — nenhuma delas precisa de argumento nenhum para responder "que horas são agora". É exatamente quando a assinatura não muda de uma plataforma para outra que `expect`/`actual` é a ferramenta certa, e não antes. Este é o único par `expect`/`actual` de produção do projeto inteiro — a aula 01 mostrou três, no `Platform.kt` do scaffold do KMP, mas aquele arquivo já não existe: era exemplo, não código que o Printec usa.
 
-```kotlin
-// com/fatec/merge_skills_kmp/domain/models/Question.kt
-@Serializable
-data class QuestionInsert(
-    @SerialName("lesson_id")
-    val lessonId: Int,
-    val question: String,
-    val code: String? = null,
-    val options: List<String>,
-    @SerialName("correct_answer")
-    val correctAnswer: Int,
-    val order: Int
-)
+## 🗂️ Estrutura de Arquivos
+
+```
+shared/src/
+├── commonMain/kotlin/com/fatec/printec/dados/
+│   └── LabelStoreSqlDelight.kt
+├── androidMain/kotlin/com/fatec/printec/dados/
+│   └── Relogio.android.kt
+├── jvmMain/kotlin/com/fatec/printec/dados/
+│   └── Relogio.jvm.kt
+└── jvmTest/kotlin/com/fatec/printec/dados/
+    └── LabelStoreTest.kt
 ```
 
-> **📌 Otimização com Batch Upsert:** Em vez de iterarmos e dispararmos dezenas de conexões individuais para cada registro, nós implementamos a arquitetura de envio em massa via **Upsert**: `client.from("questions").upsert(questions)`. Essa estratégia permite criar ou sobrescrever os registros automaticamente, otimizando o overhead de rede para enviar centenas de questões em apenas 1-2 hits de API.
+## 🔴 O Teste
 
----
+```kotlin title="shared/src/jvmTest/kotlin/com/fatec/printec/dados/LabelStoreTest.kt"
+package com.fatec.printec.dados
 
-## 🛠 O Serviço: SeedService
+import app.cash.sqldelight.db.QueryResult
+import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
+import com.fatec.printec.db.PrintecDatabase
+import com.fatec.printec.etiqueta.Alinhamento
+import com.fatec.printec.etiqueta.Bloco
+import com.fatec.printec.etiqueta.LabelDocument
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.test.runTest
+import kotlin.io.path.createTempDirectory
+import kotlin.test.BeforeTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
-Para obediência ao Clean Code (Clean Architecture), isolamos *Apenas O Que Interessa Ao DB*. Nosso Service cuida de injetar e verificar a ordem de dependências dos nossos 4 Cursos Base (`Java Icaro, Kotlin, Python, TypeScript`) sem poluir a Controller que atende na Web. 
+class LabelStoreTest {
 
-```kotlin
-// com/fatec/merge_skills_kmp/services/SeedService.kt
-class SeedService(private val client: SupabaseClient) {
+    private lateinit var driver: JdbcSqliteDriver
+    private lateinit var store: LabelStoreSqlDelight
 
-    suspend fun executeSeed(): Int {
-        var newCoursesInserted = 0
-        // ... Preparação dos Upserts com Listas de Cursos ...
+    @BeforeTest
+    fun preparar() {
+        driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        PrintecDatabase.Schema.create(driver)
+        driver.execute(null, "PRAGMA foreign_keys=ON;", 0)
+        store = LabelStoreSqlDelight(driver)
+    }
 
-        if (coursesToUpsert.isNotEmpty()) {
-            val insertedCourses = client.from("courses").upsert(coursesToUpsert) { select() }.decodeList<Course>()
+    private val exemplo = LabelDocument(
+        blocos = listOf(
+            Bloco.Titulo("Bancada A"),
+            Bloco.Linha("segunda linha", alinhamento = Alinhamento.DIREITA),
+            Bloco.Qr("https://exemplo.com"),
+        ),
+        copias = 3,
+    )
+
+    @Test
+    fun `etiqueta salva volta identica`() = runTest {
+        val id = store.salvarEtiqueta("Modelo 1", exemplo)
+        val salva = store.etiquetasSalvas().first().single()
+        assertEquals(id, salva.id)
+        assertEquals("Modelo 1", salva.nome)
+        assertEquals(exemplo, salva.documento)
+    }
+
+    @Test
+    fun `excluir etiqueta apaga os blocos em cascata`() = runTest {
+        // Este caso especificamente NAO pode rodar contra JdbcSqliteDriver.IN_MEMORY:
+        // em memoria o driver mantem uma unica conexao viva, entao um
+        // "PRAGMA foreign_keys=ON" avulso pareceria funcionar mesmo sem a
+        // fiacao real. Em arquivo, o JdbcSqliteDriver abre e fecha uma conexao
+        // por statement — exatamente o modelo publicado em producao — e so
+        // exercita o ON DELETE CASCADE de verdade se a pragma estiver presa na
+        // propriedade de conexao do driver (ver DriverDesktop).
+        val diretorioTemporario = createTempDirectory("printec-cascata-").toFile()
+        try {
+            val driverArquivo = DriverDesktop(diretorioTemporario).criar()
+            val storeArquivo = LabelStoreSqlDelight(driverArquivo)
+
+            val id = storeArquivo.salvarEtiqueta("Modelo 1", exemplo)
+            assertTrue(PrintecDatabase(driverArquivo).printecQueries.contarBlocos().executeAsOne() > 0)
+            storeArquivo.excluirEtiqueta(id)
+            assertEquals(0L, PrintecDatabase(driverArquivo).printecQueries.contarBlocos().executeAsOne())
+            driverArquivo.close()
+        } finally {
+            diretorioTemporario.deleteRecursively()
         }
-        
-        // Dispara Inclusão Completa para Relacionamentos
-        return insertedCourses.size
+    }
+
+    @Test
+    fun `rascunho e sobrescrito e nao aparece na lista de salvas`() = runTest {
+        store.salvarRascunho(exemplo)
+        store.salvarRascunho(exemplo.copy(copias = 9))
+        assertEquals(9, store.carregarRascunho()?.copias)
+        assertTrue(store.etiquetasSalvas().first().isEmpty())
+    }
+
+    @Test
+    fun `salvar rascunho duas vezes sobrescreve o anterior em vez de acumular`() = runTest {
+        // Nome deliberadamente NAO fala de atomicidade: este teste so olha o
+        // resultado apos duas chamadas sequenciais bem sucedidas, entao ele
+        // passaria igual contra uma implementacao nao-atomica (excluir fora da
+        // transacao de gravar). Nao prova nada sobre o caso de crash no meio.
+        store.salvarRascunho(exemplo)
+        store.salvarRascunho(exemplo.copy(copias = 9))
+
+        val quantidadeDeRascunhos = driver.executeQuery(
+            identifier = null,
+            sql = "SELECT count(*) FROM etiqueta WHERE eh_rascunho = 1",
+            mapper = { cursor -> QueryResult.Value(if (cursor.next().value) cursor.getLong(0)!! else 0L) },
+            parameters = 0,
+        ).value
+
+        assertEquals(1L, quantidadeDeRascunhos)
+        assertEquals(9, store.carregarRascunho()?.copias)
+    }
+
+    @Test
+    fun `sem rascunho salvo o carregamento devolve nulo`() = runTest {
+        assertNull(store.carregarRascunho())
+    }
+
+    @Test
+    fun `configuracoes tem padrao e sobrevivem a gravacao`() = runTest {
+        assertEquals(PerfilMidia.CONTINUO, store.configuracoes().first().perfilMidia)
+        assertEquals(3, store.configuracoes().first().avancoFinalMm)
+
+        store.salvarConfiguracoes(
+            Configuracoes("00:11:22", "KPrinter_aa9c", PerfilMidia.GAP, 5),
+        )
+        val c = store.configuracoes().first()
+        assertEquals("00:11:22", c.impressoraId)
+        assertEquals(PerfilMidia.GAP, c.perfilMidia)
+        assertEquals(5, c.avancoFinalMm)
     }
 }
 ```
 
-## 🌐 O Endpoint Administrativo (AdminRoutes)
+Sete testes, e vale ler o que cada um prova antes de rodar. `etiqueta salva volta identica` é o teste de ida e volta básico: salva, relê pela `Flow`, compara o `LabelDocument` inteiro. `excluir etiqueta apaga os blocos em cascata` é o único que não usa o `driver` em memória do `@BeforeTest` — o comentário explica por quê: `JdbcSqliteDriver.IN_MEMORY` mantém uma única conexão viva, então um `PRAGMA foreign_keys=ON` avulso pareceria funcionar mesmo sem a fiação real que `DriverDesktop` (aula 09) constrói; só em arquivo, com o driver abrindo e fechando conexão a cada `statement`, o `ON DELETE CASCADE` do schema é exercitado do jeito que vai rodar em produção. Os dois testes de rascunho e o de configurações fecham o resto do comportamento — e a próxima seção volta a eles.
 
-Localizado em `com.fatec.merge_skills_kmp.routes.AdminRoutes.kt`, esta view invoca nosso SeedService garantindo que só devolva HTTPs OK / Conflitos Tratados. Ela lida apenas com a requisição e a resposta!
+Rode agora:
 
-```kotlin
-// com/fatec/merge_skills_kmp/routes/AdminRoutes.kt
-fun Route.adminRoutes(client: SupabaseClient) {
-    route("/admin") {
-        post("/seed") {
-            try {
-                val seedService = SeedService(client)
-                val newCoursesInserted = seedService.executeSeed()
+```bash
+./gradlew :shared:jvmTest --tests "com.fatec.printec.dados.LabelStoreTest"
+```
 
-                call.respond(
-                    HttpStatusCode.OK, 
-                    SeedResponse(message = "Database seeded successfully", new_courses_inserted = newCoursesInserted)
+Esperado: falha de compilação. `LabelStoreSqlDelight` ainda não existe.
+
+## Passo 1 — LabelStoreSqlDelight
+
+```kotlin title="shared/src/commonMain/kotlin/com/fatec/printec/dados/LabelStoreSqlDelight.kt"
+package com.fatec.printec.dados
+
+import app.cash.sqldelight.coroutines.asFlow
+import app.cash.sqldelight.coroutines.mapToList
+import app.cash.sqldelight.coroutines.mapToOne
+import app.cash.sqldelight.db.SqlDriver
+import com.fatec.printec.db.PrintecDatabase
+import com.fatec.printec.etiqueta.Alinhamento
+import com.fatec.printec.etiqueta.Bloco
+import com.fatec.printec.etiqueta.LabelDocument
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.withContext
+
+class LabelStoreSqlDelight(driver: SqlDriver) : LabelStore {
+
+    private val q = PrintecDatabase(driver).printecQueries
+
+    // Nao roda no construtor: LabelStoreSqlDelight e instanciado em
+    // Application.onCreate/main(), na thread principal. Cada ponto de entrada
+    // que precisa da linha de configuracao a garante por conta propria, ja
+    // dentro de Dispatchers.IO.
+    override fun configuracoes(): Flow<Configuracoes> =
+        q.lerConfiguracao().asFlow().mapToOne(Dispatchers.Default).map { linha ->
+            Configuracoes(
+                impressoraId = linha.impressora_id,
+                impressoraNome = linha.impressora_nome,
+                perfilMidia = PerfilMidia.valueOf(linha.perfil_midia),
+                avancoFinalMm = linha.avanco_final_mm.toInt(),
+            )
+        }.onStart { q.garantirConfiguracao() }.flowOn(Dispatchers.IO)
+
+    override fun etiquetasSalvas(): Flow<List<EtiquetaSalva>> =
+        q.listarEtiquetas().asFlow().mapToList(Dispatchers.Default).map { linhas ->
+            // Uma consulta (blocosDe) por etiqueta da lista. Sem flowOn, este
+            // map roda no contexto do coletor -- a UI -- fazendo N consultas
+            // bloqueantes por emissao na thread principal.
+            linhas.map { linha ->
+                EtiquetaSalva(
+                    id = linha.id,
+                    nome = linha.nome.orEmpty(),
+                    documento = LabelDocument(
+                        blocos = lerBlocos(linha.id),
+                        copias = linha.copias.toInt(),
+                    ),
                 )
-            } catch (e: Exception) {
-                call.respond(HttpStatusCode.InternalServerError, SeedErrorResponse(error = "Failed to seed database: ${e.message}"))
+            }
+        }.flowOn(Dispatchers.IO)
+
+    override suspend fun salvarConfiguracoes(configuracoes: Configuracoes) {
+        withContext(Dispatchers.IO) {
+            q.garantirConfiguracao()
+            q.atualizarConfiguracao(
+                impressora_id = configuracoes.impressoraId,
+                impressora_nome = configuracoes.impressoraNome,
+                perfil_midia = configuracoes.perfilMidia.name,
+                avanco_final_mm = configuracoes.avancoFinalMm.toLong(),
+            )
+        }
+    }
+
+    override suspend fun salvarEtiqueta(nome: String, documento: LabelDocument): Long =
+        withContext(Dispatchers.IO) { gravar(nome = nome, rascunho = false, documento = documento) }
+
+    override suspend fun excluirEtiqueta(id: Long) {
+        withContext(Dispatchers.IO) { q.excluirEtiqueta(id) }
+    }
+
+    override suspend fun salvarRascunho(documento: LabelDocument) = withContext(Dispatchers.IO) {
+        // Uma transacao SO, cobrindo as duas operacoes: entre apagar o rascunho
+        // antigo e gravar o novo nao pode existir um instante com zero rascunhos.
+        // Sem isso, um crash no meio perde o que o usuario digitou.
+        q.transaction {
+            q.excluirRascunhos()
+            gravar(nome = null, rascunho = true, documento = documento)
+        }
+    }
+
+    override suspend fun carregarRascunho(): LabelDocument? = withContext(Dispatchers.IO) {
+        val linha = q.lerRascunho().executeAsOneOrNull() ?: return@withContext null
+        LabelDocument(lerBlocos(linha.id), linha.copias.toInt())
+    }
+
+    private fun gravar(nome: String?, rascunho: Boolean, documento: LabelDocument): Long {
+        var id = 0L
+        q.transaction {
+            val agora = agoraEmMillis()
+            q.inserirEtiqueta(
+                nome = nome,
+                eh_rascunho = if (rascunho) 1L else 0L,
+                copias = documento.copias.toLong(),
+                criada_em = agora,
+                atualizada_em = agora,
+            )
+            id = q.ultimoId().executeAsOne()
+            documento.blocos.forEachIndexed { ordem, bloco ->
+                val (tipo, conteudo, escala, alinhamento, negrito) = descrever(bloco)
+                q.inserirBloco(
+                    etiqueta_id = id,
+                    ordem = ordem.toLong(),
+                    tipo = tipo,
+                    conteudo = conteudo,
+                    escala = escala.toLong(),
+                    alinhamento = alinhamento,
+                    negrito = if (negrito) 1L else 0L,
+                )
             }
         }
+        return id
+    }
+
+    private fun lerBlocos(etiquetaId: Long): List<Bloco> =
+        q.blocosDe(etiquetaId).executeAsList().map { b ->
+            when (b.tipo) {
+                "TITULO" -> Bloco.Titulo(b.conteudo.orEmpty())
+                "QR" -> Bloco.Qr(b.conteudo.orEmpty(), b.escala.toInt())
+                "AVANCO" -> Bloco.Avanco(b.escala.toInt())
+                else -> Bloco.Linha(
+                    texto = b.conteudo.orEmpty(),
+                    escala = b.escala.toInt(),
+                    alinhamento = Alinhamento.valueOf(b.alinhamento),
+                    negrito = b.negrito == 1L,
+                )
+            }
+        }
+
+    private data class Descricao(
+        val tipo: String,
+        val conteudo: String?,
+        val escala: Int,
+        val alinhamento: String,
+        val negrito: Boolean,
+    )
+
+    private fun descrever(bloco: Bloco): Descricao = when (bloco) {
+        is Bloco.Titulo -> Descricao("TITULO", bloco.texto, 1, "CENTRO", true)
+        is Bloco.Linha -> Descricao(
+            "LINHA", bloco.texto, bloco.escala, bloco.alinhamento.name, bloco.negrito,
+        )
+        // Nao ha coluna dedicada para o tamanho do modulo do QR nem para os
+        // milimetros do Avanco -- ambos reaproveitam a coluna `escala`, que so
+        // significa "escala de fonte" para Bloco.Linha/Titulo. lerBlocos() (logo
+        // acima) faz o caminho inverso lendo `b.escala` de volta como
+        // tamanhoModulo/milimetros. Se motivo do reaproveitamento nao ficar
+        // obvio aqui, o proximo a mexer em lerBlocos vai "consertar" o que
+        // parece um bug e quebrar QR/Avanco de verdade.
+        is Bloco.Qr -> Descricao("QR", bloco.conteudo, bloco.tamanhoModulo, "CENTRO", false)
+        is Bloco.Avanco -> Descricao("AVANCO", null, bloco.milimetros, "ESQUERDA", false)
     }
 }
+
+internal expect fun agoraEmMillis(): Long
 ```
 
-### O Disparo do Gatilho
+A última linha do arquivo é a declaração `internal expect fun agoraEmMillis(): Long` — o `expect` que a aula 09 prometeu. Ela existe porque `gravar()`, lá em cima, precisa de um instante em milissegundos para `criada_em` e `atualizada_em`, e "que horas são agora" não é algo que `commonMain` sabe responder sozinho.
 
-As rotas são injetadas em `Application.configureRouting()`, através do registro na `Routing.kt`:
+`configuracoes()` monta a `Flow` sobre `q.lerConfiguracao()`: `asFlow()` transforma a query gerada num `Flow` que reemite a cada mudança na tabela, `mapToOne` extrai a linha única, e o `.map` seguinte converte essa linha (colunas cruas, `perfil_midia` como `String`) no `Configuracoes` que o resto do app usa (`PerfilMidia` como enum). O `.onStart { q.garantirConfiguracao() }` no fim da cadeia é o que impede a primeira leitura de vir vazia — comentado no código: não roda no construtor porque `LabelStoreSqlDelight` é instanciado ainda na thread principal, então cada leitura garante a linha por conta própria, já dentro de `Dispatchers.IO` via `flowOn`.
 
-```kotlin
-progressRoutes(supabase)
-uploadRoutes(supabase)
-adminRoutes(supabase) // <--- O Módulo Seed Admin
+`salvarEtiqueta` e `salvarRascunho` convergem em `gravar()`, que é uma `q.transaction {}` só: insere a linha de `etiqueta`, lê `last_insert_rowid()` com `ultimoId()` para saber o `id` recém-criado, e insere um `bloco` por posição da lista, na ordem. É aqui que a serialização acontece — `descrever(bloco)` é o `when` que decide, para cada subtipo de `Bloco`, quais valores vão em `tipo`, `conteudo`, `escala`, `alinhamento` e `negrito`. Repare no comentário ao lado de `Bloco.Qr`: não existe coluna própria para o tamanho do módulo do QR nem para os milímetros do `Avanco` — os dois reaproveitam `escala`, que só significa "escala de fonte" para `Titulo`/`Linha`. É um reaproveitamento deliberado, documentado ali exatamente para que ninguém "console" o que parece um bug.
+
+`lerBlocos` é a reconstrução, o caminho inverso: um `when (b.tipo)` sobre a coluna de texto decide qual `Bloco` montar, lendo cada coluna reaproveitada de volta com o sentido certo para aquele tipo — `b.escala` vira `tamanhoModulo` para `"QR"`, vira `milimetros` para `"AVANCO"`, e continua sendo escala de fonte no `else` (`Linha`). `etiquetasSalvas()` usa `lerBlocos` dentro do `.map` que converte cada linha de `etiqueta` num `EtiquetaSalva` — uma consulta `blocosDe` por etiqueta da lista, o que o comentário no código já sinaliza como o motivo de todo esse `map` rodar dentro do `flowOn(Dispatchers.IO)`, e não no contexto de quem está coletando.
+
+## Passo 2 — O relógio (expect/actual)
+
+```kotlin title="shared/src/androidMain/kotlin/com/fatec/printec/dados/Relogio.android.kt"
+package com.fatec.printec.dados
+
+internal actual fun agoraEmMillis(): Long = System.currentTimeMillis()
 ```
 
-⚠️ Como a rota executa escrituras em massa, em um ambiente de Produção real (Módulo de Auth) seria estritamente necessário proteger as rotas do prefixo `/admin` checando as Policies da Role ou JWT Claims (Somente role `admin` logado) para impedir ataques DoS.
+```kotlin title="shared/src/jvmMain/kotlin/com/fatec/printec/dados/Relogio.jvm.kt"
+package com.fatec.printec.dados
 
----
-
-## 🧪 Abordagem Resiliente: Lidando com Constraints via `upsertQuestionsPolymorphic`
-
-Quando realizamos um Upsert em lote (um ArrayList transformado em requisição JSON) no Supabase, o motor por trás dele chamado `PostgREST` **exige estritamente que todos os objetos do lote possuam as exatamente as mesmas chaves**. 
-
-Se submetermos um lote onde a Questão A tem a propriedade `"code": "print(1)"` declarada, e a Questão B ignora isso porque o `code` é inferido nulo (omitido ou serializado diferente), a API retornará o erro 400: *"All object keys must match"*.
-
-Para manter essa restrição performática sem poluir nosso código, implementamos o utilitário polimórfico no `SeedService.kt`:
-
-```kotlin
-private suspend fun upsertQuestionsPolymorphic(questions: List<QuestionInsert>) {
-    // Filtramos garantindo lotes homogêneos
-    val qWithCode = questions.filter { it.code != null }
-    val qWithoutCode = questions.filter { it.code == null }
-        
-    // Divide e Conquista: Os objetos simétricos são roteados como blocos independentes.
-    if (qWithCode.isNotEmpty()) client.from("questions").upsert(qWithCode)
-    if (qWithoutCode.isNotEmpty()) client.from("questions").upsert(qWithoutCode)
-}
+internal actual fun agoraEmMillis(): Long = System.currentTimeMillis()
 ```
 
-Levante o Servidor (`./gradlew run`) e invoque nosso novo Endpoint de Massa via POST:
+Cento e quatro bytes cada — os dois arquivos são, byte a byte, a mesma linha. Isso não é coincidência nem preguiça: `System.currentTimeMillis()` existe e resolve exatamente o mesmo, tanto no runtime Android quanto na JVM comum, porque as duas plataformas rodam sobre a mesma máquina virtual Java por baixo. Ainda assim os dois arquivos precisam existir separadamente — um `expect` sem `actual` em cada plataforma-alvo é erro de compilação tanto quanto o inverso, mesmo quando o corpo do `actual` sai idêntico dos dois lados.
 
-```sh
-curl -X POST http://localhost:8080/admin/seed
+Sem estes dois arquivos, `LabelStoreSqlDelight.kt` do Passo 1 compila em `commonMain` (o `expect` é só uma assinatura), mas o módulo inteiro não linka para nenhuma plataforma de verdade — nem Android, nem o `jvmTest` de onde `LabelStoreTest` roda.
+
+## ⚠️ Atenção
+
+O rascunho não é uma tabela à parte, nem uma linha marcada de algum jeito especial que precise de tratamento diferente do resto. É uma etiqueta comum na tabela `etiqueta`, só que com `eh_rascunho = 1` — a mesma coluna que `listarEtiquetas` (aula 09) usa para excluir rascunhos da lista de etiquetas salvas, com `WHERE eh_rascunho = 0`. `salvarRascunho` roda `q.excluirRascunhos()` antes de gravar o novo, dentro da mesma `q.transaction {}` que insere a linha nova — não depois, não numa transação separada. É por isso que existe **um rascunho por vez, por construção**: não há como acabar com dois rascunhos na tabela, porque não existe um caminho de código que insira um sem que o `DELETE` anterior já tenha rodado dentro da mesma transação. Ninguém precisa lembrar de uma regra para respeitar — a regra está na ordem das duas instruções dentro do bloco atômico.
+
+## ▶️ Como Executar
+
+```bash
+./gradlew :shared:jvmTest --tests "com.fatec.printec.dados.LabelStoreTest"
 ```
 
-### ✅ Retorno de Sucesso:
+Esperado: verde — os sete testes de `LabelStoreTest`.
 
-```json
-{
-  "message": "Database seeded successfully",
-  "new_courses_inserted": 4
-}
+E este é o momento de fechar o que a aula 09 deixou em aberto. `DriverDesktopTest`, mostrado naquela aula, chamava `LabelStoreSqlDelight` antes de ela existir, e foi avisado ali mesmo que não compilaria ainda. Agora compila: `LabelStoreSqlDelight` está definida, e o `actual` de `agoraEmMillis()` para a JVM (Passo 2) está no lugar. Rode:
+
+```bash
+./gradlew :shared:jvmTest --tests "com.fatec.printec.dados.DriverDesktopTest"
 ```
 
-Com essa flexível implementação, o time Full-Stack está habilitado para preencher (ou reconstruir) rapidamente os cenários em banco de forma otimizada para suas validações visuais! 🚀
+Esperado: verde. É a prova fim a fim da migração da aula 09 — gravar antes de zerar `user_version`, reabrir, reler — agora rodando com a peça que faltava.
+
+## 💻 Mão na Massa
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+<Tabs>
+  <TabItem value="ex1" label="Exercício 1 — Ida e volta" default>
+
+### Um bloco de cada tipo
+
+Escreva um teste (pode viver junto de `LabelStoreTest`) que salve um `LabelDocument` com um bloco de cada um dos quatro tipos — `Titulo`, `Linha` com `escala` e `alinhamento` diferentes do padrão, `Qr`, `Avanco` — releia pela `Flow` e compare o documento relido com o original.
+
+Se você seguiu o Passo 1 com atenção, o resultado deve ser um `assertEquals` que passa de primeira: cada campo de cada `Bloco` tem uma coluna (ou uma coluna reaproveitada, como `escala` para `Qr`/`Avanco`) que `descrever` grava e `lerBlocos` lê de volta com o sentido certo. Se algum campo não voltar igual no seu teste, você achou uma perda de verdade na serialização — descreva qual campo é, e em qual dos dois métodos (`descrever` ou `lerBlocos`) está o descompasso.
+
+  </TabItem>
+  <TabItem value="ex2" label="Exercício 2 — O Flow reage">
+
+### Duas emissões, sem pedir
+
+Colete `etiquetasSalvas()` numa lista mutável — inicie a coleta antes de salvar nada, por exemplo com um `launch` dentro do `runTest`, acumulando cada lista emitida. Em seguida chame `salvarEtiqueta` para gravar uma etiqueta nova. Verifique que a coleta recebeu **duas** emissões: a primeira é o estado inicial da tabela `etiqueta` no momento em que a coleta começou (o `.onStart` do SQLDelight emite a query corrente assim que alguém se inscreve), a segunda chega sozinha quando `salvarEtiqueta` termina de gravar e a mudança na tabela notifica quem está ouvindo.
+
+Em uma linha: explique por que a tela de etiquetas salvas (aula 13) não precisa de um botão "atualizar".
+
+  </TabItem>
+</Tabs>

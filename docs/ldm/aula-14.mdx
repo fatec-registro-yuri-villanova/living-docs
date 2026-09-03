@@ -1,53 +1,219 @@
 ---
 sidebar_position: 14
-title: "Aula 14: CMS — CRUD de Cursos"
-description: "Tela de gerenciamento de cursos no Desktop — listar, criar, editar e deletar."
+title: "Aula 14: O app Android"
+description: "Manifest, permissão em runtime e a mesma UI da aula 13 imprimindo por Bluetooth."
 ---
+
+# Aula 14: O app Android
+
+:::info 🔀 Código da Aula
+- **Ponto de partida:** o estado ao fim da aula anterior
+- **Gabarito final:** `git checkout main`
+:::
+
+## 📖 Conceito
+
+O Android reaproveita **tudo** de `shared/`: as três telas (`TelaCompor`, `TelaEtiquetas`, `TelaConfiguracoes`), a navegação que as costura (`AppEtiquetas`), o `EtiquetaViewModel`, o `LabelStore` e o `EscPosRenderer` — todos da aula 13, sem uma linha alterada. O que muda é só o host: `Application`, `Activity`, Manifest — e o transporte, que aqui é `AndroidBluetoothTransport` (aula 07) no lugar de `TransporteDesktop` (aula 08). É o pagamento de todo o trabalho de KMP desde a aula 01, e vale mostrar o número: `androidApp` tem **dois** arquivos Kotlin. `PrintecApp.kt` e `MainActivity.kt` — só isso liga a UI já pronta a um Bluetooth de verdade.
+
+Falta uma peça que a aula 07 deixou pendente de propósito: o Manifest e o pedido de permissão em runtime. O modelo de permissão do Android muda por versão. Até a API 30, `BLUETOOTH` e `BLUETOOTH_ADMIN` são permissões concedidas na instalação — o Manifest já basta, o usuário nunca vê um diálogo; por isso as duas entram com `android:maxSdkVersion="30"`, restritas às versões em que ainda fazem sentido. Da API 31 (`Build.VERSION_CODES.S`) em diante, o acesso a dispositivos pareados passou a exigir `BLUETOOTH_CONNECT`, uma permissão de runtime: continua declarada no Manifest (é pré-requisito para pedi-la em tela), mas só o pedido explícito no código — `MainActivity`, Passo 3 — de fato a concede. É exatamente o que a aula 07 prometeu adiar para cá.
+
+## 🗂️ Estrutura de Arquivos
+
+```
+androidApp/src/main/
+├── AndroidManifest.xml
+└── kotlin/com/fatec/printec/
+    ├── PrintecApp.kt
+    └── MainActivity.kt
+```
+
+## Passo 1 — AndroidManifest.xml
+
+```xml title="androidApp/src/main/AndroidManifest.xml"
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+
+    <application
+        android:name=".PrintecApp"
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@android:style/Theme.Material.Light.NoActionBar">
+        <activity
+            android:exported="true"
+            android:name=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+
+</manifest>
+```
+
+Três permissões, duas eras. `BLUETOOTH` e `BLUETOOTH_ADMIN` levam `maxSdkVersion="30"` porque, a partir da API 31, elas deixam de existir como permissões relevantes — declará-las sem esse limite não quebraria nada, mas manteria uma permissão morta pedida de instalação em toda versão nova do sistema. `BLUETOOTH_CONNECT` não leva `maxSdkVersion` nenhum: ela é declarada para todas as versões, mas o sistema só a trata como permissão de runtime (exigindo o diálogo) a partir da API 31 — em versões anteriores, a linha no Manifest existe e não faz nada, porque `BLUETOOTH`/`BLUETOOTH_ADMIN` já cobrem o acesso.
+
+`android:name=".PrintecApp"` no `<application>` é o que faz o sistema instanciar a classe do Passo 2 — sem essa linha, o Android usaria a `Application` padrão, sem `store` nem `transporte`, e `application as PrintecApp` no Passo 3 quebraria em `ClassCastException` na primeira execução.
+
+## Passo 2 — PrintecApp
+
+```kotlin title="androidApp/src/main/kotlin/com/fatec/printec/PrintecApp.kt"
+package com.fatec.printec
+
+import android.app.Application
+import com.fatec.printec.dados.DriverAndroid
+import com.fatec.printec.dados.LabelStoreSqlDelight
+import com.fatec.printec.impressao.AndroidBluetoothTransport
+
+class PrintecApp : Application() {
+    lateinit var store: LabelStoreSqlDelight
+        private set
+    lateinit var transporte: AndroidBluetoothTransport
+        private set
+
+    override fun onCreate() {
+        super.onCreate()
+        store = LabelStoreSqlDelight(DriverAndroid(this).criar())
+        transporte = AndroidBluetoothTransport(this)
+    }
+}
+```
+
+`store` (`LabelStoreSqlDelight` sobre `DriverAndroid`, aulas 09 e 10) e `transporte` (`AndroidBluetoothTransport`, aula 07) nascem aqui, em `Application.onCreate()`, e não em `MainActivity.onCreate()`. A diferença importa: uma `Activity` é recriada a cada rotação de tela — é o ciclo de vida padrão do Android, `onCreate` roda de novo, do zero. Uma `Application`, ao contrário, é instanciada uma única vez por processo e sobrevive a qualquer recriação de `Activity`. Se `store` e `transporte` vivessem em `MainActivity`, girar o aparelho reabriria o banco SQLDelight (`DriverAndroid(this).criar()` de novo) e recriaria o transporte a cada rotação — o `lateinit var` com `private set` em `PrintecApp` é o que garante que `MainActivity`, mesmo recriada, sempre lê a mesma instância de `store` e de `transporte` via `application as PrintecApp` (Passo 3).
+
+## Passo 3 — MainActivity
+
+```kotlin title="androidApp/src/main/kotlin/com/fatec/printec/MainActivity.kt"
+package com.fatec.printec
+
+import android.Manifest
+import android.content.Intent
+import android.os.Build
+import android.os.Bundle
+import android.provider.Settings
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.rememberCoroutineScope
+import com.fatec.printec.etiqueta.etiquetaDeCalibracao
+import com.fatec.printec.impressao.EscPosRenderer
+import com.fatec.printec.ui.AppEtiquetas
+import com.fatec.printec.ui.EtiquetaViewModel
+import kotlinx.coroutines.launch
+
+class MainActivity : ComponentActivity() {
+
+    private val pedirPermissao =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        enableEdgeToEdge()
+        super.onCreate(savedInstanceState)
+
+        // So 12+ precisa pedir (API 28 concede na instalacao). Sem isto, o
+        // primeiro uso nunca chega a ter permissao: listarDestinos() lanca
+        // PermissaoNegada, a lista de impressoras fica vazia, e sem impressora
+        // selecionada o unico erro que a UI mostra e NenhumaImpressoraSelecionada
+        // -- cuja acao abre as configuracoes de Bluetooth do sistema, que nao
+        // concedem permissao de app nenhuma. O botao "Conceder permissao" (via
+        // aoConcederPermissao, ligado ao mesmo launcher abaixo) so aparece
+        // quando algum ponto do fluxo efetivamente reporta PermissaoNegada.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            pedirPermissao.launch(Manifest.permission.BLUETOOTH_CONNECT)
+        }
+
+        val app = application as PrintecApp
+        val vm = EtiquetaViewModel(app.store, app.transporte, EscPosRenderer::renderizar)
+
+        setContent {
+            val escopo = rememberCoroutineScope()
+            AppEtiquetas(
+                vm = vm,
+                store = app.store,
+                destinos = { app.transporte.listarDestinos() },
+                aoAbrirConfigBluetooth = {
+                    startActivity(Intent(Settings.ACTION_BLUETOOTH_SETTINGS))
+                },
+                aoImprimirTeste = {
+                    escopo.launch {
+                        vm.imprimir(etiquetaDeCalibracao(), salvarRascunho = false)
+                    }
+                },
+                // Mesmo launcher do pedido de arranque acima. Fica tambem
+                // ligado aqui, como acao de recuperacao do PermissaoNegada,
+                // para cobrir o caso de o usuario ter negado da primeira vez
+                // (ou revogado depois em Ajustes do sistema) e precisar de um
+                // segundo pedido, desta vez com o contexto de por que.
+                aoConcederPermissao = {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        pedirPermissao.launch(Manifest.permission.BLUETOOTH_CONNECT)
+                    }
+                },
+            )
+        }
+    }
+}
+```
+
+`pedirPermissao` é um único `ActivityResultLauncher`, registrado uma vez como propriedade da classe (`registerForActivityResult` fora de qualquer método), com callback vazio — o resultado do pedido não precisa de tratamento especial aqui, porque quem reage à falta de permissão é `TelaConfiguracoes` (aula 13), via `vm.reportarFalha(e)` quando `destinos()` lança `ErroImpressao.PermissaoNegada`. `onCreate` lê `app.store` e `app.transporte` de `application as PrintecApp` (Passo 2) e monta o mesmo `EtiquetaViewModel(store, transporte, EscPosRenderer::renderizar)` (aula 11) que o `main.kt` do Desktop montava na aula 13 — troca só o `transporte`. `AppEtiquetas` (aula 13) recebe os mesmos seis parâmetros de sempre, mas agora com implementação real nos dois que o Desktop deixava vazios: `aoAbrirConfigBluetooth` abre `Settings.ACTION_BLUETOOTH_SETTINGS`, a tela de Bluetooth do próprio Android; `aoConcederPermissao` chama `pedirPermissao.launch(...)` — o **mesmo launcher** do pedido de arranque, ligado pela segunda vez. `aoImprimirTeste` é idêntico ao do Desktop (aula 13): `vm.imprimir(etiquetaDeCalibracao(), salvarRascunho = false)`, com a mesma `etiquetaDeCalibracao()` da aula 04 dentro de um `escopo.launch` lido no nível de `setContent` — não dentro de uma tela, pelo mesmo motivo de escopo que a aula 13 já explicou em `AppEtiquetas`.
+
+## ⚠️ Atenção
+
+O comentário do próprio `MainActivity.kt` descreve a armadilha inteira: sem o pedido de permissão no arranque, `listarDestinos()` lança `PermissaoNegada`, a lista de impressoras fica vazia, e sem impressora selecionada o único erro que a UI consegue mostrar é `NenhumaImpressoraSelecionada` — cuja ação, em `StatusImpressao` (aula 13), abre as configurações de Bluetooth do sistema. Essa tela deixa parear dispositivos, mas não concede permissão de app nenhuma. O primeiro uso empacaria num laço: sem permissão → sem impressoras → erro errado → botão que leva a um lugar que não resolve o problema.
+
+É por isso que o mesmo `pedirPermissao` está ligado em dois pontos do arquivo: uma vez incondicionalmente em `onCreate`, antes de `setContent`, para o caso comum de quem nunca respondeu ao diálogo; e de novo em `aoConcederPermissao`, como ação de recuperação de `PermissaoNegada`, para quem negou da primeira vez ou revogou a permissão depois em Ajustes do sistema. Sem o segundo ponto, negar uma vez seria definitivo — o app nunca mais perguntaria, e o único caminho de volta seria desinstalar e reinstalar.
+
+## ▶️ Como Executar
+
+```bash
+./gradlew :androidApp:installDebug
+```
+
+Diferente de `./gradlew :androidApp:assembleDebug` (aula 01), que só gera o APK em `androidApp/build/outputs/apk/debug/` sem tocar em nenhum aparelho, `installDebug` compila **e** instala esse APK num emulador ou dispositivo físico já conectado — é o comando certo agora que há UI para abrir e permissão para conceder na tela.
+
+A sequência do primeiro uso:
+
+1. Parear a LT-8359 nas configurações de Bluetooth do Android, fora do app — o mesmo motivo da aula 07: o app só lê a lista de pareados, nunca descobre nem pareia.
+2. Abrir o app. Na API 31+, o diálogo de permissão do Bluetooth aparece imediatamente, antes de qualquer tela — é o pedido incondicional do início de `onCreate`.
+3. Conceder a permissão.
+4. Ir para **Ajustes**: a lista mostra a impressora pareada no passo 1.
+5. Escolher a impressora pelo `RadioButton`.
+6. Voltar para **Compor**, preencher a etiqueta.
+7. Tocar **IMPRIMIR**.
+
+Sai papel, por Bluetooth.
+
+## 💻 Mão na Massa
 
 import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
-# Aula 14: CMS — CRUD de Cursos
-:::info 🔀 Branch da Aula
-**`aula-14`** — `git checkout aula-14`
-:::
-:::caution 🚧 Conteúdo Prospectivo
-Esta branch ainda não possui código implementado.
-:::
-## 📖 Conceito
-O CMS consome a mesma API Ktor para gerenciar cursos. Usa `LazyColumn` para listar e `Dialog` para criar/editar.
-## 💻 Código de Referência
-```kotlin title="composeApp/.../screens/CoursesScreen.kt"
-@Composable
-fun CoursesScreen(apiUrl: String) {
-    var courses by remember { mutableStateOf<List<Course>>(emptyList()) }
-    var showDialog by remember { mutableStateOf(false) }
-
-    LaunchedEffect(Unit) {
-        courses = httpClient.get("$apiUrl/api/courses").body()
-    }
-
-    Column(modifier = Modifier.fillMaxSize().padding(24.dp)) {
-        Row(modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween) {
-            Text("Cursos", style = MaterialTheme.typography.headlineLarge)
-            Button(onClick = { showDialog = true }) { Text("+ Novo") }
-        }
-        LazyColumn { items(courses) { course -> CourseRow(course) } }
-    }
-    if (showDialog) CreateCourseDialog(onDismiss = { showDialog = false })
-}
-```
-## 💻 Mão na Massa
-
 <Tabs>
-  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
-Implemente `CreateCourseDialog` com campos título e descrição.
+  <TabItem value="ex1" label="Exercício 1 — Negue a permissão" default>
+
+### O laço do primeiro uso, ao vivo
+
+Desinstale o app do aparelho, reinstale com `./gradlew :androidApp:installDebug` e, no diálogo de permissão que aparece ao abrir, toque em **Negar**.
+
+Navegue até conseguir imprimir. Anote quantos toques levou e em qual tela apareceu o botão "Conceder permissão" — ele só existe porque `TelaConfiguracoes` (aula 13) chama `vm.reportarFalha(e)` ao capturar `ErroImpressao.PermissaoNegada` de `destinos()`, e `StatusImpressao` traduz esse erro específico nesse botão específico. Sem esse botão, qual seria o único jeito de recuperar o app depois de negar a permissão uma vez?
+
   </TabItem>
-  <TabItem value="ex2" label="Exercício 2 — Aplicação">
-Adicione botões de editar e deletar em cada `CourseRow` com confirmação.
-  </TabItem>
-  <TabItem value="ex3" label="Exercício 3 — Desafio">
-Implemente busca/filtro na lista com `OutlinedTextField` no topo.
+  <TabItem value="ex2" label="Exercício 2 — A impressora dormindo">
+
+### Acordando (ou não) a LT-8359
+
+Deixe a impressora hibernar os 10 minutos sem uso (aula 07) e, sem ligá-la de volta manualmente, toque IMPRIMIR.
+
+O app acorda a impressora sozinho? Cronometre quanto tempo passa entre o toque e o estado final em `StatusImpressao`, e compare com a política de retry de `EtiquetaViewModel.imprimir` (aula 11): `repeat(2)` — no máximo duas tentativas — e só repete quando o erro é `ErroImpressao.FalhaAoConectar`, com `delay(1_000)` entre uma tentativa e a outra. Isso é, na prática, um único retry cerca de um segundo depois do primeiro. Uma impressora hibernando é justamente o cenário em que `AndroidBluetoothTransport.imprimir` (aula 07) tende a lançar `FalhaAoConectar` — mas um segundo é pouco tempo para um rádio Bluetooth dormindo voltar a responder. Se a impressão falhar mesmo com o retry, o que isso diz sobre a diferença entre "o app tenta de novo" e "o app espera o tempo que a impressora precisa para acordar"?
+
   </TabItem>
 </Tabs>

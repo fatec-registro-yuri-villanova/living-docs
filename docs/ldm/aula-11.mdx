@@ -1,453 +1,537 @@
 ---
 sidebar_position: 11
-title: "Aula 11: CMS Desktop — Setup e Auth"
-description: "Compose for Desktop como painel administrativo — estrutura de telas, roteamento e autenticação de admin."
+title: "Aula 11: A máquina de estados da impressão"
+description: "Seis estados, uma guarda de reentrância e um retry — porque a impressora dorme."
 ---
 
-import Tabs from '@theme/Tabs';
-import TabItem from '@theme/TabItem';
+# Aula 11: A máquina de estados da impressão
 
-# Aula 11: CMS Desktop — Setup e Auth
-
-:::info 🔀 Branches da Aula
-- **Ponto de partida:** `git checkout base-aula-11`
-- **Gabarito final:** `git checkout aula-11`
+:::info 🔀 Código da Aula
+- **Ponto de partida:** o estado ao fim da aula anterior
+- **Gabarito final:** `git checkout main`
 :::
 
-## 📖 Contexto
+## 📖 Conceito
 
-O **CMS (Content Management System)** é uma aplicação Desktop construída com **Compose for Desktop** que permite gerenciar cursos, aulas e quizzes do MergeSkills. Roda na JVM e reutiliza os modelos do módulo `shared/`.
+Esta aula fecha o **Módulo 4 — Estado e persistência**, e fecha com a classe onde tudo que a trilha construiu até aqui se encontra. `EtiquetaViewModel` lê configuração através de `LabelStore` (aulas 09–10), passa o `LabelDocument` (aula 04) por uma função de renderizar que devolve bytes (`EscPosRenderer`, aula 05), e entrega esses bytes a um `PrinterTransport` (aula 06, implementado nas aulas 07 e 08). O assunto próprio desta classe não é nenhuma dessas três coisas — é o **estado**: o que a UI mostra enquanto a impressão acontece, e os invariantes que impedem essa UI de ficar presa.
 
-Nesta aula construímos a **infraestrutura base** do CMS:
-- Janela principal maximizada
-- Roteamento simples entre `LoginScreen` e `CmsScreen` via `mutableStateOf`
-- Autenticação com verificação de `role = "admin"`
-- Persistência de sessão com `multiplatform-settings`
-- Injeção de dependência com **Koin**
+O estado é `sealed interface EstadoImpressao`, com seis variantes: `Ocioso`, `Renderizando`, `Conectando`, `Enviando`, `Sucesso`, `Falha(erro)`. O caminho feliz visível por quem está coletando `estado: StateFlow<EstadoImpressao>` é `Ocioso → Renderizando → Conectando → Sucesso`. Repare no que falta nessa lista: `Enviando` está no enum, mas nenhum coletor jamais o vê. O motivo está na assinatura de `PrinterTransport.imprimir` (aula 06) — ela abre a conexão, escreve e fecha numa chamada `suspend` só. Não há um ponto de suspensão *entre* "conectou" e "escreveu" que o código possa aproveitar para trocar o estado no meio; a única coisa que `imprimir()` faz depois de `_estado.value = EstadoImpressao.Conectando` é chamar `transporte.imprimir(...)` e esperar o resultado — sucesso ou exceção. `Enviando` existe no enum porque é um estado conceitualmente real (a impressora está recebendo bytes), mas ele não tem um instante próprio no código para ser atribuído. E faz sentido que seja `Conectando` o estado que fica visível durante toda a chamada: é a fase que de fato falha — a LT-8359 hiberna sozinha depois de alguns minutos parada, e é a tentativa de conectar com ela dormindo que produz o erro que a UI precisa mostrar.
 
----
+A segunda peça é a **guarda de reentrância**, no início de `imprimir()`. A UI desabilita o botão IMPRIMIR enquanto uma impressão está em andamento — mas esse botão é só um dos três pontos de entrada para `imprimir()`. Os outros dois são reimprimir uma etiqueta da lista de salvas e disparar a etiqueta de teste na tela de configurações (ambas na aula 13), e nem todos esses pontos têm um botão para desabilitar. Sem a guarda, duas chamadas concorrentes a `imprimir()` — por exemplo o usuário tocando "reimprimir" duas vezes rápido — mandariam o transporte escrever duas vezes, e isso não é um bug abstrato: é papel de verdade saindo da impressora em dobro.
+
+A terceira peça é o parâmetro `salvarRascunho: Boolean = false`. Ele só deve ser `true` quando o `documento` passado para `imprimir()` é exatamente o que o usuário está digitando na tela Compor naquele momento. Reimprimir uma etiqueta salva da lista, ou disparar a etiqueta de teste das configurações, chama `imprimir()` com um documento que **não é** o rascunho do usuário — e se essas chamadas gravassem por cima dele, um toque em "reimprimir" apagaria o que a pessoa estava compondo em outra aba.
 
 ## 🗂️ Estrutura de Arquivos
 
-Todos os arquivos novos ficam em `composeApp/src/desktopMain/`:
-
 ```
-composeApp/src/desktopMain/kotlin/com/fatec/merge_skills_kmp/
-├── main.kt                          ← Entry point: janela, tema e roteamento
-├── viewmodel/
-│   └── AuthViewModel.kt             ← Gerencia estado de autenticação
-├── features/
-│   ├── auth/
-│   │   └── LoginScreen.kt           ← Tela de login
-│   └── admin/
-│       └── CmsScreen.kt             ← Painel admin (placeholder)
-├── data/
-│   └── KtorUserRepository.kt        ← Chama a API Ktor via HTTP
-└── di/
-    └── DesktopModule.kt             ← Módulo Koin (wiring de dependências)
+shared/src/
+├── commonMain/kotlin/com/fatec/printec/ui/
+│   └── EtiquetaViewModel.kt
+└── commonTest/kotlin/com/fatec/printec/ui/
+    └── EtiquetaViewModelTest.kt
 ```
 
----
+## 🔴 O Teste
 
-## Passo 1 — Dependências (`base-aula-11`)
+```kotlin title="shared/src/commonTest/kotlin/com/fatec/printec/ui/EtiquetaViewModelTest.kt"
+package com.fatec.printec.ui
 
-A branch `base-aula-11` já tem as dependências configuradas. Veja o que foi adicionado em `composeApp/build.gradle.kts`:
+import com.fatec.printec.dados.Configuracoes
+import com.fatec.printec.dados.EtiquetaSalva
+import com.fatec.printec.dados.LabelStore
+import com.fatec.printec.etiqueta.Bloco
+import com.fatec.printec.etiqueta.LabelDocument
+import com.fatec.printec.impressao.ErroImpressao
+import com.fatec.printec.impressao.PrinterTarget
+import com.fatec.printec.impressao.PrinterTransport
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.test.runTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertIs
 
-```kotlin title="composeApp/build.gradle.kts"
-val desktopMain by getting {
-    dependsOn(commonMain)
-    dependencies {
-        implementation(compose.desktop.currentOs)
-        implementation(libs.kotlinx.coroutines.swing)
-        // highlight-start
-        implementation(libs.koin.core)               // Injeção de dependência
-        implementation(libs.multiplatform.settings)  // Persistência local JVM
-        implementation(libs.ktor.client.cio)         // Engine HTTP para Desktop
-        // highlight-end
+private class StoreFalsa(
+    private val config: Configuracoes = Configuracoes("00:11:22", "KPrinter", avancoFinalMm = 3),
+) : LabelStore {
+    var rascunhoSalvo: LabelDocument? = null
+    override fun configuracoes(): Flow<Configuracoes> = MutableStateFlow(config)
+    override fun etiquetasSalvas(): Flow<List<EtiquetaSalva>> = flowOf(emptyList())
+    override suspend fun salvarConfiguracoes(configuracoes: Configuracoes) = Unit
+    override suspend fun salvarEtiqueta(nome: String, documento: LabelDocument): Long = 1L
+    override suspend fun excluirEtiqueta(id: Long) = Unit
+    override suspend fun salvarRascunho(documento: LabelDocument) { rascunhoSalvo = documento }
+    override suspend fun carregarRascunho(): LabelDocument? = null
+}
+
+private class TransporteFalso(
+    private val falhasAntesDeAceitar: Int = 0,
+    private val erro: ErroImpressao = ErroImpressao.FalhaAoConectar("dormindo"),
+) : PrinterTransport {
+    var tentativas = 0
+    var bytesRecebidos: ByteArray? = null
+    override suspend fun listarDestinos() = listOf(PrinterTarget("00:11:22", "KPrinter"))
+    override suspend fun imprimir(destino: PrinterTarget, bytes: ByteArray) {
+        tentativas++
+        if (tentativas <= falhasAntesDeAceitar) throw erro
+        bytesRecebidos = bytes
     }
 }
-```
 
-E em `gradle/libs.versions.toml`:
+class EtiquetaViewModelTest {
 
-```toml title="gradle/libs.versions.toml"
-[versions]
-multiplatform-settings = "1.1.1"
+    private val documento = LabelDocument(listOf(Bloco.Titulo("Bancada A")))
+    private fun renderizadorFalso(doc: LabelDocument, avanco: Int) = byteArrayOf(1, 2, 3)
 
-[libraries]
-multiplatform-settings = { module = "com.russhwolf:multiplatform-settings", version.ref = "multiplatform-settings" }
-```
-
-:::tip Por que `multiplatform-settings` e não DataStore?
-O DataStore (usado no Android) depende de `Context` da plataforma. No Desktop JVM, usamos `multiplatform-settings` com `PreferencesSettings` — que internamente usa o `java.util.prefs.Preferences` da JVM.
-:::
-
----
-
-## Passo 2 — `KtorUserRepository` (camada de dados)
-
-Implementa a interface `UserRepository` do `shared/` fazendo chamadas HTTP para a API Ktor.
-
-```kotlin title="desktopMain/.../data/KtorUserRepository.kt"
-class KtorUserRepository(
-    private val client: HttpClient,
-    private val baseUrl: String
-) : UserRepository {
-
-    override suspend fun login(request: LoginRequest): Result<AuthResponse> = runCatching {
-        client.post("$baseUrl/auth/login") {
-            contentType(ContentType.Application.Json)
-            setBody(request)
-        }.body()
+    @Test
+    fun `impressao bem sucedida termina em Sucesso`() = runTest {
+        val transporte = TransporteFalso()
+        val vm = EtiquetaViewModel(StoreFalsa(), transporte, ::renderizadorFalso)
+        vm.imprimir(documento, salvarRascunho = true)
+        assertIs<EstadoImpressao.Sucesso>(vm.estado.value)
+        assertEquals(listOf<Byte>(1, 2, 3), transporte.bytesRecebidos?.toList())
     }
 
-    override suspend fun register(request: RegisterRequest): Result<AuthResponse> = runCatching {
-        client.post("$baseUrl/auth/register") {
-            contentType(ContentType.Application.Json)
-            setBody(request)
-        }.body()
+    @Test
+    fun `uma falha de conexao e superada pelo retry automatico`() = runTest {
+        val transporte = TransporteFalso(falhasAntesDeAceitar = 1)
+        val vm = EtiquetaViewModel(StoreFalsa(), transporte, ::renderizadorFalso)
+        vm.imprimir(documento, salvarRascunho = true)
+        assertEquals(2, transporte.tentativas)
+        assertIs<EstadoImpressao.Sucesso>(vm.estado.value)
     }
 
-    override suspend fun getUserProfile(userId: Int): Result<User> = runCatching {
-        client.get("$baseUrl/users/$userId").body()
+    @Test
+    fun `duas falhas seguidas viram estado de Falha e param de tentar`() = runTest {
+        val transporte = TransporteFalso(falhasAntesDeAceitar = 5)
+        val vm = EtiquetaViewModel(StoreFalsa(), transporte, ::renderizadorFalso)
+        vm.imprimir(documento, salvarRascunho = true)
+        assertEquals(2, transporte.tentativas)
+        val estado = vm.estado.value
+        assertIs<EstadoImpressao.Falha>(estado)
+        assertIs<ErroImpressao.FalhaAoConectar>(estado.erro)
     }
 
-    override suspend fun updateStreak(userId: Int): Result<User> = runCatching {
-        client.post("$baseUrl/users/$userId/streak").body()
-    }
-}
-```
-
-:::note `runCatching`
-Cada função envolve a chamada em `runCatching {}` que retorna `Result<T>` — se a requisição lançar uma exceção, ela é capturada em `Result.failure`. O `AuthViewModel` trata esse resultado com `.onSuccess` e `.onFailure`.
-:::
-
----
-
-## Passo 3 — `DesktopModule` (Koin DI)
-
-Define como cada dependência é criada e injetada. O Koin vai montar o grafo automaticamente.
-
-```kotlin title="desktopMain/.../di/DesktopModule.kt"
-val desktopAppModule = module {
-
-    // 1. HttpClient com engine CIO (JVM) e suporte a JSON
-    single<HttpClient> {
-        HttpClient(CIO) {
-            install(ContentNegotiation) {
-                json(Json { ignoreUnknownKeys = true })
-            }
-        }
-    }
-
-    // 2. Repositório que chama a API local
-    single<UserRepository> {
-        KtorUserRepository(
-            client = get(),
-            baseUrl = "http://localhost:8080"
+    @Test
+    fun `sem impressora configurada nao chega a tentar conectar`() = runTest {
+        val transporte = TransporteFalso()
+        val vm = EtiquetaViewModel(
+            StoreFalsa(Configuracoes(impressoraId = null)), transporte, ::renderizadorFalso,
         )
+        vm.imprimir(documento, salvarRascunho = true)
+        assertEquals(0, transporte.tentativas)
+        val estado = vm.estado.value
+        assertIs<EstadoImpressao.Falha>(estado)
+        assertIs<ErroImpressao.NenhumaImpressoraSelecionada>(estado.erro)
     }
 
-    // 3. Persistência local via java.util.prefs (nó "mergeskills-cms")
-    single<Settings> {
-        PreferencesSettings(Preferences.userRoot().node("mergeskills-cms"))
-    }
-
-    // 4. ViewModel recebe o repositório e as settings via get()
-    single {
-        AuthViewModel(
-            repository = get(),
-            settings = get()
+    @Test
+    fun `erro nao repetivel falha na primeira tentativa sem gastar a segunda`() = runTest {
+        val transporte = TransporteFalso(
+            falhasAntesDeAceitar = 5,
+            erro = ErroImpressao.PermissaoNegada,
         )
+        val vm = EtiquetaViewModel(StoreFalsa(), transporte, ::renderizadorFalso)
+        vm.imprimir(documento, salvarRascunho = true)
+        assertEquals(1, transporte.tentativas)   // NAO gastou a segunda
+        val estado = vm.estado.value
+        assertIs<EstadoImpressao.Falha>(estado)
+        assertIs<ErroImpressao.PermissaoNegada>(estado.erro)
     }
-}
-```
 
-:::info Como o Koin resolve dependências
-`get()` dentro de um bloco `single {}` pede ao Koin a instância já registrada daquele tipo. A ordem de declaração não importa — o Koin resolve o grafo de forma lazy.
-:::
+    @Test
+    fun `falha ao renderizar vira Falha em vez de escapar`() = runTest {
+        val vm = EtiquetaViewModel(StoreFalsa(), TransporteFalso()) { _, _ ->
+            throw IllegalStateException("documento invalido")
+        }
+        vm.imprimir(documento, salvarRascunho = true)
+        val estado = vm.estado.value
+        assertIs<EstadoImpressao.Falha>(estado)
+        assertIs<ErroImpressao.FalhaAoPreparar>(estado.erro)
+    }
 
----
+    @Test
+    fun `imprimir salva o rascunho`() = runTest {
+        val store = StoreFalsa()
+        val vm = EtiquetaViewModel(store, TransporteFalso(), ::renderizadorFalso)
+        vm.imprimir(documento, salvarRascunho = true)
+        assertEquals(documento, store.rascunhoSalvo)
+    }
 
-## Passo 4 — `AuthViewModel`
+    @Test
+    fun `as copias resultam em um envio por copia numa conexao logica`() = runTest {
+        val transporte = TransporteFalso()
+        val vm = EtiquetaViewModel(StoreFalsa(), transporte, ::renderizadorFalso)
+        vm.imprimir(documento.copy(copias = 3), salvarRascunho = true)
+        assertEquals(1, transporte.tentativas)
+        assertEquals(9, transporte.bytesRecebidos?.size)  // 3 bytes x 3 copias
+    }
 
-Gerencia o ciclo completo de autenticação e a persistência de sessão.
+    @Test
+    fun `imprimir com salvarRascunho false nao altera o rascunho salvo`() = runTest {
+        // Reimprimir pela lista de salvas ou disparar a etiqueta de teste
+        // imprime um documento que NAO e o que o usuario esta compondo. Se
+        // isso gravasse por cima do rascunho, um toque destruiria o que a
+        // pessoa digitou na tela Compor.
+        val store = StoreFalsa()
+        store.salvarRascunho(documento)   // simula um rascunho ja existente
+        val outraEtiqueta = LabelDocument(listOf(Bloco.Titulo("Bancada B")))
 
-### UiState
+        val vm = EtiquetaViewModel(store, TransporteFalso(), ::renderizadorFalso)
+        vm.imprimir(outraEtiqueta, salvarRascunho = false)
 
-```kotlin title="desktopMain/.../viewmodel/AuthViewModel.kt"
-sealed class AuthUiState {
-    object Idle : AuthUiState()       // estado inicial
-    object Loading : AuthUiState()    // chamada em andamento
-    data class Success(val user: User) : AuthUiState()  // login OK
-    data class Error(val message: String) : AuthUiState() // erro de rede
-    object NotAdmin : AuthUiState()   // login OK, mas não é admin
-}
-```
+        assertIs<EstadoImpressao.Sucesso>(vm.estado.value)
+        assertEquals(documento, store.rascunhoSalvo)   // continua o rascunho original
+    }
 
-### `login()`
-
-```kotlin
-fun login(email: String, password: String) {
-    scope.launch {
-        _authState.value = AuthUiState.Loading
-        repository.login(LoginRequest(email, password))
-            .onSuccess { response ->
-                val user = response.user
-                if (user != null && user.role == "admin") {
-                    saveSession(user)                          // persiste na JVM
-                    _authState.value = AuthUiState.Success(user)
-                } else {
-                    _authState.value = AuthUiState.NotAdmin   // não navega!
+    @Test
+    fun `falha ao ler configuracoes vira Falha em vez de travar em Renderizando`() = runTest {
+        // A primeira leitura de configuracoes() falha (ex.: linha ausente no
+        // banco); a segunda tem sucesso -- simula o erro sendo transiente e
+        // prova que o ViewModel nao ficou preso em Renderizando por causa dele.
+        var falhar = true
+        val store = object : LabelStore {
+            private val config = Configuracoes("00:11:22", "KPrinter", avancoFinalMm = 3)
+            override fun configuracoes(): Flow<Configuracoes> = flow {
+                if (falhar) {
+                    falhar = false
+                    throw IllegalStateException("linha de configuracao ausente")
                 }
+                emit(config)
             }
-            .onFailure { error ->
-                _authState.value = AuthUiState.Error(error.message ?: "Erro desconhecido")
+            override fun etiquetasSalvas(): Flow<List<EtiquetaSalva>> = flowOf(emptyList())
+            override suspend fun salvarConfiguracoes(configuracoes: Configuracoes) = Unit
+            override suspend fun salvarEtiqueta(nome: String, documento: LabelDocument): Long = 1L
+            override suspend fun excluirEtiqueta(id: Long) = Unit
+            override suspend fun salvarRascunho(documento: LabelDocument) = Unit
+            override suspend fun carregarRascunho(): LabelDocument? = null
+        }
+        val transporte = TransporteFalso()
+        val vm = EtiquetaViewModel(store, transporte, ::renderizadorFalso)
+
+        vm.imprimir(documento, salvarRascunho = true)
+        val estado = vm.estado.value
+        assertIs<EstadoImpressao.Falha>(estado)
+        assertIs<ErroImpressao.FalhaAoPreparar>(estado.erro)
+
+        // A guarda de reentrancia so barra estados "em andamento" -- Falha e
+        // terminal, entao a MESMA instancia tem que aceitar uma chamada
+        // seguinte e efetivamente executa-la (nao so devolver sem fazer nada).
+        vm.imprimir(documento, salvarRascunho = true)
+        assertIs<EstadoImpressao.Sucesso>(vm.estado.value)
+        assertEquals(1, transporte.tentativas)
+    }
+
+    @Test
+    fun `reportarFalha registra o erro para exibicao`() = runTest {
+        val vm = EtiquetaViewModel(StoreFalsa(), TransporteFalso(), ::renderizadorFalso)
+        vm.reportarFalha(ErroImpressao.PermissaoNegada)
+        val estado = vm.estado.value
+        assertIs<EstadoImpressao.Falha>(estado)
+        assertIs<ErroImpressao.PermissaoNegada>(estado.erro)
+    }
+
+    @Test
+    fun `reportarFalha nao sobrescreve uma impressao em andamento`() = runTest {
+        // Cenario real: TelaConfiguracoes recarrega destinos() (ex.: reabrindo
+        // a aba) enquanto uma impressao disparada de outra aba ainda esta
+        // "Enviando" no escopo do app. destinos() falhando nao pode apagar o
+        // status visivel dessa impressao em andamento.
+        lateinit var vm: EtiquetaViewModel
+        val transporte = object : PrinterTransport {
+            var chamadas = 0
+            override suspend fun listarDestinos(): List<PrinterTarget> = emptyList()
+            override suspend fun imprimir(destino: PrinterTarget, bytes: ByteArray) {
+                chamadas++
+                vm.reportarFalha(ErroImpressao.PermissaoNegada)
             }
+        }
+        vm = EtiquetaViewModel(StoreFalsa(), transporte, ::renderizadorFalso)
+        vm.imprimir(documento, salvarRascunho = true)
+        assertIs<EstadoImpressao.Sucesso>(vm.estado.value)
+    }
+
+    @Test
+    fun `chamada reentrante feita durante o envio e ignorada pela guarda`() = runTest {
+        // Simula uma segunda origem (outro botao, outro toque) chamando
+        // vm.imprimir() enquanto a primeira impressao ainda esta "Enviando".
+        // A chamada reentrante acontece de dentro do proprio transporte.imprimir(),
+        // ou seja, no mesmo call stack da primeira chamada, nao em sequencia apos
+        // ela terminar — e exatamente o cenario que a guarda de reentrancia em
+        // EtiquetaViewModel.imprimir() precisa barrar. Sem a guarda, o transporte
+        // seria acionado DUAS vezes aqui; com ela, so uma.
+        lateinit var vm: EtiquetaViewModel
+        val transporte = object : PrinterTransport {
+            var chamadas = 0
+            override suspend fun listarDestinos(): List<PrinterTarget> = emptyList()
+            override suspend fun imprimir(destino: PrinterTarget, bytes: ByteArray) {
+                chamadas++
+                if (chamadas == 1) vm.imprimir(documento)
+            }
+        }
+        vm = EtiquetaViewModel(StoreFalsa(), transporte, ::renderizadorFalso)
+        vm.imprimir(documento, salvarRascunho = true)
+        assertEquals(1, transporte.chamadas)
+        assertIs<EstadoImpressao.Sucesso>(vm.estado.value)
     }
 }
 ```
 
-### `isLoggedIn()` e persistência de sessão
+Treze testes — o maior arquivo de teste da trilha inteira. Nenhum deles fala com hardware nem com banco de verdade: `StoreFalsa` implementa `LabelStore` guardando o que recebe em memória, e `TransporteFalso` implementa `PrinterTransport` contando tentativas e lançando o erro que o teste pedir. É esse par de dublês que permite exercitar a máquina de estados inteira — retry, guarda de reentrância, o rascunho não sendo sobrescrito — sem um socket Bluetooth ou uma porta serial reais. Repare em particular nos dois últimos testes: `reportarFalha nao sobrescreve uma impressao em andamento` e `chamada reentrante feita durante o envio e ignorada pela guarda` constroem o `TransporteFalso` como um `object` que chama de volta no próprio `vm` — `reportarFalha` ou `imprimir` — de **dentro** de `imprimir(destino, bytes)`. Isso simula a reentrância no cenário real: uma segunda chamada chegando enquanto a primeira ainda está no meio do call stack, não depois dela terminar.
 
-```kotlin
-// Verificação síncrona chamada com runBlocking no main()
-suspend fun isLoggedIn(): Boolean {
-    val userId = settings.getIntOrNull("user_id")
-    return userId != null && userId > 0
-}
+Rode agora:
 
-// Salva dados do usuário nas preferences da JVM
-private fun saveSession(user: User) {
-    settings.putInt("user_id", user.id)
-    settings.putString("user_name", user.name ?: user.username)
-    settings.putString("user_role", user.role)
-}
-
-// Remove tudo ao fazer logout
-private fun clearSession() {
-    settings.remove("user_id")
-    settings.remove("user_name")
-    settings.remove("user_role")
-}
+```bash
+./gradlew :shared:jvmTest --tests "com.fatec.printec.ui.EtiquetaViewModelTest"
 ```
 
-:::caution Estado `NotAdmin`
-Um usuário que existe no banco mas não tem `role = "admin"` recebe `NotAdmin` — **nunca** `Success`. A tela exibe uma mensagem específica sem navegar para o CMS.
-:::
+Esperado: falha de compilação. `EtiquetaViewModel` ainda não existe.
 
----
+## Passo 1 — EtiquetaViewModel
 
-## Passo 5 — `LoginScreen`
+```kotlin title="shared/src/commonMain/kotlin/com/fatec/printec/ui/EtiquetaViewModel.kt"
+package com.fatec.printec.ui
 
-Composable centralizado. Observa o `authState` e navega automaticamente ao receber `Success`.
+import com.fatec.printec.dados.LabelStore
+import com.fatec.printec.etiqueta.LabelDocument
+import com.fatec.printec.impressao.ErroImpressao
+import com.fatec.printec.impressao.PrinterTarget
+import com.fatec.printec.impressao.PrinterTransport
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 
-```kotlin title="desktopMain/.../features/auth/LoginScreen.kt"
-@Composable
-fun LoginScreen(
-    viewModel: AuthViewModel,
-    onLoginSuccess: () -> Unit
+sealed interface EstadoImpressao {
+    data object Ocioso : EstadoImpressao
+    data object Renderizando : EstadoImpressao
+    data object Conectando : EstadoImpressao
+    data object Enviando : EstadoImpressao
+    data object Sucesso : EstadoImpressao
+    data class Falha(val erro: ErroImpressao) : EstadoImpressao
+}
+
+class EtiquetaViewModel(
+    private val store: LabelStore,
+    private val transporte: PrinterTransport,
+    private val renderizar: (LabelDocument, Int) -> ByteArray,
 ) {
-    val authState by viewModel.authState.collectAsState()
+    private val _estado = MutableStateFlow<EstadoImpressao>(EstadoImpressao.Ocioso)
+    val estado: StateFlow<EstadoImpressao> = _estado.asStateFlow()
 
-    // Navegação reativa: só dispara quando o estado muda para Success
-    LaunchedEffect(authState) {
-        if (authState is AuthViewModel.AuthUiState.Success) {
-            onLoginSuccess()
+    /**
+     * Chamado ao trocar de tela. Sem isto, o estado e global ao ViewModel e a
+     * mensagem de uma reimpressao feita na aba "Salvas" reaparece na tela de
+     * composicao, atribuida a um documento que nao tem nada a ver com ela.
+     * So limpa estados terminais — nunca interrompe uma impressao em andamento.
+     */
+    fun limparEstadoSeConcluido() {
+        val atual = _estado.value
+        if (atual is EstadoImpressao.Sucesso || atual is EstadoImpressao.Falha) {
+            _estado.value = EstadoImpressao.Ocioso
         }
     }
 
-    var email by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-
-    Box(
-        modifier = Modifier.fillMaxSize().background(Color(0xFF0F0F0F)),
-        contentAlignment = Alignment.Center
-    ) {
-        Card(modifier = Modifier.width(400.dp)) {
-            Column(
-                modifier = Modifier.padding(32.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                Text("MergeSkills CMS", style = MaterialTheme.typography.headlineMedium)
-
-                OutlinedTextField(
-                    value = email, onValueChange = { email = it },
-                    label = { Text("E-mail") }, modifier = Modifier.fillMaxWidth(), singleLine = true
-                )
-                OutlinedTextField(
-                    value = password, onValueChange = { password = it },
-                    label = { Text("Senha") },
-                    visualTransformation = PasswordVisualTransformation(),
-                    modifier = Modifier.fillMaxWidth(), singleLine = true
-                )
-
-                // Mensagem de erro de rede
-                if (authState is AuthViewModel.AuthUiState.Error) {
-                    Text(
-                        text = (authState as AuthViewModel.AuthUiState.Error).message,
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
-
-                // Mensagem específica para usuário sem role admin
-                if (authState is AuthViewModel.AuthUiState.NotAdmin) {
-                    Text(
-                        text = "Conta sem permissão de admin",
-                        color = MaterialTheme.colorScheme.tertiary,
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
-
-                Button(
-                    onClick = { viewModel.login(email, password) },
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = authState !is AuthViewModel.AuthUiState.Loading
-                ) { Text("Entrar") }
-
-                if (authState is AuthViewModel.AuthUiState.Loading) {
-                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                }
-            }
-        }
+    /**
+     * Registra uma falha que aconteceu FORA de [imprimir] -- hoje, so
+     * TelaConfiguracoes ao listar destinos(). Sem isto, uma permissao de
+     * Bluetooth negada faz a lista de impressoras aparecer vazia sem
+     * explicacao nenhuma: NENHUM erro tipado chega a StatusImpressao, entao
+     * o botao "Conceder permissao" nunca aparece e o primeiro uso empaca.
+     *
+     * Nao sobrescreve um estado "em andamento" -- essa checagem existe para
+     * o caso de a tela Ajustes recarregar destinos() (ex.: reabrir a aba)
+     * enquanto uma impressao disparada de outra aba ainda esta rodando no
+     * escopo do app; a falha em listar impressoras nao pode apagar o status
+     * visivel dessa impressao.
+     */
+    fun reportarFalha(erro: ErroImpressao) {
+        val emAndamento = _estado.value
+        if (emAndamento is EstadoImpressao.Renderizando ||
+            emAndamento is EstadoImpressao.Conectando ||
+            emAndamento is EstadoImpressao.Enviando
+        ) return
+        _estado.value = EstadoImpressao.Falha(erro)
     }
-}
-```
 
----
+    /**
+     * @param documento o que imprimir — vem do chamador, nunca do proprio
+     *   ViewModel. Reimprimir uma etiqueta salva ou disparar a etiqueta de
+     *   teste nao pode sobrescrever o que o usuario esta compondo na outra
+     *   tela (ver [salvarRascunho]).
+     * @param salvarRascunho so `true` quando [documento] E o que o usuario
+     *   estava digitando na tela Compor. Reimpressao pela lista de salvas e a
+     *   etiqueta de teste imprimem um documento que NAO e o rascunho do
+     *   usuario e por isso nao podem gravar por cima dele.
+     */
+    suspend fun imprimir(documento: LabelDocument, salvarRascunho: Boolean = false) {
+        // Guarda de reentrancia. A UI desabilita o botao IMPRIMIR, mas ha mais
+        // de um ponto de entrada — compor, reimprimir pela lista de salvas, e a
+        // etiqueta de teste nas configuracoes — e nem todos tem botao para
+        // desabilitar. Duas impressoes concorrentes gastam papel de verdade.
+        //
+        // O estado e marcado Renderizando ANTES de qualquer suspensao —
+        // inclusive a leitura de configuracoes() logo abaixo. Se a marcacao
+        // esperasse a config chegar, duas chamadas concorrentes fariam a
+        // checagem acima antes que qualquer uma delas marcasse o estado, e as
+        // duas passariam pela guarda.
+        val emAndamento = _estado.value
+        if (emAndamento is EstadoImpressao.Renderizando ||
+            emAndamento is EstadoImpressao.Conectando ||
+            emAndamento is EstadoImpressao.Enviando
+        ) return
+        _estado.value = EstadoImpressao.Renderizando
 
-## Passo 6 — `CmsScreen` (placeholder)
-
-Por enquanto exibe apenas um título e o botão "Sair". O painel completo (cursos, aulas, questões) será construído na próxima aula.
-
-```kotlin title="desktopMain/.../features/admin/CmsScreen.kt"
-@Composable
-fun CmsScreen(
-    authViewModel: AuthViewModel,
-    onLogout: () -> Unit
-) {
-    Column(
-        modifier = Modifier.fillMaxSize(),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically)
-    ) {
-        Text("MergeSkills CMS", style = MaterialTheme.typography.headlineLarge)
-        Button(onClick = {
-            authViewModel.logout()
-            onLogout()
-        }) {
-            Text("Sair")
-        }
-    }
-}
-```
-
----
-
-## Passo 7 — `main.kt` (entry point e roteamento)
-
-Inicializa o Koin, verifica a sessão e decide a tela inicial. A navegação é feita com um simples `mutableStateOf<Screen>` — sem `NavController`.
-
-```kotlin title="desktopMain/.../main.kt"
-sealed class Screen {
-    object Login : Screen()
-    object Cms : Screen()
-}
-
-fun main() {
-    // Koin inicializado ANTES do application {}
-    val koin = startKoin {
-        modules(desktopAppModule)
-    }.koin
-
-    val authViewModel = koin.get<AuthViewModel>()
-
-    application {
-        // runBlocking só é chamado UMA VEZ dentro do remember
-        var currentScreen by remember {
-            val initial: Screen =
-                if (runBlocking { authViewModel.isLoggedIn() }) Screen.Cms else Screen.Login
-            mutableStateOf(initial)
-        }
-
-        Window(
-            onCloseRequest = ::exitApplication,
-            title = "MergeSkills CMS",
-            state = rememberWindowState(
-                placement = WindowPlacement.Maximized,
-                width = 1280.dp,
-                height = 800.dp
+        // Le configuracoes() so DEPOIS de reivindicar Renderizando (ver acima),
+        // mas ainda assim precisa de try/catch: e I/O real (garantirConfiguracao
+        // + mapToOne, que lanca se a linha nao existir) e, sem isto, um erro
+        // aqui deixaria o estado preso em Renderizando para sempre -- a guarda
+        // de reentrancia rejeitaria toda chamada seguinte e
+        // limparEstadoSeConcluido() so limpa estados terminais.
+        val config = try {
+            store.configuracoes().first()
+        } catch (e: CancellationException) {
+            throw e   // cancelamento nao e erro de impressao
+        } catch (e: ErroImpressao) {
+            _estado.value = EstadoImpressao.Falha(e)
+            return
+        } catch (e: Exception) {
+            _estado.value = EstadoImpressao.Falha(
+                ErroImpressao.FalhaAoPreparar(e.message ?: e::class.simpleName.orEmpty()),
             )
-        ) {
-            MaterialTheme(colorScheme = darkColorScheme()) {
-                when (currentScreen) {
-                    Screen.Login -> LoginScreen(
-                        viewModel = authViewModel,
-                        onLoginSuccess = { currentScreen = Screen.Cms }
-                    )
-                    Screen.Cms -> CmsScreen(
-                        authViewModel = authViewModel,
-                        onLogout = { currentScreen = Screen.Login }
-                    )
+            return
+        }
+
+        val id = config.impressoraId
+        if (id.isNullOrBlank()) {
+            _estado.value = EstadoImpressao.Falha(ErroImpressao.NenhumaImpressoraSelecionada)
+            return
+        }
+
+        val umaCopia = try {
+            // O rascunho e salvo na impressao, nao a cada tecla — e somente
+            // quando quem chamou pediu (ver documentacao do parametro acima).
+            if (salvarRascunho) store.salvarRascunho(documento)
+            renderizar(documento, config.avancoFinalMm)
+        } catch (e: CancellationException) {
+            throw e   // cancelamento nao e erro de impressao
+        } catch (e: ErroImpressao) {
+            _estado.value = EstadoImpressao.Falha(e)
+            return
+        } catch (e: Exception) {
+            // Nada pode escapar daqui sem virar estado. Uma excecao crua
+            // deixaria a UI presa em "Renderizando" para sempre, sem caminho
+            // para Falha e sem o usuario poder tentar de novo.
+            _estado.value = EstadoImpressao.Falha(
+                ErroImpressao.FalhaAoPreparar(e.message ?: e::class.simpleName.orEmpty()),
+            )
+            return
+        }
+        val payload = ByteArray(umaCopia.size * documento.copias.coerceAtLeast(1))
+        repeat(documento.copias.coerceAtLeast(1)) { i ->
+            umaCopia.copyInto(payload, destinationOffset = i * umaCopia.size)
+        }
+
+        val destino = PrinterTarget(id, config.impressoraNome ?: id)
+
+        // Retry unico: a LT-8359 costuma acordar na primeira tentativa e
+        // aceitar a segunda. Mais que isso so faria o usuario esperar.
+        repeat(2) { tentativa ->
+            // So Conectando: o transporte conecta e escreve numa chamada so,
+            // entao nao ha suspensao entre marcar Conectando e marcar Enviando
+            // -- nenhum coletor jamais veria o estado intermediario. Conectar
+            // e a fase que de fato falha (impressora hibernada), entao e ela
+            // que fica visivel durante toda a chamada.
+            _estado.value = EstadoImpressao.Conectando
+            try {
+                transporte.imprimir(destino, payload)
+                _estado.value = EstadoImpressao.Sucesso
+                return
+            } catch (e: ErroImpressao) {
+                val ultima = tentativa == 1
+                val naoAdiantaRepetir = e !is ErroImpressao.FalhaAoConectar
+                if (ultima || naoAdiantaRepetir) {
+                    _estado.value = EstadoImpressao.Falha(e)
+                    return
                 }
+                // A impressora hibernada tem mais chance de ter acordado se
+                // damos um instante antes de repetir. Tentar de novo no mesmo
+                // instante e o pior caso justamente para esse cenario -- e e
+                // essa politica que o teste de hardware vai avaliar.
+                delay(1_000)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Nada nao-tipado pode escapar do laco de envio: uma excecao
+                // crua aqui deixaria a UI presa em "Conectando" para sempre.
+                _estado.value = EstadoImpressao.Falha(
+                    ErroImpressao.FalhaAoEscrever(e.message ?: e::class.simpleName.orEmpty()),
+                )
+                return
             }
         }
     }
 }
 ```
 
-:::info Por que `startKoin` fora do `application {}`?
-O `application {}` do Compose Desktop é um lambda recomposto. Inicializar o Koin dentro dele causaria re-inicialização a cada recomposição. Iniciando fora, o Koin é um singleton da JVM.
-:::
+Quatro partes valem uma leitura separada.
 
----
+**A guarda de reentrância** abre `imprimir()`. Ela lê `_estado.value` uma vez e, se ele já é `Renderizando`, `Conectando` ou `Enviando` — qualquer estado "em andamento", não só um deles —, a função simplesmente retorna sem fazer nada. Logo em seguida, ainda antes de qualquer `suspend fun` ser chamada, `_estado.value` é atribuído a `EstadoImpressao.Renderizando`. Essa ordem — checar e marcar, as duas de forma síncrona, antes da primeira suspensão real — é o que faz a guarda funcionar contra uma chamada reentrante que chega no meio da execução da primeira, e não só contra uma chamada que chega depois dela terminar.
 
-## ⚠️ Atenção — `AndroidManifest.xml`
+**A leitura de configurações** vem em seguida, e só depois de `Renderizando` já estar marcado. `store.configuracoes().first()` é I/O de verdade — a implementação real (`LabelStoreSqlDelight`, aula 10) roda `garantirConfiguracao()` e um `mapToOne` que lança se a linha não existir —, então está dentro de um `try` com três `catch`: `CancellationException` relançada, `ErroImpressao` tratado à parte (embora `configuracoes()` não declare lançar um, o `catch` cobre o caso de uma implementação futura de `LabelStore` que lance), e qualquer outra `Exception` convertida em `EstadoImpressao.Falha(ErroImpressao.FalhaAoPreparar(...))`. Sem impressora configurada (`config.impressoraId` nulo ou em branco), a função encerra em `Falha(NenhumaImpressoraSelecionada)` antes mesmo de tentar renderizar.
 
-O módulo `composeApp` usa `namespace = "com.fatec.merge_skills_kmp.android"` no Gradle, mas a `MainActivity` está no pacote `com.fatec.merge_skills_kmp`. Isso cria uma armadilha: o atalho `.MainActivity` no manifest resolve para `com.fatec.merge_skills_kmp.android.MainActivity` — classe que não existe — causando `ClassNotFoundException` no Android.
+**A renderização com as cópias** salva o rascunho — só se `salvarRascunho` for `true` — e chama `renderizar(documento, config.avancoFinalMm)`, de novo dentro de um `try` com os mesmos três `catch`. O resultado é os bytes de **uma** etiqueta; o `payload` final é um `ByteArray` do tamanho de `umaCopia.size * copias`, preenchido copiando `umaCopia` para dentro dele `copias` vezes com `copyInto`. É por isso que o teste `as copias resultam em um envio por copia numa conexao logica` vê `transporte.tentativas == 1` mesmo com três cópias: o transporte recebe um `payload` já concatenado numa única chamada — a "conexão lógica" do nome do teste — não três chamadas separadas.
 
-A correção é usar o **nome totalmente qualificado**:
+**O laço de envio com retry** é o `repeat(2) { tentativa -> ... }` final. A cada iteração, `_estado.value` é marcado `Conectando` e `transporte.imprimir(destino, payload)` é chamado. Sucesso marca `Sucesso` e retorna. Uma `ErroImpressao` calcula duas condições — `ultima` (é a segunda iteração, `tentativa == 1`) e `naoAdiantaRepetir` (o erro não é `FalhaAoConectar`) — e só tenta de novo se nenhuma das duas for verdadeira; caso contrário marca `Falha` e retorna imediatamente. Entre uma tentativa e a próxima, `delay(1_000)`. `CancellationException` é sempre relançada, nunca vira `Falha`. Qualquer outra `Exception` não tipada vira `Falha(FalhaAoEscrever(...))` e a função retorna — sem tentar de novo, porque o tipo dessa exceção é desconhecido e insistir não tem garantia nenhuma de ajudar.
 
-```xml title="composeApp/src/androidMain/AndroidManifest.xml"
-<activity
-    android:name="com.fatec.merge_skills_kmp.MainActivity"
-    android:exported="true">
-```
+## ⚠️ Atenção
 
-:::danger Não use `.MainActivity` aqui
-O atalho com ponto só funciona quando o pacote da classe é igual ao `namespace` do módulo. Como aqui são diferentes, o nome completo é obrigatório.
-:::
+Três invariantes que o código defende explicitamente, cada um com o comentário que documenta por que a ordem importa:
 
----
+1. **`Renderizando` é marcado antes de qualquer suspensão**, inclusive antes de ler `configuracoes()`. Se a marcação esperasse a config chegar, duas chamadas concorrentes fariam a checagem da guarda antes que qualquer uma delas tivesse marcado o estado — e as duas passariam.
+2. **Nada não tipado escapa.** Todo `catch (e: Exception)` — há três no arquivo — vira um `EstadoImpressao.Falha`. Uma exceção crua deixaria a UI presa em "Renderizando" ou "Conectando" para sempre, e a guarda de reentrância rejeitaria toda chamada seguinte, porque `limparEstadoSeConcluido()` só limpa estados terminais (`Sucesso` e `Falha`) — nunca um estado "em andamento".
+3. **`CancellationException` é relançada, sempre.** Cancelamento não é erro de impressão; tratá-lo como `Falha` quebraria o comportamento de corrotinas do resto do app — quem cancelou o escopo esperaria a `CancellationException` se propagar, não ver um estado de falha aparecer no meio do caminho.
+
+E o retry: `repeat(2)` são no máximo duas tentativas — uma original e **uma** repetição —, e só se repete quando o erro é `ErroImpressao.FalhaAoConectar`. Qualquer outro tipo de `ErroImpressao` (`PermissaoNegada`, `NaoPareada`, `FalhaAoEscrever`) vai direto para `Falha` na primeira tentativa. A lógica por trás é a mesma explicada no comentário do código: a impressora hibernada tem mais chance de ter acordado se o app espera um segundo antes de tentar de novo; insistir no mesmo instante é o pior caso justamente para esse cenário, e é o cenário que o `delay(1_000)` existe para tratar. Repetir uma `PermissaoNegada` ou uma `NaoPareada` não resolveria nada — o segundo em espera não muda se o app tem a permissão ou se o dispositivo está pareado.
 
 ## ▶️ Como Executar
 
 ```bash
-# Desktop (Compose for Desktop)
-./gradlew :composeApp:run
+./gradlew :shared:jvmTest --tests "com.fatec.printec.ui.EtiquetaViewModelTest"
 ```
 
-O servidor Ktor deve estar rodando em `localhost:8080` para o login funcionar.
-
----
+Esperado: verde — os treze testes de `EtiquetaViewModelTest`. Este é o teste mais completo que você vai rodar na trilha: ele exercita a máquina de estados inteira, a guarda de reentrância nos dois sentidos (bloqueando e liberando depois de um estado terminal), o retry e o caso em que ele não se aplica, e a regra do rascunho — tudo isso sem tocar hardware nem banco de verdade.
 
 ## 💻 Mão na Massa
 
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
 <Tabs>
-  <TabItem value="ex1" label="Exercício 1 — Fixação" default>
+  <TabItem value="ex1" label="Exercício 1 — Quebre a guarda" default>
 
-Partindo da branch `base-aula-11`, crie os 6 arquivos desta aula do zero e execute `./gradlew :composeApp:run`. Confirme que a `LoginScreen` abre com o card centralizado e fundo escuro.
+### O que a guarda protege, na prática
+
+Remova o `return` da guarda de reentrância — a que abre `imprimir()`, logo antes de `_estado.value = EstadoImpressao.Renderizando` — deixando só a checagem sem a saída antecipada, e rode:
+
+```bash
+./gradlew :shared:jvmTest --tests "com.fatec.printec.ui.EtiquetaViewModelTest"
+```
+
+Anote qual teste falha e por quê — ele simula exatamente o cenário que a guarda existe para barrar: uma segunda origem chamando `imprimir()` de dentro do call stack da primeira, antes dela terminar. Depois de anotar, restaure o `return`.
 
   </TabItem>
-  <TabItem value="ex2" label="Exercício 2 — Aplicação">
+  <TabItem value="ex2" label="Exercício 2 — Um erro que não repete">
 
-Com o servidor rodando, tente logar com um usuário que **não** tem `role = "admin"`. Confirme que a mensagem **"Conta sem permissão de admin"** aparece sem navegar para o CMS.
+### Uma tentativa, não duas
 
-  </TabItem>
-  <TabItem value="ex3" label="Exercício 3 — Desafio">
+Escreva um teste (pode viver junto de `EtiquetaViewModelTest`) com um `PrinterTransport` de dublê que sempre lança `ErroImpressao.PermissaoNegada`, e verifique que `imprimir()` chamou o transporte **uma** única vez — não duas.
 
-Após um login de admin bem-sucedido, feche o app e abra novamente. O `isLoggedIn()` deve detectar a sessão salva em `PreferencesSettings` e abrir diretamente na `CmsScreen`, pulando o login. Use `./gradlew :composeApp:run` para testar.
+Depois de o teste passar, explique em uma ou duas linhas qual variável, dentro do laço `repeat(2)` de `imprimir()`, é responsável por essa decisão, e por que ela é calculada a partir do *tipo* do erro (`e !is ErroImpressao.FalhaAoConectar`) e não de algo como uma contagem de tentativas por tipo de erro.
 
   </TabItem>
 </Tabs>

@@ -1,158 +1,311 @@
 ---
 sidebar_position: 5
-title: "Aula 05: Ktor Server Architecture"
-description: "Configuração modular de Plugins e Roteamento no Ktor Server."
+title: "Aula 05: Renderizar ESC/POS"
+description: "Do documento aos bytes que a impressora entende — inclusive o QR Code na mão."
 ---
 
-# Aula 05: Ktor Server Architecture
+# Aula 05: Renderizar ESC/POS
 
-:::info 🔀 Branch da Aula
-Esta aula refere-se à branch: **`aula-05`**
-```bash
-git checkout aula-05
-```
+:::info 🔀 Código da Aula
+- **Ponto de partida:** o estado ao fim da aula anterior
+- **Gabarito final:** `git checkout main`
 :::
 
 ## 📖 Conceito
 
-À medida que nossa API cresce, configurar tudo diretamente dentro do `Application.kt` torna o código ilegível. O **Ktor** suporta a abstração por **Plugins**. Nesta aula, extraímos responsabilidades cruciais (como CORS, Tratamento de Erros, JSON Parsing e Roteamento) para funções extensórias dedicadas alojadas na pasta `plugins/`.
+ESC/POS não é XML, não é JSON, não é nenhum formato de texto: é uma linguagem de bytes de comando intercalados com bytes de conteúdo. Cada comando começa com um byte de escape (`ESC` = `0x1B` ou `GS` = `0x1D`) seguido de um ou mais bytes que dizem o que fazer. É a linguagem que a Lintian LT-8359 entende nativamente, e é o que `EscPosRenderer` produz a partir de um `LabelDocument`.
 
-## 💻 Referência Didática: Propósito e Código dos Plugins
+Esta é a tabela dos comandos que o renderizador desta aula usa:
 
-O ecossistema do Ktor incentiva fortemente a separação de interesses. Abaixo estão os quatro plugins cruciais que implementamos, onde a explicação de sua finalidade é imediatamente seguida pelo trecho de código correspondente na arquitetura da nossa API:
+| Comando | Bytes | O que faz |
+|---|---|---|
+| `ESC @` | `1B 40` | Inicializa a impressora |
+| `ESC t n` | `1B 74 03` | Seleciona a code page (3 = PC860) |
+| `ESC a n` | `1B 61 n` | Alinhamento: 0 esquerda, 1 centro, 2 direita |
+| `GS ! n` | `1D 21 n` | Escala: nibble alto largura, nibble baixo altura, 0-based |
+| `ESC E n` | `1B 45 n` | Negrito liga/desliga |
+| `ESC J n` | `1B 4A n` | Avança n dots |
+| `GS ( k` | `1D 28 6B …` | Família de comandos de QR Code |
 
-### 1. Routing Plugin
-**Finalidade:** Responsável por organizar todos os _endpoints_ da aplicação (como `GET /api/courses` ou `POST /auth/login`). Extrair o roteamento impede que o `Application.kt` se torne um arquivo gigante e monolítico, facilitando a manutenção e delegação de caminhos da URL.
+### Por que este arquivo vive em `jvmCommonMain`
 
-```kotlin title="server/src/main/kotlin/com/fatec/merge_skills_kmp/plugins/Routing.kt"
-package com.fatec.merge_skills_kmp.plugins
+`EscPosRenderer` usa `java.io.ByteArrayOutputStream` para acumular os bytes que vai escrever. Essa classe existe na JVM e no Android — porque o runtime do Android é, para esse propósito, compatível com a JVM — mas não existe em Kotlin/Native nem é parte da biblioteca padrão multiplataforma. Colocar `EscPosRenderer` em `commonMain` simplesmente não compilaria. Colocar em `androidMain` ou `jvmMain` separadamente duplicaria o arquivo inteiro nas duas plataformas, byte a byte idêntico. `jvmCommonMain` — o source set intermediário que a aula 01 introduziu — é a resposta certa: um único arquivo, compartilhado por `androidMain` e `jvmMain`, sem tocar `commonMain`.
 
-import io.github.jan.supabase.SupabaseClient
-import io.github.jan.supabase.postgrest.postgrest
-import io.ktor.server.application.*
-import io.ktor.server.response.*
-import io.ktor.server.routing.*
+### Por que o QR é escrito à mão
 
-fun Application.configureRouting(supabase: SupabaseClient?) {
-    routing {
-        get("/") {
-            call.respondText("MergeSkills API is running!")
+O `escpos-coffee`, a biblioteca declarada como dependência desde a aula 01, tem uma classe `QRCode` pronta. Ela não serve aqui: `QRCode` dimensiona o payload contando **caracteres**, mas escreve **bytes** no stream. Para conteúdo ASCII puro isso coincide — um caractere é um byte. Para conteúdo com acentuação ou qualquer coisa fora do ASCII, o QR Code guarda bytes (é assim que o padrão QR funciona), e UTF-8 é a codificação que os leitores de QR esperam quando decodificam. Se o comprimento declarado no comando for contado em caracteres em vez de bytes, e o texto tiver algum caractere multibyte, o payload é truncado no meio de um caractere — em silêncio, sem exceção, sem aviso. `EscPosRenderer.escreverQr` calcula o comprimento a partir de `conteudo.encodeToByteArray().size`, não de `conteudo.length`, exatamente para não cair nessa armadilha.
+
+## 🗂️ Estrutura de Arquivos
+
+```
+shared/src/
+├── jvmCommonMain/kotlin/com/fatec/printec/impressao/
+│   └── EscPosRenderer.kt
+└── jvmCommonTest/kotlin/com/fatec/printec/impressao/
+    ├── EscPosCoffeeVivoTest.kt
+    └── EscPosRendererTest.kt
+```
+
+## 🔴 O Teste
+
+```kotlin title="shared/src/jvmCommonTest/kotlin/com/fatec/printec/impressao/EscPosCoffeeVivoTest.kt"
+package com.fatec.printec.impressao
+
+import com.github.anastaciocintra.escpos.EscPos
+import java.io.ByteArrayOutputStream
+import kotlin.test.Test
+import kotlin.test.assertEquals
+
+class EscPosCoffeeVivoTest {
+
+    @Test
+    fun `escpos-coffee escreve o comando de inicializacao no stream`() {
+        val saida = ByteArrayOutputStream()
+        EscPos(saida).use { escpos ->
+            escpos.initializePrinter()
         }
-        
-        get("/api/health") {
-            call.respondText("""{"status":"ok"}""", io.ktor.http.ContentType.Application.Json)
-        }
+        // ESC @ = 0x1B 0x40
+        assertEquals(listOf<Byte>(0x1B, 0x40), saida.toByteArray().toList())
+    }
+}
+```
 
-        get("/api/courses") {
-            try {
-                val supabaseClient = supabase ?: throw IllegalStateException("SupabaseClient is null.")
-                val courses = supabaseClient.postgrest["courses"].select()
-                call.respondText(courses.data)
-            } catch (e: Exception) {
-                e.printStackTrace()
-                call.respondText("{\"error\": \"${e.message}\"}", status = io.ktor.http.HttpStatusCode.InternalServerError)
+```kotlin title="shared/src/jvmCommonTest/kotlin/com/fatec/printec/impressao/EscPosRendererTest.kt"
+package com.fatec.printec.impressao
+
+import com.fatec.printec.etiqueta.Alinhamento
+import com.fatec.printec.etiqueta.Bloco
+import com.fatec.printec.etiqueta.LabelDocument
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
+
+class EscPosRendererTest {
+
+    private fun hex(bytes: ByteArray) = bytes.joinToString(" ") { "%02X".format(it) }
+
+    @Test
+    fun `documento vazio ainda inicializa e seleciona a code page`() {
+        val bytes = EscPosRenderer.renderizar(LabelDocument(), avancoFinalMm = 0)
+        assertTrue(hex(bytes).startsWith("1B 40 1B 74 03"), "obtido: ${hex(bytes)}")
+    }
+
+    @Test
+    fun `linha simples sai com alinhamento escala e texto`() {
+        val doc = LabelDocument(listOf(Bloco.Linha("AB")))
+        val hex = hex(EscPosRenderer.renderizar(doc, avancoFinalMm = 0))
+        // ESC a 0 (esquerda), GS ! 0x00 (escala 1), ESC E 0 (sem negrito), "AB", LF
+        assertTrue(hex.contains("1B 61 00 1D 21 00 1B 45 00 41 42 0A"), "obtido: $hex")
+    }
+
+    @Test
+    fun `titulo vira escala dobrada centralizada e SEM negrito`() {
+        val doc = LabelDocument(listOf(Bloco.Titulo("OI")))
+        val hex = hex(EscPosRenderer.renderizar(doc, avancoFinalMm = 0))
+        // ESC a 1 (centro), GS ! 0x11 (2x2), ESC E 0 -- negrito DESLIGADO.
+        // A LT-8359 faz enfase como duplo impacto deslocado na horizontal. Em
+        // largura 2x o segundo impacto cai dentro do proprio glifo e preenche o
+        // vao entre as colunas de dots: o titulo saia borrado no papel enquanto
+        // uma linha 2x comum, logo abaixo, saia nitida. Foi o que a foto da
+        // etiqueta de calibracao mostrou -- "CALIBRACAO" ilegivel, "escala 2x"
+        // perfeito, mesma escala, so o negrito de diferenca.
+        assertTrue(hex.contains("1B 61 01 1D 21 11 1B 45 00 4F 49 0A"), "obtido: $hex")
+    }
+
+    @Test
+    fun `alinhamento a direita usa ESC a 2`() {
+        val doc = LabelDocument(listOf(Bloco.Linha("X", alinhamento = Alinhamento.DIREITA)))
+        assertTrue(hex(EscPosRenderer.renderizar(doc, 0)).contains("1B 61 02"))
+    }
+
+    @Test
+    fun `texto longo e quebrado em duas linhas com um LF cada`() {
+        // 'z' (0x7A) de proposito: 'a' seria 0x61, que e o SEGUNDO byte do
+        // comando ESC a (alinhamento). Contar 0x61 no array inteiro somaria o
+        // byte do comando as letras do texto e daria 34 em vez de 33.
+        val doc = LabelDocument(listOf(Bloco.Linha("z".repeat(33))))
+        val bytes = EscPosRenderer.renderizar(doc, avancoFinalMm = 0)
+        assertEquals(2, bytes.count { it == 0x0A.toByte() })
+        // 32 letras na primeira linha, 1 na segunda
+        assertEquals(33, bytes.count { it == 'z'.code.toByte() })
+    }
+
+    @Test
+    fun `acentos usam os bytes da PC860`() {
+        val doc = LabelDocument(listOf(Bloco.Linha("ação")))
+        assertTrue(hex(EscPosRenderer.renderizar(doc, 0)).contains("61 87 84 6F"))
+    }
+
+    @Test
+    fun `qr emite o prefixo GS parenteses k`() {
+        val doc = LabelDocument(listOf(Bloco.Qr("https://exemplo.com")))
+        assertTrue(hex(EscPosRenderer.renderizar(doc, 0)).contains("1D 28 6B"))
+    }
+
+    @Test
+    fun `qr com acentos usa o comprimento dos bytes UTF-8, nao dos caracteres`() {
+        // "acao" em UTF-8: 61 C3 A7 C3 A3 6F -- 6 bytes para 4 caracteres. Se o
+        // comprimento fosse contado em caracteres (como o QRCode do
+        // escpos-coffee fazia), pL/pH sairia 7 (4+3) e o payload seria
+        // truncado no meio de um caractere multibyte.
+        val doc = LabelDocument(listOf(Bloco.Qr("ação")))
+        val hex = hex(EscPosRenderer.renderizar(doc, 0))
+
+        // Comando "armazenar dados" (cn=31 fn=50): pL pH = 09 00 (6 bytes + 3).
+        assertTrue(hex.contains("1D 28 6B 09 00 31 50 30 61 C3 A7 C3 A3 6F"), "obtido: $hex")
+    }
+
+    @Test
+    fun `qr ascii segue emitindo o prefixo GS parenteses k`() {
+        val doc = LabelDocument(listOf(Bloco.Qr("ABC")))
+        val hex = hex(EscPosRenderer.renderizar(doc, 0))
+        assertTrue(hex.contains("1D 28 6B"), "obtido: $hex")
+        // "ABC" -> 3 bytes + 3 = 6 = pL, pH = 00.
+        assertTrue(hex.contains("1D 28 6B 06 00 31 50 30 41 42 43"), "obtido: $hex")
+    }
+
+    @Test
+    fun `avanco final e convertido de mm para dots`() {
+        val bytes = EscPosRenderer.renderizar(LabelDocument(), avancoFinalMm = 3)
+        // ESC J 24  (3 mm x 8 dots/mm)
+        assertTrue(hex(bytes).endsWith("1B 4A 18"), "obtido: ${hex(bytes)}")
+    }
+
+    @Test
+    fun `bloco de avanco explicito tambem vira ESC J`() {
+        val doc = LabelDocument(listOf(Bloco.Avanco(2)))
+        assertTrue(hex(EscPosRenderer.renderizar(doc, 0)).contains("1B 4A 10"))
+    }
+}
+```
+
+`EscPosCoffeeVivoTest` não testa nada deste projeto — ele testa a biblioteca `escpos-coffee`, já presente no classpath desde a aula 01. Ele passa **imediatamente**, antes de qualquer código novo ser escrito: é o teste de fumaça que prova que a biblioteca carrega e escreve `1B 40` quando mandada inicializar a impressora. `EscPosRendererTest` é o outro caso: ele referencia `EscPosRenderer`, um tipo que ainda não existe neste arquivo.
+
+Rode:
+
+```bash
+./gradlew :shared:jvmTest --tests "com.fatec.printec.impressao.*"
+```
+
+Esperado: `EscPosCoffeeVivoTest` passa (o único teste ali é verde, vindo de uma biblioteca que já existe), `EscPosRendererTest` falha na compilação — `Unresolved reference: EscPosRenderer`.
+
+## Passo 1 — EscPosRenderer
+
+```kotlin title="shared/src/jvmCommonMain/kotlin/com/fatec/printec/impressao/EscPosRenderer.kt"
+package com.fatec.printec.impressao
+
+import com.fatec.printec.etiqueta.Alinhamento
+import com.fatec.printec.etiqueta.Bloco
+import com.fatec.printec.etiqueta.Impressora
+import com.fatec.printec.etiqueta.LabelDocument
+import com.fatec.printec.etiqueta.Pc860
+import com.fatec.printec.etiqueta.QuebraDeLinha
+import com.fatec.printec.etiqueta.normalizado
+import java.io.ByteArrayOutputStream
+
+object EscPosRenderer {
+
+    private const val ESC = 0x1B
+    private const val GS = 0x1D
+    private const val LF = 0x0A
+
+    fun renderizar(documento: LabelDocument, avancoFinalMm: Int): ByteArray {
+        val saida = ByteArrayOutputStream()
+
+        saida.comando(ESC, 0x40)              // ESC @  — inicializa
+        saida.comando(ESC, 0x74, 0x03)        // ESC t 3 — PC860, enviada sempre
+
+        documento.blocos.map { it.normalizado() }.forEach { bloco ->
+            when (bloco) {
+                is Bloco.Linha -> saida.escreverLinha(bloco)
+                is Bloco.Qr -> saida.escreverQr(bloco)
+                is Bloco.Avanco -> saida.avancar(bloco.milimetros)
+                is Bloco.Titulo -> error("normalizado() deveria ter convertido Titulo em Linha")
             }
         }
+
+        if (avancoFinalMm > 0) saida.avancar(avancoFinalMm)
+        return saida.toByteArray()
     }
-}
-```
 
-### 2. CORS Plugin
-**Finalidade:** O _Cross-Origin Resource Sharing_ (CORS) é um mecanismo de segurança presente nos navegadores web. Ele impede que sites maliciosos façam requisições para a nossa API em nome do usuário. Configuramos este plugin para declarar explicitamente quais origens (como nosso futuro App Web rodando em `localhost:3000`), métodos (GET, POST, etc.) e cabeçalhos têm permissão de acessar nossos dados.
+    private fun ByteArrayOutputStream.escreverLinha(bloco: Bloco.Linha) {
+        comando(ESC, 0x61, bloco.alinhamento.codigo())
+        comando(GS, 0x21, tamanho(bloco.escala))
+        comando(ESC, 0x45, if (bloco.negrito) 1 else 0)
 
-```kotlin title="server/src/main/kotlin/com/fatec/merge_skills_kmp/plugins/CORS.kt"
-package com.fatec.merge_skills_kmp.plugins
-
-import io.ktor.http.*
-import io.ktor.server.application.*
-import io.ktor.server.plugins.cors.routing.*
-
-fun Application.configureCORS() {
-    install(CORS) {
-        allowMethod(HttpMethod.Options)
-        allowMethod(HttpMethod.Put)
-        allowMethod(HttpMethod.Delete)
-        allowMethod(HttpMethod.Patch)
-        allowHeader(HttpHeaders.Authorization)
-        allowHeader(HttpHeaders.ContentType)
-        allowHeader(HttpHeaders.AccessControlAllowOrigin)
-        anyHost() // Ideal trocar para origens específicas em PRD
-    }
-}
-```
-
-### 3. Serialization Plugin
-**Finalidade:** A tradução automática de dados. Quando enviamos nossas Kotlin Data Classes (`User`, `Course`), este plugin automaticamente as converte para formato textual estruturado (`JSON`) para trafegar na rede. Da mesma forma, quando recebemos dados do cliente, ele converte o `JSON` de volta para objetos Kotlin sem exigirmos parsing manual.
-
-```kotlin title="server/src/main/kotlin/com/fatec/merge_skills_kmp/plugins/Serialization.kt"
-package com.fatec.merge_skills_kmp.plugins
-
-import io.ktor.serialization.kotlinx.json.*
-import io.ktor.server.application.*
-import io.ktor.server.plugins.contentnegotiation.*
-import kotlinx.serialization.json.Json
-
-fun Application.configureSerialization() {
-    install(ContentNegotiation) {
-        json(Json {
-            prettyPrint = true
-            isLenient = true
-            ignoreUnknownKeys = true
-        })
-    }
-}
-```
-
-### 4. StatusPages Plugin
-**Finalidade:** Lidando com exceções de maneira graciosa e global. Sem este plugin, se um erro imprevisto (como falha no banco de dados) ocorrer num endpoint, o servidor crasha, ou o cliente não recebe um formato válido de erro. O StatusPages intercepta qualquer `Throwable` (exceção) "não-tratada" e devolve proativamente um código HTTP 500 informando dignamente a falha, evitando paralisação da máquina.
-
-```kotlin title="server/src/main/kotlin/com/fatec/merge_skills_kmp/plugins/StatusPages.kt"
-package com.fatec.merge_skills_kmp.plugins
-
-import io.ktor.http.*
-import io.ktor.server.application.*
-import io.ktor.server.plugins.statuspages.*
-import io.ktor.server.response.*
-
-fun Application.configureStatusPages() {
-    install(StatusPages) {
-        exception<Throwable> { call, cause ->
-            call.respondText(text = "500: $cause", status = HttpStatusCode.InternalServerError)
+        val colunas = QuebraDeLinha.colunasPara(bloco.escala)
+        QuebraDeLinha.quebrar(bloco.texto, colunas).forEach { linha ->
+            write(Pc860.codificar(linha).bytes)
+            write(LF)
         }
     }
-}
-```
 
-### 3. Ajustando o Ponto de Entrada
+    private fun ByteArrayOutputStream.escreverQr(bloco: Bloco.Qr) {
+        // GS ( k a mao: o QRCode do escpos-coffee dimensiona o payload em
+        // CARACTERES e escreve bytes, truncando qualquer conteudo nao-ASCII em
+        // silencio. QR guarda bytes; UTF-8 e o que os leitores esperam.
+        comando(ESC, 0x61, 1)   // centralizado, mesmo ESC a das linhas
 
-Com os plugins isolados, nosso arquivo principal de servidor simplifica imensamente sua inicialização:
+        val dados = bloco.conteudo.encodeToByteArray()
 
-```kotlin title="server/src/main/kotlin/com/fatec/merge_skills_kmp/Application.kt"
-fun Application.module() {
-    // Configurações do Supabase (tentativa 1: JVM args / Fallback: local.properties)
-    var supabaseUrl = System.getProperty("SUPABASE_URL") ?: System.getenv("SUPABASE_URL")
-    var supabaseKey = System.getProperty("SUPABASE_KEY") ?: System.getenv("SUPABASE_KEY")
+        comando(GS, 0x28, 0x6B, 0x04, 0x00, 0x31, 0x41, 0x32, 0x00)   // modelo 2
+        comando(GS, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x43, bloco.tamanhoModulo)
+        comando(GS, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x45, 0x31)         // correcao M
 
-    if (supabaseUrl == null || supabaseKey == null) {
-        val properties = java.util.Properties()
-        val file = java.io.File("local.properties") // Busca recursiva omitida para brevidade
-        if (file.exists()) {
-            properties.load(java.io.FileInputStream(file))
-            supabaseUrl = properties.getProperty("SUPABASE_URL")
-            supabaseKey = properties.getProperty("SUPABASE_KEY")
-        }
+        val n = dados.size + 3
+        comando(GS, 0x28, 0x6B, n and 0xFF, (n shr 8) and 0xFF, 0x31, 0x50, 0x30)
+        write(dados)
+
+        comando(GS, 0x28, 0x6B, 0x03, 0x00, 0x31, 0x51, 0x30)         // imprimir
     }
-    
-    val supabase = if (supabaseUrl != null && supabaseKey != null) 
-        createAppSupabaseClient(supabaseUrl, supabaseKey) else null
 
-    // Pipeline configuration via Modular Plugins (Aula 05)
-    configureSerialization()
-    configureCORS()
-    configureStatusPages()
-    configureRouting(supabase)
+    private fun ByteArrayOutputStream.avancar(milimetros: Int) {
+        val dots = (milimetros * Impressora.DOTS_POR_MM).coerceIn(0, 255)
+        comando(ESC, 0x4A, dots)             // ESC J n
+    }
+
+    private fun ByteArrayOutputStream.comando(vararg bytes: Int) {
+        bytes.forEach { write(it) }
+    }
+
+    private fun Alinhamento.codigo(): Int = when (this) {
+        Alinhamento.ESQUERDA -> 0
+        Alinhamento.CENTRO -> 1
+        Alinhamento.DIREITA -> 2
+    }
+
+    /** GS ! n — nibble alto = largura, nibble baixo = altura, ambos 0-based. */
+    private fun tamanho(escala: Int): Int {
+        val n = (escala - 1).coerceIn(0, 7)
+        return (n shl 4) or n
+    }
 }
 ```
+
+`renderizar` é onde as três aulas anteriores se encontram pela primeira vez: `documento` é um `LabelDocument` (aula 04), cada `Bloco` é normalizado antes de ser tratado — a mesma normalização da aula 04 —, `QuebraDeLinha` e `Impressora.DOTS_POR_MM` vêm da aula 02, e `Pc860.codificar` vem da aula 03. Nada aqui é novo conceitualmente; o que é novo é a montagem dos bytes.
+
+Repare que o `when` sobre `bloco` **não tem `else`**. É a rede de proteção do `sealed interface Bloco` que a aula 04 descreveu: o compilador conhece os quatro subtipos possíveis e exige um ramo para cada um. O ramo `is Bloco.Titulo` existe só para derrubar a execução com `error(...)` — porque, se `normalizado()` fez o seu trabalho, nenhum `Titulo` chega até aqui. Se um dia alguém adicionar um quinto subtipo a `Bloco`, este `when` para de compilar até que o novo caso seja tratado.
+
+Percorrendo as funções privadas uma a uma:
+
+- **`escreverLinha`** — três comandos e depois o conteúdo: `ESC a` fixa o alinhamento, `GS !` fixa a escala, `ESC E` liga ou desliga o negrito, e só então o texto é quebrado em linhas por `QuebraDeLinha.quebrar` (usando as colunas certas para a escala, via `QuebraDeLinha.colunasPara`), cada linha codificada pela `Pc860` e terminada em `LF`. A ordem importa: os comandos de estado (alinhamento, escala, negrito) precisam chegar à impressora antes dos bytes de texto que eles vão afetar.
+- **`escreverQr`** — cinco comandos `GS ( k`, nessa ordem: selecionar o modelo do QR (modelo 2), fixar o tamanho do módulo (`bloco.tamanhoModulo`, em pontos), fixar o nível de correção de erro (M), armazenar os dados do QR, e por fim mandar imprimir o símbolo armazenado. O comando de armazenamento é o único que carrega um comprimento variável: `n = dados.size + 3` — o `+3` cobre os três bytes fixos que o comando `cn fn m` sempre leva antes dos dados propriamente ditos (`cn = 0x31`, `fn = 0x50`, `m = 0x30`) — e `n` é dividido em `pL`/`pH` (byte baixo, byte alto) porque o comando ESC/POS representa comprimentos maiores que 255 em dois bytes.
+- **`avancar`** — converte milímetros em dots multiplicando por `Impressora.DOTS_POR_MM` (8, a constante da aula 02) e limita o resultado a 255 com `coerceIn(0, 255)`, porque `ESC J n` só aceita um único byte de avanço.
+- **`tamanho`** — o cálculo por trás de `GS ! n`: a escala do `Bloco.Linha` é 1-based (escala 1 é o tamanho normal), mas o comando ESC/POS é 0-based e usa dois nibbles do mesmo byte — o nibble alto para largura, o nibble baixo para altura. `tamanho` subtrai 1, limita o resultado a 0..7 com `coerceIn` (a impressora não aceita escala além de 8x) e escreve o mesmo valor nos dois nibbles com `(n shl 4) or n`, porque este renderizador sempre escala largura e altura juntas.
+
+## ⚠️ Atenção
+
+`ESC t 3` é enviado **sempre**, em toda chamada a `renderizar`, mesmo a PC860 sendo a code page de fábrica da LT-8359 (aula 03). Por que gastar dois bytes toda vez, se a impressora já nasce configurada assim?
+
+Porque a impressora guarda estado entre trabalhos de impressão. Se, por qualquer motivo — outro app, um comando manual, um firmware que reseta diferente do esperado —, algo tiver mudado a code page antes desta etiqueta, a próxima etiqueta sairia com acentuação errada, e nada no código ou no papel indicaria por quê. Inicializar em vez de assumir custa dois bytes por etiqueta; depurar uma etiqueta com acentos trocados sem saber que a code page mudou custa muito mais.
+
+## ▶️ Como Executar
+
+```bash
+./gradlew :shared:jvmTest --tests "com.fatec.printec.impressao.*"
+```
+
+Esperado: `BUILD SUCCESSFUL`, todos os testes verdes — o do `EscPosCoffeeVivoTest` que já passava, e os onze do `EscPosRendererTest` agora também. O aluno vê os bytes conferidos um a um pelos asserts: inicialização e code page no início de todo documento, alinhamento e escala antes de cada linha, negrito desligado em títulos, quebra de texto longo em múltiplos `LF`, acentuação convertida pela `Pc860`, e o payload do QR medido em bytes UTF-8, não em caracteres.
 
 ## 💻 Mão na Massa
 
@@ -160,15 +313,34 @@ import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 
 <Tabs>
-  <TabItem value="ex1" label="Exercício 1 — Extração" default>
+  <TabItem value="ex1" label="Exercício 1 — Leia os bytes" default>
 
-Crie o diretório `server/src/main/kotlin/com/fatec/merge_skills_kmp/plugins/` e extraia a configuração do `val routing = routing {}` existente no `Application.kt` para criar o seu próprio plugin `Routing.kt`.
-    
-  </TabItem>
-  <TabItem value="ex2" label="Exercício 2 — CORS">
+### Imprima o hexadecimal e identifique cada comando
 
-Adicione um arquivo `CORS.kt` na pasta de plugins. Libere os cabeçalhos (`allowHeader`) como `Authorization`, `ContentType` e os métodos de `HttpMethod` `Options`, `Put`, `Delete` e `Patch`.
-Para a API aceitar as origens perfeitamente em dev defina o uso do `anyHost()`. Lembre-se que você precisará incluir a dependência `implementation(libs.ktor.server.cors)` no `server/build.gradle.kts`.
+Escreva um teste que renderize `LabelDocument(listOf(Bloco.Linha("OI")))` com `avancoFinalMm = 0` e imprima o resultado em hexadecimal com `println(bytes.joinToString(" ") { "%02X".format(it) })`.
+
+Compare a saída com a tabela da seção Conceito. Identifique, byte a byte:
+
+- onde está `ESC @` (inicialização);
+- onde está `ESC t 3` (seleção de code page);
+- onde está `ESC a 0` (alinhamento à esquerda, o padrão de `Bloco.Linha`);
+- onde está `GS ! 00` (escala 1, 0-based);
+- onde está `ESC E 00` (negrito desligado);
+- os bytes de `"OI"` propriamente ditos, e o `LF` (`0A`) depois deles.
+
+</TabItem>
+  <TabItem value="ex2" label="Exercício 2 — A escala">
+
+### Calcule `GS ! n` para escala 3, na mão
+
+Antes de rodar qualquer teste, calcule à mão o valor que `tamanho(3)` devolve, seguindo a lógica de `EscPosRenderer.tamanho`:
+
+1. `n = (escala - 1).coerceIn(0, 7)` — para escala 3, quanto vale `n`?
+2. `(n shl 4) or n` — com o `n` que você achou, qual é o byte final, em hexadecimal?
+
+Confira escrevendo um teste que renderize um `Bloco.Linha` com `escala = 3` e procure o byte calculado na saída de `GS !`.
+
+Depois, explique em uma frase por que `coerceIn(0, 7)` está lá: o que aconteceria ao nibble se uma escala maior que 8 fosse permitida sem esse limite?
 
   </TabItem>
 </Tabs>

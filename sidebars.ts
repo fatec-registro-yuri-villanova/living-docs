@@ -92,31 +92,32 @@ const sidebars: SidebarsConfig = {
     ],
 
     ldmSidebar: [
+        "ldm/index",
         {
             type: "category",
-            label: "Módulo 1 — Shared Architecture",
+            label: "Módulo 1 — Fundação",
             collapsed: false,
-            items: ["ldm/aula-01", "ldm/aula-02", "ldm/aula-03", "ldm/aula-04", "ldm/aula-04-1"],
+            items: ["ldm/aula-01", "ldm/aula-02", "ldm/aula-03"],
         },
         {
             type: "category",
-            label: "Módulo 2 — Backend com Ktor Server",
-            items: ["ldm/aula-05", "ldm/aula-06", "ldm/aula-07", "ldm/aula-08"],
+            label: "Módulo 2 — O documento e os bytes",
+            items: ["ldm/aula-04", "ldm/aula-05", "ldm/aula-06"],
         },
         {
             type: "category",
-            label: "Módulo 3 — Lógica Avançada e Gamificação",
-            items: ["ldm/aula-09", "ldm/aula-10"],
+            label: "Módulo 3 — Bluetooth e Impressora",
+            items: ["ldm/aula-07", "ldm/aula-08"],
         },
         {
             type: "category",
-            label: "Módulo 4 — CMS Desktop",
-            items: ["ldm/aula-11", "ldm/aula-14", "ldm/aula-15", "ldm/aula-16"],
+            label: "Módulo 4 — Estado e persistência",
+            items: ["ldm/aula-09", "ldm/aula-10", "ldm/aula-11"],
         },
         {
             type: "category",
-            label: "Módulo 5 — Integração e DevOps",
-            items: ["ldm/aula-17", "ldm/aula-18", "ldm/aula-19", "ldm/aula-20"],
+            label: "Módulo 5 — Telas, papel e entrega",
+            items: ["ldm/aula-12", "ldm/aula-13", "ldm/aula-14", "ldm/aula-15"],
         },
     ],
 };

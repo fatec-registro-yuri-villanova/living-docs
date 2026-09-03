@@ -1,0 +1,799 @@
+---
+sidebar_position: 13
+title: "Aula 13: O app Desktop"
+description: "As três telas, a navegação e a fiação — a primeira etiqueta no papel."
+---
+
+# Aula 13: O app Desktop
+
+:::info 🔀 Código da Aula
+- **Ponto de partida:** o estado ao fim da aula anterior
+- **Gabarito final:** `git checkout main`
+:::
+
+:::warning Hardware a partir daqui
+A partir daqui é preciso hardware de verdade: a Lintian LT-8359, pareada por Bluetooth (aula 08) ou ligada por USB. As aulas 01 a 12 inteiras rodam sem impressora nenhuma — documento, bytes ESC/POS, banco, ViewModel e preview são todos testáveis em Kotlin puro ou em memória, sem tocar em nenhum periférico. Esta é a primeira aula em que sai papel. Quem não tem a LT-8359 à mão ainda consegue abrir o app, navegar pelas três telas e chegar até a lista de impressoras e portas que `TransporteDesktop` (aula 08) encontra — só para no clique em IMPRIMIR, quando não há para onde os bytes irem.
+:::
+
+## 📖 Conceito
+
+Esta aula entrega seis arquivos de uma vez: as três telas (`TelaCompor`, `TelaEtiquetas`, `TelaConfiguracoes`), a peça de status compartilhada (`StatusImpressao`), a navegação que as costura (`Navegacao.kt`, com `AppEtiquetas`) e o `main.kt` que liga tudo no Desktop. Não há como entregar um subconjunto: `AppEtiquetas` despacha para as três telas dentro de um único `when (tela)` sobre o `enum class Tela`, sem `else`. Faltando uma tela, esse `when` deixa de ser exaustivo e o arquivo não compila — as três entram juntas porque o compilador exige.
+
+Cada tela tem um trabalho:
+
+- **`TelaCompor`** (aba "Compor", a que abre por padrão) é onde a etiqueta é escrita — título, linhas com alinhamento, QR, cópias — com o preview fiel da aula 12 ao lado, e o botão IMPRIMIR.
+- **`TelaEtiquetas`** (aba "Salvas") lista o que já foi salvo no banco (`store.etiquetasSalvas()`, aula 10) e permite reimprimir ou excluir cada etiqueta.
+- **`TelaConfiguracoes`** (aba "Ajustes") escolhe a impressora/porta, o perfil de mídia, o avanço final em milímetros, e dispara a etiqueta de teste.
+
+`StatusImpressao` é a peça que as três compartilham — o próprio comentário no topo do arquivo registra que, antes dela existir, só a tela Compor mostrava algo: reimprimir pela lista de salvas ou tocar "IMPRIMIR TESTE" nas configurações não davam retorno nenhum, e sucesso e falha eram indistinguíveis de nada ter acontecido. É aqui que os tipos de `ErroImpressao` (aula 06) pagam o que prometeram: `mensagemDe` e `acaoDe` traduzem cada variante numa mensagem e, na maioria dos casos, num botão com ação concreta — nunca só um texto de erro genérico.
+
+| Erro | Mensagem | Botão |
+| --- | --- | --- |
+| `NaoPareada`, `NenhumaImpressoraSelecionada` | (mensagem própria de cada erro) | "Abrir Bluetooth" → `aoAbrirConfigBluetooth` |
+| `PermissaoNegada` | "Permissão de Bluetooth necessária" | "Conceder permissão" → `aoConcederPermissao` |
+| `FalhaAoConectar`, `FalhaAoEscrever` | (mensagem própria de cada erro) | "Tentar novamente" → `aoTentarNovamente` |
+| `FalhaAoPreparar` | "Não foi possível preparar a etiqueta" | nenhum |
+
+`FalhaAoPreparar` não ganha botão de propósito — `acaoDe` devolve `null to null` para ela, e `StatusImpressao` só desenha o `OutlinedButton` quando rótulo e clique existem os dois. Faz sentido: essa falha acontece antes de qualquer conversa com a impressora (renderizar o documento, salvar o rascunho), então não há "tentar de novo" que dependa de estado externo — o problema está no próprio documento. Para `FalhaAoConectar` e `FalhaAoEscrever`, além da mensagem principal, `causaDe` mostra uma segunda linha menor com `erro.causa` quando ela não está em branco — o único diagnóstico que o app tem para esse tipo de falha.
+
+## 🗂️ Estrutura de Arquivos
+
+```
+shared/src/commonMain/kotlin/com/fatec/printec/ui/
+├── StatusImpressao.kt
+├── TelaCompor.kt
+├── TelaEtiquetas.kt
+├── TelaConfiguracoes.kt
+└── Navegacao.kt
+desktopApp/src/main/kotlin/com/fatec/printec/
+└── main.kt
+```
+
+## Passo 1 — StatusImpressao
+
+```kotlin title="shared/src/commonMain/kotlin/com/fatec/printec/ui/StatusImpressao.kt"
+package com.fatec.printec.ui
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import com.fatec.printec.impressao.ErroImpressao
+
+/**
+ * Estado de impressao com acao de recuperacao, compartilhado pelas tres
+ * telas que podem disparar uma impressao (Compor, Salvas, Ajustes). Spec §10
+ * exige que todo erro venha com uma acao concreta, nao so texto -- antes
+ * desta extracao so a tela Compor mostrava algo, e reimprimir pela lista de
+ * salvas ou tocar IMPRIMIR TESTE nao davam retorno nenhum: sucesso e falha
+ * eram indistinguiveis de nada ter acontecido.
+ */
+@Composable
+fun StatusImpressao(
+    estado: EstadoImpressao,
+    aoAbrirConfigBluetooth: () -> Unit,
+    aoConcederPermissao: () -> Unit,
+    aoTentarNovamente: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    if (estado == EstadoImpressao.Ocioso) return
+
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(
+            text = mensagemDe(estado),
+            color = corDe(estado),
+            style = MaterialTheme.typography.bodySmall,
+        )
+        if (estado is EstadoImpressao.Falha) {
+            // Unico diagnostico que o app tem para falhas de conexao/escrita;
+            // sem mostrar a causa, ela e descartada silenciosamente.
+            causaDe(estado.erro)?.let { causa ->
+                Text(
+                    text = causa,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.labelSmall,
+                )
+            }
+            val (rotulo, aoClicar) = acaoDe(
+                estado.erro, aoAbrirConfigBluetooth, aoConcederPermissao, aoTentarNovamente,
+            )
+            if (rotulo != null && aoClicar != null) {
+                OutlinedButton(onClick = aoClicar) { Text(rotulo) }
+            }
+        }
+    }
+}
+
+fun mensagemDe(estado: EstadoImpressao): String = when (estado) {
+    EstadoImpressao.Ocioso -> ""
+    EstadoImpressao.Renderizando -> "Preparando…"
+    EstadoImpressao.Conectando -> "Conectando…"
+    EstadoImpressao.Enviando -> "Enviando…"
+    EstadoImpressao.Sucesso -> "Impresso"
+    is EstadoImpressao.Falha -> estado.erro.message.orEmpty()
+}
+
+@Composable
+fun corDe(estado: EstadoImpressao) = when (estado) {
+    is EstadoImpressao.Falha -> MaterialTheme.colorScheme.error
+    else -> MaterialTheme.colorScheme.onSurface
+}
+
+private fun causaDe(erro: ErroImpressao): String? = when (erro) {
+    is ErroImpressao.FalhaAoConectar -> erro.causa.ifBlank { null }
+    is ErroImpressao.FalhaAoEscrever -> erro.causa.ifBlank { null }
+    else -> null
+}
+
+private fun acaoDe(
+    erro: ErroImpressao,
+    aoAbrirConfigBluetooth: () -> Unit,
+    aoConcederPermissao: () -> Unit,
+    aoTentarNovamente: () -> Unit,
+): Pair<String?, (() -> Unit)?> = when (erro) {
+    ErroImpressao.NaoPareada,
+    ErroImpressao.NenhumaImpressoraSelecionada,
+    -> "Abrir Bluetooth" to aoAbrirConfigBluetooth
+    ErroImpressao.PermissaoNegada -> "Conceder permissão" to aoConcederPermissao
+    is ErroImpressao.FalhaAoConectar,
+    is ErroImpressao.FalhaAoEscrever,
+    -> "Tentar novamente" to aoTentarNovamente
+    is ErroImpressao.FalhaAoPreparar -> null to null
+}
+```
+
+`estado is EstadoImpressao.Falha -> return` logo no topo faz a função inteira desaparecer quando não há nada a mostrar — `Ocioso` é o estado de repouso das três telas na maior parte do tempo. `mensagemDe` cobre os seis estados de `EstadoImpressao` (aula 11) um a um: os quatro estados "em andamento" (`Renderizando`, `Conectando`, `Enviando`) e `Sucesso` têm texto fixo; só `Falha` lê `estado.erro.message`, que é a mensagem que a própria classe `ErroImpressao` já carrega (aula 06). `acaoDe` é a tabela de despacho de cada erro para um par `(rótulo, callback)` — repare que `NaoPareada` e `NenhumaImpressoraSelecionada` caem no mesmo `"Abrir Bluetooth"`: um dispositivo pareado é o primeiro passo para os dois casos, seja porque o app não achou a impressora pareada, seja porque nenhuma foi escolhida ainda nas configurações. No Desktop, vale notar desde já (o Passo 6 volta a isso): `aoAbrirConfigBluetooth` é um lambda vazio, então esse botão específico não faz nada além de aparecer — não há tela de configuração de Bluetooth dentro do app desktop, o pareamento acontece no Windows.
+
+## Passo 2 — TelaCompor
+
+```kotlin title="shared/src/commonMain/kotlin/com/fatec/printec/ui/TelaCompor.kt"
+package com.fatec.printec.ui
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import com.fatec.printec.dados.LabelStore
+import com.fatec.printec.etiqueta.Alinhamento
+import com.fatec.printec.etiqueta.LabelDocument
+import kotlinx.coroutines.launch
+
+@Composable
+fun TelaCompor(
+    vm: EtiquetaViewModel,
+    store: LabelStore,
+    imprimir: (LabelDocument, Boolean) -> Unit,
+    aoAbrirConfigBluetooth: () -> Unit,
+    aoConcederPermissao: () -> Unit,
+) {
+    var campos by remember { mutableStateOf(CamposDoFormulario()) }
+    var nomeParaSalvar by remember { mutableStateOf("") }
+    val escopo = rememberCoroutineScope()
+    val estado by vm.estado.collectAsState()
+
+    // Restaura os ultimos valores digitados ao abrir.
+    LaunchedEffect(Unit) {
+        store.carregarRascunho()?.let { campos = it.paraCampos() }
+    }
+
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val largo = maxWidth > 600.dp
+        // Capturado aqui: dentro do Column o receiver do BoxWithConstraints fica sombreado.
+        val alturaDisponivel = maxHeight
+        val preview = @Composable { seu: Modifier ->
+            // O preview rola por conta propria: uma etiqueta longa passa da
+            // altura disponivel e, sem isto, o excedente era simplesmente cortado.
+            Box(seu.verticalScroll(rememberScrollState())) {
+                PreviewEtiqueta(campos.paraDocumento(), Modifier.padding(8.dp))
+            }
+        }
+        val formulario = @Composable { seu: Modifier ->
+            Column(
+                seu.verticalScroll(rememberScrollState()).padding(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                OutlinedTextField(
+                    value = campos.titulo,
+                    onValueChange = { campos = campos.copy(titulo = it) },
+                    label = { Text("Título") },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                campos.linhas.forEachIndexed { i, linha ->
+                    // O seletor troca a linha inteira, nao so o texto: e a
+                    // mesma posicao da lista, entao as duas edicoes precisam
+                    // partir do mesmo `linha` para nao se sobrescreverem.
+                    val trocar = { nova: LinhaDoFormulario ->
+                        campos = campos.copy(
+                            linhas = campos.linhas.toMutableList().also { l -> l[i] = nova },
+                        )
+                    }
+                    OutlinedTextField(
+                        value = linha.texto,
+                        onValueChange = { trocar(linha.copy(texto = it)) },
+                        label = { Text("Linha ${i + 1}") },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    SeletorDeAlinhamento(
+                        selecionado = linha.alinhamento,
+                        aoEscolher = { trocar(linha.copy(alinhamento = it)) },
+                    )
+                }
+                OutlinedButton(
+                    onClick = { campos = campos.copy(linhas = campos.linhas + LinhaDoFormulario()) },
+                ) { Text("+ adicionar linha") }
+
+                OutlinedTextField(
+                    value = campos.qr,
+                    onValueChange = { campos = campos.copy(qr = it) },
+                    label = { Text("Conteúdo do QR") },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = campos.copias.toString(),
+                    onValueChange = {
+                        campos = campos.copy(copias = it.toIntOrNull()?.coerceIn(1, 99) ?: 1)
+                    },
+                    label = { Text("Cópias") },
+                    modifier = Modifier.width(120.dp),
+                )
+
+                // Sem esta guarda, um duplo toque dispara duas impressoes
+                // concorrentes e saem duas etiquetas.
+                val imprimindo = estado is EstadoImpressao.Renderizando ||
+                    estado is EstadoImpressao.Conectando ||
+                    estado is EstadoImpressao.Enviando
+                Button(
+                    onClick = { imprimir(campos.paraDocumento(), true) },
+                    enabled = !imprimindo,
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text(if (imprimindo) "IMPRIMINDO…" else "IMPRIMIR") }
+
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = nomeParaSalvar,
+                        onValueChange = { nomeParaSalvar = it },
+                        label = { Text("Nome") },
+                        modifier = Modifier.weight(1f),
+                    )
+                    OutlinedButton(
+                        enabled = nomeParaSalvar.isNotBlank(),
+                        onClick = {
+                            escopo.launch {
+                                store.salvarEtiqueta(nomeParaSalvar, campos.paraDocumento())
+                                nomeParaSalvar = ""
+                            }
+                        },
+                    ) { Text("Salvar") }
+                }
+
+                StatusImpressao(
+                    estado = estado,
+                    aoAbrirConfigBluetooth = aoAbrirConfigBluetooth,
+                    aoConcederPermissao = aoConcederPermissao,
+                    aoTentarNovamente = { imprimir(campos.paraDocumento(), true) },
+                )
+            }
+        }
+
+        if (largo) {
+            Row(Modifier.fillMaxSize()) {
+                preview(Modifier.weight(1f).fillMaxHeight())
+                formulario(Modifier.weight(1f).fillMaxHeight())
+            }
+        } else {
+            Column(Modifier.fillMaxSize()) {
+                // Teto no preview. Sem ele, um filho de Column sem peso toma toda
+                // a altura que pedir: a etiqueta cresce, come a tela inteira e
+                // sobra ZERO para o formulario, que fica inutilizavel.
+                preview(Modifier.fillMaxWidth().heightIn(max = alturaDisponivel * 0.4f))
+                formulario(Modifier.weight(1f))
+            }
+        }
+    }
+}
+
+/**
+ * O rotulo vai abreviado de proposito: sao tres botoes dividindo a largura do
+ * formulario, que num celular estreito e a largura da tela. Por extenso,
+ * "Esquerda" e "Direita" chegam em reticencias justamente no aparelho onde a
+ * etiqueta e composta.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SeletorDeAlinhamento(
+    selecionado: Alinhamento,
+    aoEscolher: (Alinhamento) -> Unit,
+) {
+    SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+        Alinhamento.entries.forEachIndexed { indice, alinhamento ->
+            SegmentedButton(
+                selected = alinhamento == selecionado,
+                onClick = { aoEscolher(alinhamento) },
+                shape = SegmentedButtonDefaults.itemShape(indice, Alinhamento.entries.size),
+            ) {
+                Text(
+                    text = when (alinhamento) {
+                        Alinhamento.ESQUERDA -> "Esq."
+                        Alinhamento.CENTRO -> "Centro"
+                        Alinhamento.DIREITA -> "Dir."
+                    },
+                    style = MaterialTheme.typography.labelMedium,
+                    maxLines = 1,
+                )
+            }
+        }
+    }
+}
+```
+
+`TelaCompor` recebe `imprimir` de fora — não chama `vm.imprimir` diretamente — porque quem decide em que escopo de corrotina a impressão roda é `AppEtiquetas` (Passo 5), não esta tela; o motivo fica explícito no ⚠️ Atenção adiante. O layout é responsivo por `BoxWithConstraints`: acima de `600.dp` de largura (desktop com janela normal), preview e formulário dividem a tela lado a lado; abaixo disso, empilham verticalmente com um teto de 40% da altura no preview — sem esse teto, uma etiqueta com várias linhas cresceria até tomar a tela inteira e não sobraria espaço nenhum para o formulário. `LaunchedEffect(Unit) { store.carregarRascunho() }` reabre, ao entrar na tela, os últimos valores digitados (aula 10); `paraCampos()`/`paraDocumento()` (aula 12) fazem a conversão nos dois sentidos. A guarda `imprimindo` — `estado is Renderizando || Conectando || Enviando` — desabilita o botão enquanto uma impressão está em curso, trocando o rótulo para "IMPRIMINDO…"; sem ela, um duplo toque dispara duas impressões concorrentes e saem duas etiquetas de verdade. `SeletorDeAlinhamento` é privado a este arquivo e usa rótulos abreviados ("Esq.", "Centro", "Dir.") porque os três segmentos dividem a largura do formulário, que num celular estreito é a largura inteira da tela.
+
+## Passo 3 — TelaEtiquetas
+
+```kotlin title="shared/src/commonMain/kotlin/com/fatec/printec/ui/TelaEtiquetas.kt"
+package com.fatec.printec.ui
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import com.fatec.printec.dados.EtiquetaSalva
+import com.fatec.printec.dados.LabelStore
+import com.fatec.printec.etiqueta.LabelDocument
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
+
+@Composable
+fun TelaEtiquetas(
+    vm: EtiquetaViewModel,
+    store: LabelStore,
+    imprimir: (LabelDocument, Boolean) -> Unit,
+    aoAbrirConfigBluetooth: () -> Unit,
+    aoConcederPermissao: () -> Unit,
+) {
+    var etiquetas by remember { mutableStateOf(emptyList<EtiquetaSalva>()) }
+    // Guarda o ultimo pedido para o botao "Tentar novamente" do StatusImpressao
+    // saber QUAL etiqueta reenviar -- o estado de impressao e global ao
+    // ViewModel, mas o documento que falhou e local a esta tela.
+    var ultimoPedido by remember { mutableStateOf<Pair<LabelDocument, Boolean>?>(null) }
+    val escopo = rememberCoroutineScope()
+    val estado by vm.estado.collectAsState()
+
+    LaunchedEffect(Unit) {
+        store.etiquetasSalvas().collectLatest { etiquetas = it }
+    }
+
+    fun disparar(documento: LabelDocument, salvarRascunho: Boolean) {
+        ultimoPedido = documento to salvarRascunho
+        imprimir(documento, salvarRascunho)
+    }
+
+    // Teto de largura pelo mesmo motivo da tela de configuracoes: linhas de
+    // ponta a ponta numa janela larga ficam ilegiveis.
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+    Column(Modifier.widthIn(max = 600.dp).fillMaxSize()) {
+        LazyColumn(Modifier.weight(1f).fillMaxWidth().padding(8.dp)) {
+            items(etiquetas, key = { it.id }) { etiqueta ->
+                Row(
+                    Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text(etiqueta.nome)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = {
+                            disparar(etiqueta.documento, false)
+                        }) { Text("Imprimir") }
+                        OutlinedButton(onClick = {
+                            escopo.launch { store.excluirEtiqueta(etiqueta.id) }
+                        }) { Text("Excluir") }
+                    }
+                }
+            }
+        }
+        StatusImpressao(
+            estado = estado,
+            aoAbrirConfigBluetooth = aoAbrirConfigBluetooth,
+            aoConcederPermissao = aoConcederPermissao,
+            aoTentarNovamente = { ultimoPedido?.let { (doc, salvar) -> disparar(doc, salvar) } },
+            modifier = Modifier.fillMaxWidth().padding(8.dp),
+        )
+    }
+    }
+}
+```
+
+Esta tela é a mais simples das três: `LaunchedEffect(Unit) { store.etiquetasSalvas().collectLatest { ... } }` mantém `etiquetas` sincronizada com o banco (aula 10) — cada etiqueta ganha um botão "Imprimir" (`disparar(etiqueta.documento, false)`, sem sobrescrever o rascunho) e um "Excluir". O detalhe que vale reparar é `ultimoPedido`: o estado de impressão em si é global ao `EtiquetaViewModel` (aula 11), mas o documento que causou uma falha é local a esta tela — se `StatusImpressao` mostrar "Tentar novamente" depois de reimprimir uma etiqueta salva, é `disparar` de novo com o mesmo `Pair<LabelDocument, Boolean>` guardado que faz esse clique reenviar a etiqueta certa, e não a que está sendo composta na aba Compor. O teto de largura `widthIn(max = 600.dp)` existe pelo mesmo motivo documentado em `TelaConfiguracoes`: numa janela desktop maximizada, linhas de ponta a ponta ficam ilegíveis.
+
+## Passo 4 — TelaConfiguracoes
+
+```kotlin title="shared/src/commonMain/kotlin/com/fatec/printec/ui/TelaConfiguracoes.kt"
+package com.fatec.printec.ui
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.Alignment
+import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import com.fatec.printec.dados.Configuracoes
+import com.fatec.printec.dados.LabelStore
+import com.fatec.printec.dados.PerfilMidia
+import com.fatec.printec.impressao.ErroImpressao
+import com.fatec.printec.impressao.PrinterTarget
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+
+@Composable
+fun TelaConfiguracoes(
+    vm: EtiquetaViewModel,
+    store: LabelStore,
+    destinos: suspend () -> List<PrinterTarget>,
+    aoAbrirConfigBluetooth: () -> Unit,
+    aoImprimirTeste: () -> Unit,
+    aoConcederPermissao: () -> Unit,
+) {
+    var config by remember { mutableStateOf(Configuracoes()) }
+    var lista by remember { mutableStateOf(emptyList<PrinterTarget>()) }
+    val escopo = rememberCoroutineScope()
+    val estado by vm.estado.collectAsState()
+
+    LaunchedEffect(Unit) {
+        config = store.configuracoes().first()
+        // Descartar o erro aqui (como um runCatching cru faria) faz uma
+        // permissao de Bluetooth negada parecer "nenhuma impressora existe":
+        // lista fica vazia sem nenhuma explicacao, e o botao "Conceder
+        // permissao" -- a unica saida do primeiro uso em Android 12+ -- nunca
+        // chega a aparecer. ErroImpressao especificamente, nao Exception:
+        // um erro nao tipado aqui deve continuar propagando.
+        lista = try {
+            destinos()
+        } catch (e: ErroImpressao) {
+            vm.reportarFalha(e)
+            emptyList()
+        }
+    }
+
+    // Esta tela e a mais alta do app — impressoras pareadas, midia, avanco,
+    // botao de teste, paragrafo explicativo e area de status. Sem scroll, tudo
+    // que passa da dobra num celular fica INALCANCAVEL, nao so escondido.
+    Box(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
+        contentAlignment = Alignment.TopCenter,
+    ) {
+    Column(
+        // Teto de largura: sem ele, radios e botoes esticam de ponta a ponta
+        // numa janela de desktop maximizada.
+        Modifier.widthIn(max = 600.dp).fillMaxWidth().padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text("Impressora")
+        lista.forEach { alvo ->
+            Row(Modifier.fillMaxWidth()) {
+                RadioButton(
+                    selected = config.impressoraId == alvo.id,
+                    onClick = {
+                        config = config.copy(impressoraId = alvo.id, impressoraNome = alvo.nome)
+                        escopo.launch { store.salvarConfiguracoes(config) }
+                    },
+                )
+                Text(alvo.nome)
+            }
+        }
+        OutlinedButton(onClick = aoAbrirConfigBluetooth) {
+            Text("Não encontrou sua impressora?")
+        }
+
+        Text("Mídia")
+        PerfilMidia.entries.forEach { perfil ->
+            // "Etiqueta com gap" fica desabilitada: nenhum codigo consome
+            // perfilMidia hoje, e persistir uma escolha que nao muda nada no
+            // ESC/POS emitido so engana quem esta configurando.
+            val disponivel = perfil == PerfilMidia.CONTINUO
+            Row(Modifier.fillMaxWidth()) {
+                RadioButton(
+                    selected = config.perfilMidia == perfil,
+                    enabled = disponivel,
+                    onClick = {
+                        config = config.copy(perfilMidia = perfil)
+                        escopo.launch { store.salvarConfiguracoes(config) }
+                    },
+                )
+                Text(
+                    if (perfil == PerfilMidia.CONTINUO) "Contínuo"
+                    else "Etiqueta com gap (em breve)",
+                )
+            }
+        }
+
+        OutlinedTextField(
+            value = config.avancoFinalMm.toString(),
+            onValueChange = {
+                config = config.copy(avancoFinalMm = it.toIntOrNull()?.coerceIn(0, 30) ?: 0)
+                escopo.launch { store.salvarConfiguracoes(config) }
+            },
+            label = { Text("Avanço final (mm)") },
+            modifier = Modifier.width(180.dp),
+        )
+
+        Button(onClick = aoImprimirTeste, modifier = Modifier.fillMaxWidth()) {
+            Text("IMPRIMIR TESTE")
+        }
+        Text(
+            "A etiqueta de teste traz a régua de 32 colunas, as escalas, acentos " +
+                "e um QR. Se ela imprime, o problema está no conteúdo, não na conexão.",
+        )
+
+        StatusImpressao(
+            estado = estado,
+            aoAbrirConfigBluetooth = aoAbrirConfigBluetooth,
+            aoConcederPermissao = aoConcederPermissao,
+            aoTentarNovamente = aoImprimirTeste,
+        )
+    }
+    }
+}
+```
+
+É desta tela que sai a etiqueta de teste — o botão "IMPRIMIR TESTE" chama `aoImprimirTeste`, que o Passo 6 vai mostrar chegando de fora já com `etiquetaDeCalibracao()` (aula 04) amarrada a ele. O ponto que merece atenção redobrada é o `try/catch` dentro de `LaunchedEffect(Unit)`: `destinos()` — `transporte.listarDestinos()`, aula 08 — pode lançar `ErroImpressao`, e o `catch` específico chama `vm.reportarFalha(e)` antes de cair para lista vazia. `reportarFalha` (aula 11) existe exatamente para este caso: uma falha que acontece **fora** de uma impressão, ao só listar destinos. Sem ela — se o código descartasse o erro como um `runCatching` cru faria — uma permissão de Bluetooth negada apareceria como "nenhuma impressora existe", lista vazia, sem explicação nenhuma; o botão "Conceder permissão", a única saída do primeiro uso em Android 12+ (aula 07), nunca chegaria a aparecer, e o primeiro uso simplesmente empacaria sem pista de por que a lista está vazia. Repare também que o `catch` é por `ErroImpressao`, não por `Exception`: um erro não tipado continua se propagando, porque só os erros que o app sabe converter em ação (aula 06) devem virar `Falha` silenciosa aqui.
+
+O restante da tela: cada `PrinterTarget` de `lista` vira um `RadioButton` que, ao ser selecionado, já salva a configuração (`escopo.launch { store.salvarConfiguracoes(config) }`) — não há botão "salvar" separado. `PerfilMidia.entries` lista os perfis de mídia, mas só `CONTINUO` fica habilitado: nenhum código hoje lê `perfilMidia` para mudar o que é emitido em ESC/POS, então deixar "Etiqueta com gap" selecionável persistiria uma escolha que não muda nada — o rótulo "(em breve)" é honesto sobre isso. O campo "Avanço final (mm)" e o botão de teste completam a tela, seguidos por `StatusImpressao` — aqui, `aoTentarNovamente` é o próprio `aoImprimirTeste`, então uma falha na etiqueta de teste se recupera repetindo a etiqueta de teste.
+
+## Passo 5 — Navegacao
+
+```kotlin title="shared/src/commonMain/kotlin/com/fatec/printec/ui/Navegacao.kt"
+package com.fatec.printec.ui
+
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import com.fatec.printec.dados.LabelStore
+import com.fatec.printec.etiqueta.LabelDocument
+import kotlinx.coroutines.launch
+
+enum class Tela(val rotulo: String) {
+    COMPOR("Compor"),
+    ETIQUETAS("Salvas"),
+    CONFIGURACOES("Ajustes"),
+}
+
+@Composable
+fun AppEtiquetas(
+    vm: EtiquetaViewModel,
+    store: LabelStore,
+    destinos: suspend () -> List<com.fatec.printec.impressao.PrinterTarget>,
+    aoAbrirConfigBluetooth: () -> Unit,
+    aoImprimirTeste: () -> Unit,
+    aoConcederPermissao: () -> Unit,
+) {
+    var tela by remember { mutableStateOf(Tela.COMPOR) }
+
+    // Escopo do APP, nao da tela. `AppEtiquetas` permanece composto ao trocar de
+    // aba; as telas internas nao. Lancar a impressao no escopo de uma tela faria
+    // a troca de aba CANCELAR a impressao — e como o cancelamento nao escreve
+    // estado terminal, o botao IMPRIMIR ficaria desabilitado para sempre e o
+    // fluxo de bytes poderia ser cortado no meio do envio para a impressora.
+    val escopoDoApp = rememberCoroutineScope()
+    val imprimir: (LabelDocument, Boolean) -> Unit = { documento, salvarRascunho ->
+        escopoDoApp.launch { vm.imprimir(documento, salvarRascunho) }
+    }
+
+    LaunchedEffect(tela) { vm.limparEstadoSeConcluido() }
+
+    MaterialTheme {
+        Scaffold(
+            bottomBar = {
+                NavigationBar {
+                    Tela.entries.forEach { destino ->
+                        NavigationBarItem(
+                            selected = tela == destino,
+                            onClick = { tela = destino },
+                            icon = {},
+                            label = { Text(destino.rotulo) },
+                        )
+                    }
+                }
+            },
+        ) { paddings ->
+            Box(Modifier.fillMaxSize().padding(paddings)) {
+                when (tela) {
+                    Tela.COMPOR -> TelaCompor(
+                        vm, store, imprimir, aoAbrirConfigBluetooth, aoConcederPermissao,
+                    )
+                    Tela.ETIQUETAS -> TelaEtiquetas(
+                        vm, store, imprimir, aoAbrirConfigBluetooth, aoConcederPermissao,
+                    )
+                    Tela.CONFIGURACOES -> TelaConfiguracoes(
+                        vm, store, destinos, aoAbrirConfigBluetooth, aoImprimirTeste, aoConcederPermissao,
+                    )
+                }
+            }
+        }
+    }
+}
+```
+
+`Tela` é um `enum` com três valores e um `rotulo` de exibição; `AppEtiquetas` guarda a aba atual em `var tela by remember { mutableStateOf(Tela.COMPOR) }` — o app sempre abre em "Compor". A `NavigationBar` no `bottomBar` do `Scaffold` itera `Tela.entries` para desenhar os três itens, e o `when (tela)` dentro do `Box` central é o `when` exaustivo que amarra as três telas ao enum inteiro — a razão estrutural, citada no Conceito, de esta aula não poder entregar um subconjunto.
+
+Duas coisas acontecem aqui que nenhuma tela faz sozinha. A primeira é `LaunchedEffect(tela) { vm.limparEstadoSeConcluido() }`: toda vez que `tela` muda, o app tenta limpar o estado de impressão — mas `limparEstadoSeConcluido` (aula 11) só apaga estados terminais (`Sucesso`, `Falha`); uma impressão em andamento continua visível na tela para onde o usuário voltar. A segunda é `escopoDoApp` e o `imprimir` construído a partir dele, que é o assunto do ⚠️ Atenção a seguir.
+
+## Passo 6 — main.kt do Desktop
+
+```kotlin title="desktopApp/src/main/kotlin/com/fatec/printec/main.kt"
+package com.fatec.printec
+
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.window.Window
+import androidx.compose.ui.window.application
+import com.fatec.printec.dados.DriverDesktop
+import com.fatec.printec.dados.LabelStoreSqlDelight
+import com.fatec.printec.etiqueta.etiquetaDeCalibracao
+import com.fatec.printec.impressao.TransporteDesktop
+import com.fatec.printec.impressao.EscPosRenderer
+import com.fatec.printec.ui.AppEtiquetas
+import com.fatec.printec.ui.EtiquetaViewModel
+import kotlinx.coroutines.launch
+
+fun main() = application {
+    val store = LabelStoreSqlDelight(DriverDesktop().criar())
+    // Lista USB e portas seriais (Bluetooth pareado no Windows) juntas.
+    val transporte = TransporteDesktop()
+    val vm = EtiquetaViewModel(store, transporte, EscPosRenderer::renderizar)
+
+    Window(onCloseRequest = ::exitApplication, title = "Printec") {
+        val escopo = rememberCoroutineScope()
+        AppEtiquetas(
+            vm = vm,
+            store = store,
+            destinos = { transporte.listarDestinos() },
+            aoAbrirConfigBluetooth = { },   // no desktop a conexao e USB
+            aoImprimirTeste = {
+                escopo.launch {
+                    vm.imprimir(etiquetaDeCalibracao(), salvarRascunho = false)
+                }
+            },
+            aoConcederPermissao = { },   // no desktop nao ha permissao de runtime
+        )
+    }
+}
+```
+
+Esta é a fiação inteira, de baixo para cima: `DriverDesktop().criar()` (aula 09) abre o SQLDelight local, `LabelStoreSqlDelight` (aula 10) embrulha esse driver na interface `LabelStore`, `TransporteDesktop()` (aula 08) mescla USB e serial atrás de `PrinterTransport`, e `EtiquetaViewModel(store, transporte, EscPosRenderer::renderizar)` (aula 11) amarra os três com o renderizador ESC/POS (aula 05) — passado como referência de função, não instanciado. `AppEtiquetas` (Passo 5) recebe o `vm` já pronto e roda dentro de um `Window` do Compose Desktop.
+
+Repare nos dois lambdas vazios: `aoAbrirConfigBluetooth = { }` e `aoConcederPermissao = { }`. Nenhum dos dois é uma omissão — os comentários ao lado dizem por quê. No desktop, a conexão Bluetooth vira uma porta COM pareada no *sistema operacional* (aula 08), fora do app; não existe uma tela de configuração de Bluetooth dentro do Printec para esse botão abrir, porque o pareamento já aconteceu no Windows antes de o app rodar. E não existe permissão de runtime nenhuma para conceder — esse conceito é específico do modelo de permissões do Android 12+ (`BLUETOOTH_CONNECT`, aula 07); a JVM do desktop não tem nada parecido. Os dois callbacks continuam existindo na assinatura de `AppEtiquetas` porque ela é código `commonMain`, compartilhado com o host Android da aula 14 — lá, os dois ganham implementação de verdade.
+
+`aoImprimirTeste`, ao contrário dos outros dois, não é vazio: ele chama `vm.imprimir(etiquetaDeCalibracao(), salvarRascunho = false)` (aula 04) dentro de um `escopo.launch`, onde `escopo` é um `rememberCoroutineScope()` lido no nível do `Window` — antes mesmo de `AppEtiquetas` ser chamado. É a mesma lógica do `escopoDoApp` do Passo 5: esse escopo sobrevive à troca de abas dentro de `AppEtiquetas`, porque vive um nível acima delas, na raiz de composição da janela.
+
+## ⚠️ Atenção
+
+O comentário no próprio `Navegacao.kt` já entrega o porquê, mas vale destacar a mecânica: `imprimir` é construído em `AppEtiquetas`, com `escopoDoApp = rememberCoroutineScope()` lido **neste** Composable — não em `TelaCompor`, nem em `TelaEtiquetas`, nem em `TelaConfiguracoes`. `AppEtiquetas` permanece composto o tempo todo que o app roda, porque é ele quem decide qual tela mostrar; as telas internas, ao contrário, saem de composição toda vez que `tela` muda para outro valor — Compose descarta a árvore da tela anterior.
+
+Se `imprimir` fosse construído dentro de uma tela, com o `rememberCoroutineScope()` dela, o escopo da corrotina de impressão seria cancelado no instante em que o usuário trocasse de aba no meio de uma impressão. E cancelamento não é o mesmo que falha: `EtiquetaViewModel.imprimir` (aula 11) relança `CancellationException` sempre, sem nunca escrever `EstadoImpressao.Falha` — então o botão IMPRIMIR, que fica desabilitado enquanto o estado é `Renderizando`/`Conectando`/`Enviando`, jamais veria um estado terminal para sair desse modo e ficaria desabilitado para sempre. Pior: se o cancelamento chegasse no meio de `EscritaEmBlocos` (aula 06) escrevendo bytes na porta, o fluxo seria cortado a meio caminho, deixando a impressora com um comando incompleto. Lançar a partir do escopo do app é o que garante que trocar de aba nunca interrompe um envio em curso.
+
+## ▶️ Como Executar
+
+```bash
+./gradlew :desktopApp:run
+```
+
+Antes de tudo, se ainda não pareou a LT-8359 nesta máquina: Configurações do Windows → Bluetooth e dispositivos → parear a impressora. O pareamento cria uma porta COM virtual que `DesktopSerialTransport` (aula 08) enxerga como mais um destino — ela aparece na lista de "Ajustes" com o nome descritivo que o próprio Windows dá, algo como "Standard Serial over Bluetooth link (COM*n*)".
+
+Com isso feito, a sequência do primeiro uso:
+
+1. A janela abre na aba **Compor** — é o valor inicial de `tela` em `AppEtiquetas`.
+2. Vá para **Ajustes**. O `LaunchedEffect(Unit)` da tela chama `destinos()`, que é `TransporteDesktop.listarDestinos()` (aula 08): por baixo, ele mescla impressoras USB e portas seriais numa lista só, roteando cada uma internamente por um prefixo no `id` (`usb:`/`serial:`) — mas esse prefixo é só informação interna de roteamento, nunca aparece na tela. O que a lista mostra é o `nome` de cada `PrinterTarget`: o nome da impressora USB, ou o nome descritivo da porta COM (o "Standard Serial over Bluetooth link (COM*n*)" de instantes atrás), conforme o caso.
+3. Escolha a impressora/porta pelo `RadioButton` — a seleção já salva sozinha, sem botão "salvar" separado.
+4. Volte para **Compor**, preencha título, linhas e/ou QR — o preview (aula 12) atualiza em tempo real.
+5. Toque **IMPRIMIR**.
+
+Sai papel.
+
+## 💻 Mão na Massa
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
+<Tabs>
+  <TabItem value="ex1" label="Exercício 1 — A etiqueta de teste" default>
+
+### Comparando papel com código
+
+Em Ajustes, toque "IMPRIMIR TESTE". Compare a etiqueta que sai com `etiquetaDeCalibracao()` (aula 04): título "CALIBRACAO", a régua `"12345678901234567890123456789012"` de exatamente 32 caracteres, uma linha por escala e os acentos do português.
+
+A régua de 32 caracteres ocupa a largura inteira do papel sem quebrar linha no meio? Se sim, é o primeiro sinal físico a favor da estimativa `Impressora.DOTS_LARGURA = 384` (32 colunas × 12 dots da Font A, aula 02) — mas a confirmação de verdade, régua física na mão medindo o papel, é o assunto da aula 15. Aqui você só está vendo, pela primeira vez, se a estimativa se sustenta.
+
+  </TabItem>
+  <TabItem value="ex2" label="Exercício 2 — Erro de propósito">
+
+### O retry da aula 11, ao vivo
+
+Desligue a impressora (ou desconecte-a) e imprima qualquer coisa. Anote três coisas: a mensagem exata que aparece em `StatusImpressao`, quanto tempo leva até ela aparecer, e quantas tentativas de conexão o app faz.
+
+Confira contra a política de retry de `EtiquetaViewModel.imprimir` (aula 11): o laço é `repeat(2)` — no máximo duas tentativas, uma original e uma repetição — e só repete quando o erro é `ErroImpressao.FalhaAoConectar`, com `delay(1_000)` entre uma tentativa e a outra. Se a falha que aparecer for `FalhaAoConectar` — o caminho esperado quando `DesktopSerialTransport.imprimir` (aula 08) não consegue nem abrir a porta —, espere ver a mensagem "A impressora pode estar desligada — ela hiberna após 10 minutos", duas tentativas de conexão e pouco mais de um segundo até o estado final, por causa do único `delay(1_000)` entre elas. Se em vez disso aparecer `FalhaAoEscrever` — a porta abriu, mas a escrita falhou —, o comportamento é o oposto: nenhum retry, `Falha` já na primeira tentativa, porque a política da aula 11 só insiste para `FalhaAoConectar`.
+
+  </TabItem>
+</Tabs>
