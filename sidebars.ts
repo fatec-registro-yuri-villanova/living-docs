@@ -136,7 +136,7 @@ const sidebars: SidebarsConfig = {
         {
             type: "category",
             label: "Módulo 5 — Telas, papel e entrega",
-            items: ["ldm/aula-12"],
+            items: ["ldm/aula-12", "ldm/aula-13"],
         },
     ],
 };
